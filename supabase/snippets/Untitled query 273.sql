@@ -1,0 +1,1 @@
+INSERT INTO "public"."stock_prices" ("security_id", "price_date", "open_price", "high_price", "low_price", "close_price", "volume", "currency", "updated_at") VALUES ('80b4e670-a90e-40e6-a8e2-ea14b4a8813b', '2026-03-21', '13000', '0', '12415', '12430', '3862771', 'KRW', '2026-03-28 14:26:33.756+00');
