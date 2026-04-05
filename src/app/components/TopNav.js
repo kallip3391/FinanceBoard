@@ -36,94 +36,92 @@ export default function TopNav({ onMenuClick }) {
   return (
     <header className="w-full bg-white shadow-sm border-b border-slate-100 sticky top-0 z-30">
       <div className="flex items-center justify-between px-4 py-3 h-16 w-full max-w-[1600px] mx-auto">
-        <div className="flex items-center gap-3">
-          <button onClick={onMenuClick} className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+        <div className="flex items-center gap-4 shrink-0 overflow-visible">
+          <button onClick={onMenuClick} className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors shrink-0">
             <Menu size={24} />
           </button>
           
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full font-bold">
-              <TrendingUp size={18} />
-              <span>FINANCE BOARD</span>
-            </div>
-
-            {/* 관리자 승인 설정 버튼 (우측 '평가' 항목과 동일 UI) */}
-            {profile?.is_admin && (
-              <button 
-                onClick={() => setIsAdminModalOpen(true)}
-                className="hidden sm:flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg border border-amber-100/50 hover:bg-amber-100 transition-colors cursor-pointer shadow-sm"
-              >
-                <Settings size={16} />
-                <span className="text-sm font-bold">승인 설정</span>
-              </button>
-            )}
+          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full font-bold border border-emerald-100/50 shrink-0">
+            <TrendingUp size={18} />
+            <span className="whitespace-nowrap">FINANCE BOARD</span>
           </div>
 
-          {!loading ? (
-            user ? (
-              <div className="hidden sm:flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200/50 shadow-sm leading-none">
-                  <div className="w-5 h-5 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center shrink-0">
-                    <User size={12} />
+          <div className="h-6 w-px bg-slate-200 mx-2 shrink-0"></div>
+
+          {/* Auth Section (Back to Left Side) */}
+          <div className="flex items-center gap-3 shrink-0">
+            {!loading ? (
+              user ? (
+                <div className="flex items-center gap-3">
+                  {profile?.is_admin && (
+                    <button 
+                      onClick={() => setIsAdminModalOpen(true)}
+                      className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg border border-amber-200/50 hover:bg-amber-100 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap"
+                    >
+                      <Settings size={16} />
+                      <span className="text-sm font-bold">승인 설정</span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm leading-none min-w-[120px] justify-center shrink-0">
+                    <div className="w-5 h-5 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center shrink-0">
+                      <User size={12} />
+                    </div>
+                    <span className="text-sm font-bold whitespace-nowrap">{getDisplayName(user)}</span>
                   </div>
-                  <span className="text-sm font-bold">{getDisplayName(user)}</span>
+                  <button onClick={signOut} className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-200 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap">
+                    <LogOut size={16} />
+                    <span className="text-sm font-bold">로그아웃</span>
+                  </button>
                 </div>
-                <button onClick={signOut} className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors cursor-pointer shadow-sm">
-                  <LogOut size={16} />
-                  <span className="text-sm font-bold">로그아웃</span>
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button onClick={signInWithGoogle} className="flex items-center gap-2 bg-brand text-white px-5 py-2 rounded-lg hover:bg-brand-dark transition-all shadow-md shadow-brand/20 cursor-pointer active:scale-95 min-w-[100px] justify-center shrink-0 whitespace-nowrap">
+                    <User size={16} />
+                    <span className="text-sm font-bold">로그인</span>
+                  </button>
+                  <button 
+                    onClick={() => setIsRegModalOpen(true)}
+                    className="flex items-center gap-2 bg-indigo-500 text-white px-5 py-2 rounded-lg hover:bg-indigo-600 transition-all font-bold shadow-md shadow-indigo-100 cursor-pointer active:scale-95 min-w-[120px] justify-center shrink-0 whitespace-nowrap"
+                  >
+                    <UserPlus size={16} />
+                    <span className="text-sm">등록 신청</span>
+                  </button>
+                  {profileError && (
+                    <div className="px-3 py-1.5 rounded-lg border text-xs font-bold animate-shake bg-red-50 text-red-600 border-red-100 shrink-0">
+                      {profileError}
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
-              <div className="hidden sm:flex items-center gap-3">
-                {/* 1. 로그인 버튼 */}
-                <button onClick={signInWithGoogle} className="flex items-center gap-2 bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark transition-colors shadow-sm cursor-pointer">
-                  <User size={16} />
-                  <span className="text-sm font-bold">로그인</span>
-                </button>
-
-                {/* 2. 등록 신청 버튼 */}
-                <button 
-                  onClick={() => setIsRegModalOpen(true)}
-                  className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition-all font-bold shadow-md shadow-indigo-100 cursor-pointer"
-                >
-                  <UserPlus size={16} />
-                  <span className="text-sm">등록 신청</span>
-                </button>
-
-                {/* 3. 인증 관련 메시지 */}
-                {profileError && (
-                  <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold animate-shake ${
-                    profileError.includes('완료') 
-                      ? 'bg-blue-50 text-blue-600 border-blue-100' 
-                      : 'bg-red-50 text-red-600 border-red-100'
-                  }`}>
-                    {profileError}
-                  </div>
-                )}
+              <div className="flex items-center gap-3">
+                <div className="w-[100px] h-9 bg-slate-200 animate-pulse rounded-lg"></div>
+                <div className="w-[120px] h-9 bg-slate-200/60 animate-pulse rounded-lg"></div>
               </div>
-            )
-          ) : (
-            <div className="w-24 h-9 bg-slate-100 animate-pulse rounded-lg hidden sm:block"></div>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 text-sm font-medium">
-          {user && (
-            <>
-              <div className="hidden lg:flex items-center gap-2 text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                <span>매수 <span className="text-slate-900 font-bold ml-1">{formatCurrency(summary.totalEvaluation - summary.totalProfit)}</span></span>
-              </div>
-              <div className="flex items-center gap-2 bg-blue-100 px-3 py-1.5 rounded-lg border border-slate-200 text-blue-600 relative min-w-[120px] shadow-sm">
-                <span>평가 <span className="text-blue-600 font-bold ml-1">{formatCurrency(summary.totalEvaluation)}</span></span>
-                {summary.isLoading && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
-                )}
-              </div>
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm ${summary.totalProfit > 0 ? 'bg-red-50 text-red-600 border-red-100' : (summary.totalProfit < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-200')}`}>
-                <span>수익 <span className="font-bold ml-1">{formatCurrency(summary.totalProfit)} ({summary.avgProfitRate.toFixed(2)}%)</span></span>
-              </div>
-            </>
-          )}
+        <div className="flex items-center gap-4 shrink-0">
+          {/* Asset Summary Area (Right) */}
+          <div className="flex items-center gap-3 text-sm font-medium shrink-0">
+            {user && (
+              <>
+                <div className="hidden lg:flex items-center gap-2 text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm shrink-0">
+                  <span>매수 <span className="text-slate-900 font-bold ml-1">{formatCurrency(summary.totalEvaluation - summary.totalProfit)}</span></span>
+                </div>
+                <div className="flex items-center gap-2 bg-blue-100 px-3 py-1.5 rounded-lg border border-slate-200 text-blue-600 relative min-w-[120px] shadow-sm shrink-0">
+                  <span>평가 <span className="text-blue-600 font-bold ml-1">{formatCurrency(summary.totalEvaluation)}</span></span>
+                  {summary.isLoading && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm shrink-0 ${summary.totalProfit > 0 ? 'bg-red-50 text-red-600 border-red-100' : (summary.totalProfit < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-200')}`}>
+                  <span>수익 <span className="font-bold ml-1">{formatCurrency(summary.totalProfit)} ({summary.avgProfitRate.toFixed(2)}%)</span></span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

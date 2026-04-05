@@ -16,6 +16,8 @@
   --color-text-muted: #64748b;
   
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --breakpoint-xs: 480px;
 }
 
 @layer base {
