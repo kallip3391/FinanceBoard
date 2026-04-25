@@ -142,6 +142,10 @@ export function AuthProvider({ children }) {
 
         if (session) {
           await handleSession(session, 'INITIAL');
+          // [수정] 초기화가 끝난 후 깃발을 제거하여 race condition 방지
+          if (typeof window !== 'undefined' && isManualLogin) {
+            sessionStorage.removeItem('is_manual_login');
+          }
         } else {
           setLoading(false);
         }
@@ -169,10 +173,6 @@ export function AuthProvider({ children }) {
         // 로그인 관련 이벤트는 handleSession에서 걸러짐
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await handleSession(session, event);
-          
-          if (typeof window !== 'undefined' && session) {
-            sessionStorage.removeItem('is_manual_login');
-          }
         }
       }
     );
