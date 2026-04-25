@@ -76,6 +76,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    // 인증 세션 처리 로직 통합
     const handleSession = async (session, eventType) => {
       if (!mounted) return;
 
@@ -87,16 +88,13 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        // --- [추가] 자동 로그인 시도 차단 로직 (콘솔 에러 방지용) ---
         const isManualLogin = typeof window !== 'undefined' && 
                               sessionStorage.getItem('is_manual_login') === 'true';
         
-        // INITIAL 이벤트가 아닌(즉, 리스너에 의한) SIGNED_IN인데 수동 로그인이 아니면 무시
+        // 수동 로그인 클릭 상태가 아니라면 절대 유저 상태를 업데이트하지 않음 (F5 시 Flash 방지)
         if (eventType !== 'INITIAL' && !isManualLogin) {
-          console.log('[Auth] 자동 로그인 시도 무시 (요구사항: F5/새탭 로그아웃)');
-          setUser(null);
-          setLoading(false);
-          return;
+          console.log('[Auth] 자동 로그인 이벤트 무시 (Purge 진행 중)');
+          return; 
         }
 
         console.log(`[Auth] 세션 처리 (${eventType}):`, session.user.email);
@@ -115,25 +113,33 @@ export function AuthProvider({ children }) {
       } catch (err) {
         console.error('[Auth] handleSession error:', err);
       } finally {
-        if (mounted) setLoading(false);
+        // [최종 최적화] 수동 로그인 완료 또는 초기 확인 완료 시에만 로딩을 해제합니다.
+        // F5 강제 로그아웃 중에는 여기서 로딩이 해제되지 않도록 필터링합니다.
+        if (mounted) {
+          const isManualLogin = typeof window !== 'undefined' && sessionStorage.getItem('is_manual_login') === 'true';
+          if (!session?.user || isManualLogin || eventType === 'INITIAL') {
+            setLoading(false);
+          }
+        }
       }
     };
 
     const initAuth = async () => {
       try {
+        setLoading(true); // 시작 즉시 로딩 고정
         const { data: { session } } = await supabase.auth.getSession();
         
         const isManualLogin = typeof window !== 'undefined' && 
                               sessionStorage.getItem('is_manual_login') === 'true';
 
+        // 수동 로그인이 아닌 세션 발견 시, 즉시 로그아웃을 수행하고 완료될 때까지 로딩 유지
         if (session && !isManualLogin) {
-          console.log('[Auth] 요구사항에 따라 세션 초기화 (F5/새탭/직접접속)');
-          await signOut();
+          console.log('[Auth] 요구사항에 따라 세션 정밀 초기화 중...');
+          await signOut(); 
+          if (mounted) setLoading(false);
           return;
         }
 
-        // 로그인 절차가 거의 끝났으므로 다른 스케줄링을 고려해 약간 늦게 제거하거나 
-        // handleSession 내부에서 이벤트 타입에 따라 제어하도록 함
         if (session) {
           await handleSession(session, 'INITIAL');
         } else {
@@ -151,18 +157,22 @@ export function AuthProvider({ children }) {
         if (!mounted) return;
         console.log('[Auth] 인증 이벤트 발생:', event);
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          await handleSession(session, event);
-          
-          // 로그인 성공 시 플래그 제거 (여기서 제거해야 후속 새로고침이 로그아웃됨)
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('is_manual_login');
-          }
-        } else if (event === 'SIGNED_OUT') {
+        // SIGNED_OUT 이벤트는 항상 수용
+        if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
           setProfileError(null);
           setLoading(false);
+          return;
+        }
+
+        // 로그인 관련 이벤트는 handleSession에서 걸러짐
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          await handleSession(session, event);
+          
+          if (typeof window !== 'undefined' && session) {
+            sessionStorage.removeItem('is_manual_login');
+          }
         }
       }
     );
@@ -212,8 +222,8 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     try {
-      console.log('[Auth] 로그아웃 실행');
-      setLoading(true);
+      console.log('[Auth] 로그아웃 프로세스 시작');
+      // 로컬 상태만 먼저 비워서 UI 차단 시각화
       setUser(null);
       setProfile(null);
       localStorage.removeItem('pendingRegistration');
@@ -221,8 +231,9 @@ export function AuthProvider({ children }) {
         sessionStorage.removeItem('is_manual_login');
       }
       await supabase.auth.signOut();
-    } finally {
-      if (typeof window !== 'undefined') setLoading(false);
+      console.log('[Auth] 로그아웃 프로세스 종료');
+    } catch (err) {
+      console.error('[Auth] 로그아웃 중 오류:', err);
     }
   };
 

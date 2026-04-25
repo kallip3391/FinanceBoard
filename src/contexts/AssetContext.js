@@ -8,7 +8,7 @@ import MarketPriceManager from '@/lib/marketPriceManager';
 const AssetContext = createContext();
 
 export function AssetProvider({ children }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [holdings, setHoldings] = useState([]);
   const [holdingsByAccount, setHoldingsByAccount] = useState({});
   const [summary, setSummary] = useState({
@@ -40,12 +40,9 @@ export function AssetProvider({ children }) {
     try {
       setSummary(prev => ({ ...prev, isLoading: true }));
       
-      // 1. 뷰 테이블에서 집계 데이터 로드 (매수/매도/배당 합산 완료 상태)
       const viewData = await TransactionManager.getHoldingsFromView();
       const exchangeRates = await TransactionManager.getLatestExchangeRates();
       
-      // 2. 실시간 시세 조회를 위한 심볼 리스트 추출
-      // 뷰에는 이미 유니크한 security_id 별로 데이터가 있으나, 계좌별로 중복될 수 있으므로 Set 사용
       const uniqueSecurities = Array.from(new Set(viewData.map(v => v.security_id)));
       const securityMapForSymbols = viewData.reduce((acc, curr) => {
         if (!acc[curr.security_id]) {
@@ -64,7 +61,6 @@ export function AssetProvider({ children }) {
       
       const livePrices = await MarketPriceManager.getMultiplePrices(fetchSymbols);
 
-      // 3. 동적 데이터 계산 함수 (시세/환율 반영)
       const processHolding = (h) => {
         const lookupSym = MarketPriceManager.formatSymbol(
           h.security_code, 
@@ -103,7 +99,6 @@ export function AssetProvider({ children }) {
         };
       };
 
-      // 4. 종목별 통합 데이터 산출 (전체 계좌 합산)
       const securityMap = {};
       let totalEval = 0;
       let totalDiv = 0;
@@ -116,7 +111,6 @@ export function AssetProvider({ children }) {
         if (!securityMap[sid]) {
           securityMap[sid] = { ...processed };
         } else {
-          // 수량, 원금, 평가액 등 합산
           const prev = securityMap[sid];
           prev.totalQuantity += processed.totalQuantity;
           prev.totalCostKRW += processed.totalCostKRW;
@@ -124,7 +118,6 @@ export function AssetProvider({ children }) {
           prev.profitAmountKRW += processed.profitAmountKRW;
           prev.dividend += processed.dividend;
           
-          // 통합 평단가 및 수익률 재계산 (현재 환율 기준)
           const currentRate = exchangeRates[prev.currency.toUpperCase()] || 1;
           prev.purchasePrice = prev.totalCostKRW / (prev.totalQuantity * currentRate);
           prev.returnRate = prev.purchasePrice > 0 ? ((prev.currentPrice / prev.purchasePrice) - 1) * 100 : 0;
@@ -136,13 +129,11 @@ export function AssetProvider({ children }) {
         totalProfit += processed.profitAmountKRW;
       });
 
-      // 최상위 정렬 규칙 적용 (통화별 -> 금액별)
       const finalHoldings = Object.values(securityMap).sort((a, b) => {
         if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
         return b.evaluationAmountKRW - a.evaluationAmountKRW;
       });
 
-      // 5. 계좌별 정보 변환 및 정렬 (통화순 -> 금액순)
       const finalHoldingsByAccount = {};
       viewData.forEach(h => {
         const accName = h.account_name || '알수없음';
@@ -150,7 +141,6 @@ export function AssetProvider({ children }) {
         finalHoldingsByAccount[accName].push(processHolding(h));
       });
 
-      // 계좌 내부 종목들도 통화/금액순으로 정렬 적용
       Object.keys(finalHoldingsByAccount).forEach(accName => {
         finalHoldingsByAccount[accName].sort((a, b) => {
           if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
@@ -158,7 +148,6 @@ export function AssetProvider({ children }) {
         });
       });
 
-      // 6. 상태 업데이트 (10원 단위 반올림 및 정합성 보장)
       setHoldings(finalHoldings);
       setHoldingsByAccount(finalHoldingsByAccount);
       setSummary({
@@ -171,12 +160,11 @@ export function AssetProvider({ children }) {
       });
 
     } catch (err) {
-      console.error("실제 자산 데이터 조회 실패:", err);
+      if (user) console.error("실제 자산 데이터 조회 실패:", err);
       setSummary(prev => ({ ...prev, isLoading: false }));
     }
   }, [user]);
 
-  // 자산 트렌드 데이터 조회 (전역 캐싱용)
   const refreshTrendData = useCallback(async () => {
     if (!user) {
       setTrendData([]);
@@ -185,13 +173,11 @@ export function AssetProvider({ children }) {
     }
 
     try {
-      // 이미 데이터가 있는 경우(캐싱된 경우) 로더를 띄우지 않고 백그라운드에서 업데이트함
       if (trendData.length === 0) {
         setIsTrendLoading(true);
       }
       
       const data = await TransactionManager.getDailyTrendData();
-      
       const sortedData = data.map(d => ({
         ...d,
         date: d.date.split(' ')[0].replace(/\./g, '-')
@@ -199,14 +185,13 @@ export function AssetProvider({ children }) {
       
       setTrendData(sortedData);
     } catch (e) {
-      console.error("트렌드 데이터 로드 오류:", e);
+      if (user) console.error("트렌드 데이터 로드 오류:", e);
       setTrendData([]);
     } finally {
       setIsTrendLoading(false);
     }
   }, [user, trendData.length]);
 
-  // 국내/해외 거래 내역 조회 (전역 캐싱용)
   const refreshTransactions = useCallback(async () => {
     if (!user) {
       setDomesticTransactions([]);
@@ -216,7 +201,6 @@ export function AssetProvider({ children }) {
     }
 
     try {
-      // 이미 데이터가 있는 경우 로더 없이 백그라운드 업데이트
       if (domesticTransactions.length === 0 && overseasTransactions.length === 0 && dividendTransactions.length === 0) {
         setIsTransactionsLoading(true);
       }
@@ -231,13 +215,12 @@ export function AssetProvider({ children }) {
       setOverseasTransactions(overseas || []);
       setDividendTransactions(dividend || []);
     } catch (e) {
-      console.error("거래 내역 로드 오류:", e);
+      if (user) console.error("거래 내역 로드 오류:", e);
     } finally {
       setIsTransactionsLoading(false);
     }
   }, [user, domesticTransactions.length, overseasTransactions.length, dividendTransactions.length]);
 
-  // 계좌 정보 조회 (전역 관리용)
   const refreshAccounts = useCallback(async () => {
     if (!user) {
       setAccounts([]);
@@ -263,7 +246,7 @@ export function AssetProvider({ children }) {
       setAccounts(sortedList);
       setAccountNameById(map);
     } catch (e) {
-      console.error("계좌 정보 로드 오류:", e);
+      if (user) console.error("계좌 정보 로드 오류:", e);
     } finally {
       setIsAccountsLoading(false);
     }
@@ -279,8 +262,11 @@ export function AssetProvider({ children }) {
   }, [calculateAssets, refreshTrendData, refreshTransactions, refreshAccounts]);
 
   useEffect(() => {
+    // [보안/에러방지] 인증 로딩 중이거나 유저가 없으면 데이터를 요청하지 않음
+    if (authLoading || !user) return;
+    
     refreshAssets();
-  }, [user, refreshAssets]); // user 변경 시 또는 refreshAssets 변경 시 1회 호출
+  }, [user, authLoading, refreshAssets]);
 
   const value = {
     holdings,
@@ -309,4 +295,3 @@ export const useAssets = () => {
   if (!context) throw new Error('useAssets must be used within an AssetProvider');
   return context;
 };
-
