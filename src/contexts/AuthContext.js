@@ -16,6 +16,24 @@ const AuthContext = createContext({
 // 미활동 로그아웃 시간 설정 (30분)
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; 
 
+// 브라우저 창 닫기 감지를 위한 세션 쿠키 가드 함수
+const setSessionGuard = () => {
+  if (typeof document !== 'undefined') {
+    document.cookie = "sb_session_active=true; path=/; SameSite=Lax";
+  }
+};
+
+const checkSessionGuard = () => {
+  if (typeof document === 'undefined') return true;
+  return document.cookie.split(';').some((item) => item.trim().startsWith('sb_session_active='));
+};
+
+const clearSessionGuard = () => {
+  if (typeof document !== 'undefined') {
+    document.cookie = "sb_session_active=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+  }
+};
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -107,9 +125,18 @@ export function AuthProvider({ children }) {
 
         if (mounted) {
           if (session?.user) {
+            // [핵심] 브라우저 창 종료 후 재접속 여부 판단 (Local Storage 세션은 있지만 세션 쿠키가 없는 경우)
+            if (!checkSessionGuard()) {
+              console.log('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
+              await signOut();
+              if (mounted) setLoading(false);
+              return;
+            }
+
             const isAllowed = await checkProfile(session.user.id);
             if (isAllowed && mounted) {
               setUser(session.user);
+              setSessionGuard(); // 로그인 상태 확인되면 쿠키 활성화
             } else if (mounted) {
               await signOut();
             }
@@ -130,6 +157,7 @@ export function AuthProvider({ children }) {
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           if (session?.user) {
+            setSessionGuard(); // 로그인 시 세션 쿠키 생성
             const isAllowed = await checkProfile(session.user.id);
             if (isAllowed && mounted) {
               setUser(session.user);
@@ -222,6 +250,7 @@ export function AuthProvider({ children }) {
       setProfile(null);
       setUser(null);
       localStorage.removeItem('pendingRegistration');
+      clearSessionGuard(); // 로그아웃 시 세션 보호 쿠키 삭제
       
       // 전역 로그아웃 시도
       const { error } = await supabase.auth.signOut();
