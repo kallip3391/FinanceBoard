@@ -130,9 +130,10 @@ export function AuthProvider({ children }) {
 
       console.log(`[Auth] 세션 감지 (${eventType}):`, session.user.email);
 
-      // [핵심] 브라우저 창 닫기 후 재접속 여부 확인
-      if (!checkSessionGuard()) {
-        console.warn('[Auth] 세션 가드 쿠키 없음 - 브라우저 재시작으로 판단하여 세션 초기화');
+      // [수정] INITIAL(새로고침/탭열기)인 경우에만 브라우저 종료 여부 체크
+      // SIGNED_IN(새로 로그인)인 경우는 쿠키가 없는 게 당연하므로 체크하지 않음
+      if (eventType === 'INITIAL' && !checkSessionGuard()) {
+        console.warn('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
         await signOut(); // 이 내부에서 setLoading(false) 처리됨
         return;
       }
