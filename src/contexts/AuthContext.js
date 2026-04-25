@@ -115,35 +115,48 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    // 세션 처리 중복 방지 및 레이스 컨디션을 막기 위해 useRef 대신 변수 사용 (useEffect 내에서만 관리)
+    let sessionHandled = false;
+
     // 인증 세션 처리 로직 통합 (중복 방지 및 상태 동기화)
     const handleSession = async (session, eventType) => {
       if (!mounted) return;
       
-      if (!session?.user) {
-        if (mounted) {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      console.log(`[Auth] 세션 감지 (${eventType}):`, session.user.email);
-
-      // [수정] INITIAL(새로고침/탭열기)인 경우에만 브라우저 종료 여부 체크
-      // SIGNED_IN(새로 로그인)인 경우는 쿠키가 없는 게 당연하므로 체크하지 않음
-      if (eventType === 'INITIAL' && !checkSessionGuard()) {
-        console.warn('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
-        await signOut(); // 이 내부에서 setLoading(false) 처리됨
-        return;
-      }
+      // 이미 처리가 완료되었거나 진행 중인 경우 INITIAL 중복 실행 방지
+      if (sessionHandled && eventType === 'INITIAL') return;
+      if (eventType === 'SIGNED_IN') sessionHandled = true;
 
       try {
+        if (!session?.user) {
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+          return;
+        }
+
+        console.log(`[Auth] 세션 감지 (${eventType}):`, session.user.email);
+
+        // [수정] SIGNED_IN인 경우 Profil 확인 전에 미리 쿠키를 생성하여 
+        // 동시에 실행되는 INITIAL 체크에서 튕기지 않게 함
+        if (eventType === 'SIGNED_IN' || eventType === 'TOKEN_REFRESHED') {
+          setSessionGuard();
+        }
+
+        // [수정] INITIAL(새로고침/탭열기)인 경우에만 브라우저 종료 여부 체크
+        // SIGNED_IN(새로 로그인)인 경우는 쿠키가 없는 게 당연하므로 체크하지 않음
+        if (eventType === 'INITIAL' && !checkSessionGuard()) {
+          console.warn('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
+          await signOut(); // 이 내부에서 setLoading(false) 처리됨
+          return;
+        }
+
         const isAllowed = await checkProfile(session.user.id);
         if (mounted) {
           if (isAllowed) {
             setUser(session.user);
-            setSessionGuard(); // 쿠키 상태 유지
+            setSessionGuard(); // 쿠키 상태 유지 및 갱신
             setProfileError(null);
           } else {
             console.log('[Auth] 승인되지 않은 사용자 - 강제 로그아웃');
