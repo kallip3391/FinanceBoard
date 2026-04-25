@@ -97,7 +97,6 @@ export function AuthProvider({ children }) {
             setUser(session.user);
             setProfileError(null);
           } else {
-            // 미승인 시 해당 탭 로그아웃
             await signOut();
           }
         }
@@ -112,16 +111,20 @@ export function AuthProvider({ children }) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
-        // 새로고침이나 직접 접속 시 무조건 로그아웃 수행 (요구사항)
-        // 단, 구글 로그인을 마치고 돌아오는 리다이렉트 경로는 제외
-        const isAuthRedirect = typeof window !== 'undefined' && 
-                               (window.location.hash.includes('access_token=') || 
-                                window.location.search.includes('code='));
+        // 직접 버튼을 눌러 로그인했는지 여부 확인 (F5/새탭 로그아웃 예외 조건)
+        const isManualLogin = typeof window !== 'undefined' && 
+                              sessionStorage.getItem('is_manual_login') === 'true';
 
-        if (session && !isAuthRedirect) {
+        // 세션이 있는데 수동 로그인이 아니라면? (즉, F5 새로고침이나 직접 접속)
+        if (session && !isManualLogin) {
           console.log('[Auth] 요구사항에 따라 세션 초기화 (F5/새탭/직접접속)');
           await signOut();
           return;
+        }
+
+        // 로그인 절차가 끝났으면 플래그 제거
+        if (isManualLogin) {
+          sessionStorage.removeItem('is_manual_login');
         }
 
         if (session) {
@@ -181,6 +184,11 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async () => {
     setProfileError(null);
+    // [핵심] 로그인 버튼을 눌렀음을 명시적으로 기록
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('is_manual_login', 'true');
+    }
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -198,6 +206,9 @@ export function AuthProvider({ children }) {
       setUser(null);
       setProfile(null);
       localStorage.removeItem('pendingRegistration');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('is_manual_login');
+      }
       await supabase.auth.signOut();
     } finally {
       if (typeof window !== 'undefined') setLoading(false);
