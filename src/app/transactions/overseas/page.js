@@ -2496,7 +2496,7 @@ export default function TransactionsPage() {
                             setTimeout(() => e.target.select(), 50);
                           }}
                           onBlur={(e) => handleFilterDateBlur(e, 'dateFrom', e.target.value, filterDateFromRef)}
-                          className="w-full pl-16 pr-16 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
                         />
                         <button 
                           type="button"
@@ -2536,7 +2536,7 @@ export default function TransactionsPage() {
                             setTimeout(() => e.target.select(), 50);
                           }}
                           onBlur={(e) => handleFilterDateBlur(e, 'dateTo', e.target.value, filterDateToRef)}
-                          className="w-full pl-16 pr-16 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
                         />
                         <button 
                           type="button"
