@@ -20,23 +20,11 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(null);
-  
   const isCheckingProfile = useRef(false);
 
   const checkProfile = async (userId, sessionUser) => {
-    // [최적화] 이미 현재 유저의 프로필 정보가 메모리에 있다면 DB 조회를 스킵
-    if (profile && profile.user_id === userId) {
-      console.log('[Auth] 캐시된 프로필 정보를 사용합니다.');
-      return true;
-    }
-
-    if (isCheckingProfile.current) {
-      console.log('[Auth] 이미 프로필 조회가 진행 중입니다.');
-      return false;
-    }
-    
+    if (isCheckingProfile.current) return false;
     isCheckingProfile.current = true;
-    console.log('[Auth] DB 프로필 조회 시작:', userId);
 
     try {
       const { data, error } = await supabase
@@ -45,8 +33,6 @@ export function AuthProvider({ children }) {
         .eq('user_id', userId)
         .single();
 
-      console.log('[Auth] DB 응답 확인 완료');
-
       if (error && error.code === 'PGRST116') {
         const isPending = localStorage.getItem('pendingRegistration');
         if (isPending === 'true' && sessionUser) {
@@ -54,15 +40,14 @@ export function AuthProvider({ children }) {
                               sessionUser.user_metadata?.name || 
                               sessionUser.email.split('@')[0];
 
-          const { data: newData, error: upsertError } = await supabase.from('profiles').upsert({
+          const { data: newData } = await supabase.from('profiles').upsert({
             user_id: userId,
             email: sessionUser.email,
             display_name: displayName,
             is_approved: false,
             is_admin: false
           }, { onConflict: 'user_id' }).select().single();
-            
-          if (!upsertError && newData) setProfile(newData);
+          if (newData) setProfile(newData);
           localStorage.removeItem('pendingRegistration');
           setProfileError('사용자 등록 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다.');
         } else {
@@ -102,49 +87,48 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const isTabActive = typeof window !== 'undefined' ? sessionStorage.getItem('finance_session_active') : null;
-
-        if (eventType === 'SIGNED_IN' || eventType === 'TOKEN_REFRESHED') {
-          sessionStorage.setItem('finance_session_active', 'true');
-        } else if (eventType === 'INITIAL' && !isTabActive) {
-          console.warn('[Auth] 비활성 탭 감지 - 로그아웃');
-          await signOut();
-          return;
-        }
-
-        // UI를 빠르게 보여주기 위해 유저 정보를 먼저 설정
-        if (mounted) {
-          setUser(session.user);
-          if (isTabActive || eventType === 'SIGNED_IN') setLoading(false);
-        }
-
-        // [핵심] 프로필 확인 (메모리에 있다면 스킵됨)
+        console.log(`[Auth] 세션 처리 (${eventType}):`, session.user.email);
+        setUser(session.user);
+        
         const isAllowed = await checkProfile(session.user.id, session.user);
         
         if (mounted) {
           if (isAllowed) {
             setUser(session.user);
-            sessionStorage.setItem('finance_session_active', 'true');
             setProfileError(null);
           } else {
-            // 다른 사유로 인한 로그아웃 시에만signOut 호출
-            if (eventType === 'INITIAL' && !isTabActive) await signOut();
+            // 미승인 시 해당 탭 로그아웃
+            await signOut();
           }
         }
       } catch (err) {
         console.error('[Auth] handleSession error:', err);
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        console.log('[Auth] 초기 접속 세션 확인');
-        await handleSession(session, 'INITIAL');
+        
+        // 새로고침이나 직접 접속 시 무조건 로그아웃 수행 (요구사항)
+        // 단, 구글 로그인을 마치고 돌아오는 리다이렉트 경로는 제외
+        const isAuthRedirect = typeof window !== 'undefined' && 
+                               (window.location.hash.includes('access_token=') || 
+                                window.location.search.includes('code='));
+
+        if (session && !isAuthRedirect) {
+          console.log('[Auth] 요구사항에 따라 세션 초기화 (F5/새탭/직접접속)');
+          await signOut();
+          return;
+        }
+
+        if (session) {
+          await handleSession(session, 'INITIAL');
+        } else {
+          setLoading(false);
+        }
       } catch (err) {
         if (mounted) setLoading(false);
       }
@@ -155,7 +139,7 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-        console.log('[Auth] 인증 이벤트:', event);
+        console.log('[Auth] 인증 이벤트 발생:', event);
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await handleSession(session, event);
@@ -163,7 +147,6 @@ export function AuthProvider({ children }) {
           setUser(null);
           setProfile(null);
           setProfileError(null);
-          sessionStorage.removeItem('finance_session_active');
           setLoading(false);
         }
       }
@@ -173,8 +156,9 @@ export function AuthProvider({ children }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [profile]); // profile이 변경될 때 handleSession도 최신 profile을 알 수 있도록 함
+  }, []);
 
+  // 미활동 자동 로그아웃 (기존 유지)
   useEffect(() => {
     if (!user) return;
     let inactivityTimer;
@@ -182,7 +166,6 @@ export function AuthProvider({ children }) {
     const checkInactivity = async () => {
       const lastActivity = localStorage.getItem('lastActivity');
       if (lastActivity && (Date.now() - parseInt(lastActivity) >= INACTIVITY_TIMEOUT)) {
-        console.warn('[Auth] 30분 미활동 로그아웃');
         await signOut();
       }
     };
@@ -210,11 +193,10 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     try {
-      console.log('[Auth] signOut 호출됨');
+      console.log('[Auth] 로그아웃 실행');
       setLoading(true);
       setUser(null);
       setProfile(null);
-      sessionStorage.removeItem('finance_session_active');
       localStorage.removeItem('pendingRegistration');
       await supabase.auth.signOut();
     } finally {
