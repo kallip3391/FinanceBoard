@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
   const isCheckingProfile = useRef(false);
 
   const checkProfile = async (userId, sessionUser) => {
-    if (isCheckingProfile.current) return false;
+    if (isCheckingProfile.current) return 'checking';
     isCheckingProfile.current = true;
 
     try {
@@ -103,12 +103,14 @@ export function AuthProvider({ children }) {
         const isAllowed = await checkProfile(session.user.id, session.user);
         
         if (mounted) {
-          if (isAllowed) {
+          if (isAllowed === true) {
             setUser(session.user);
             setProfileError(null);
-          } else {
+          } else if (isAllowed === false) {
+            // 명시적으로 거절된 경우(비승인 등)에만 로그아웃
             await signOut();
           }
+          // 'checking'인 경우는 이미 다른 루프에서 처리 중이므로 무시
         }
       } catch (err) {
         console.error('[Auth] handleSession error:', err);
