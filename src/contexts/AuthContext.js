@@ -145,11 +145,19 @@ export function AuthProvider({ children }) {
         }
 
         // [수정] INITIAL(새로고침/탭열기)인 경우에만 브라우저 종료 여부 체크
-        // SIGNED_IN(새로 로그인)인 경우는 쿠키가 없는 게 당연하므로 체크하지 않음
         if (eventType === 'INITIAL' && !checkSessionGuard()) {
-          console.warn('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
-          await signOut(); // 이 내부에서 setLoading(false) 처리됨
-          return;
+          // 새 탭이 열릴 때 쿠키 동기화 시간을 위해 아주 잠깐 대기
+          await new Promise(r => setTimeout(r, 500));
+          
+          if (!checkSessionGuard()) {
+            console.warn('[Auth] 브라우저 종료 후 재접속 감지 - 이 탭의 로컬 세션만 초기화');
+            // 다른 탭에 영향을 주지 않도록 서버 로그아웃 대신 로컬 상태만 비움
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+            await supabase.auth.signOut({ scope: 'local' });
+            return;
+          }
         }
 
         const isAllowed = await checkProfile(session.user.id);
