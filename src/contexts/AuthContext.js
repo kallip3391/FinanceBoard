@@ -115,64 +115,79 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    const getInitialSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.warn('세션 확인 중 에러 발생:', error.message);
-        }
-
+    // 인증 세션 처리 로직 통합 (중복 방지 및 상태 동기화)
+    const handleSession = async (session, eventType) => {
+      if (!mounted) return;
+      
+      if (!session?.user) {
         if (mounted) {
-          if (session?.user) {
-            // [핵심] 브라우저 창 종료 후 재접속 여부 판단 (Local Storage 세션은 있지만 세션 쿠키가 없는 경우)
-            if (!checkSessionGuard()) {
-              console.log('[Auth] 브라우저 종료 후 재접속 감지 - 세션 초기화');
-              await signOut();
-              if (mounted) setLoading(false);
-              return;
-            }
-
-            const isAllowed = await checkProfile(session.user.id);
-            if (isAllowed && mounted) {
-              setUser(session.user);
-              setSessionGuard(); // 로그인 상태 확인되면 쿠키 활성화
-            } else if (mounted) {
-              await signOut();
-            }
-          }
+          setUser(null);
+          setProfile(null);
           setLoading(false);
         }
+        return;
+      }
+
+      console.log(`[Auth] 세션 감지 (${eventType}):`, session.user.email);
+
+      // [핵심] 브라우저 창 닫기 후 재접속 여부 확인
+      if (!checkSessionGuard()) {
+        console.warn('[Auth] 세션 가드 쿠키 없음 - 브라우저 재시작으로 판단하여 세션 초기화');
+        await signOut(); // 이 내부에서 setLoading(false) 처리됨
+        return;
+      }
+
+      try {
+        const isAllowed = await checkProfile(session.user.id);
+        if (mounted) {
+          if (isAllowed) {
+            setUser(session.user);
+            setSessionGuard(); // 쿠키 상태 유지
+            setProfileError(null);
+          } else {
+            console.log('[Auth] 승인되지 않은 사용자 - 강제 로그아웃');
+            await signOut();
+          }
+        }
       } catch (err) {
-        console.error('세션 확인 예외:', err);
+        console.error('[Auth] 프로필 확인 중 오류:', err);
+      } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    getInitialSession();
+    // 초기 세션 확인
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await handleSession(session, 'INITIAL');
+      } catch (err) {
+        console.error('[Auth] 초기화 오류:', err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        console.log('[Auth] 인증 이벤트 발생:', event);
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user) {
-            setSessionGuard(); // 로그인 시 세션 쿠키 생성
-            const isAllowed = await checkProfile(session.user.id);
-            if (isAllowed && mounted) {
-              setUser(session.user);
-            } else if (mounted) {
-              // 승인되지 않은 경우 세션을 확실히 종료하여 쿠키 꼬임 방지
-              await signOut();
-            }
-          }
+          await handleSession(session, event);
         } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setProfile(null);
-          setProfileError(null);
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setProfileError(null);
+            clearSessionGuard();
+            setLoading(false);
+          }
+        } else if (event === 'INITIAL_SESSION') {
+          // getSession()과 중복될 수 있으므로 로그만 남김
+          console.log('[Auth] 초기 세션 확인됨');
         }
-        
-        if (mounted) setLoading(false);
       }
     );
 
