@@ -87,6 +87,18 @@ export function AuthProvider({ children }) {
           return;
         }
 
+        // --- [추가] 자동 로그인 시도 차단 로직 (콘솔 에러 방지용) ---
+        const isManualLogin = typeof window !== 'undefined' && 
+                              sessionStorage.getItem('is_manual_login') === 'true';
+        
+        // INITIAL 이벤트가 아닌(즉, 리스너에 의한) SIGNED_IN인데 수동 로그인이 아니면 무시
+        if (eventType !== 'INITIAL' && !isManualLogin) {
+          console.log('[Auth] 자동 로그인 시도 무시 (요구사항: F5/새탭 로그아웃)');
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
         console.log(`[Auth] 세션 처리 (${eventType}):`, session.user.email);
         setUser(session.user);
         
@@ -111,22 +123,17 @@ export function AuthProvider({ children }) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
-        // 직접 버튼을 눌러 로그인했는지 여부 확인 (F5/새탭 로그아웃 예외 조건)
         const isManualLogin = typeof window !== 'undefined' && 
                               sessionStorage.getItem('is_manual_login') === 'true';
 
-        // 세션이 있는데 수동 로그인이 아니라면? (즉, F5 새로고침이나 직접 접속)
         if (session && !isManualLogin) {
           console.log('[Auth] 요구사항에 따라 세션 초기화 (F5/새탭/직접접속)');
           await signOut();
           return;
         }
 
-        // 로그인 절차가 끝났으면 플래그 제거
-        if (isManualLogin) {
-          sessionStorage.removeItem('is_manual_login');
-        }
-
+        // 로그인 절차가 거의 끝났으므로 다른 스케줄링을 고려해 약간 늦게 제거하거나 
+        // handleSession 내부에서 이벤트 타입에 따라 제어하도록 함
         if (session) {
           await handleSession(session, 'INITIAL');
         } else {
@@ -146,6 +153,11 @@ export function AuthProvider({ children }) {
 
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await handleSession(session, event);
+          
+          // 로그인 성공 시 플래그 제거 (여기서 제거해야 후속 새로고침이 로그아웃됨)
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('is_manual_login');
+          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
@@ -184,7 +196,6 @@ export function AuthProvider({ children }) {
 
   const signInWithGoogle = async () => {
     setProfileError(null);
-    // [핵심] 로그인 버튼을 눌렀음을 명시적으로 기록
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('is_manual_login', 'true');
     }
