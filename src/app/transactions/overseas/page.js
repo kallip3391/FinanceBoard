@@ -545,7 +545,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchRate();
-  }, [isModalOpen, formData.currency]);
+  }, [isModalOpen, formData.currency, formData.year, formData.month, formData.day]);
 
   // 원화 환산 금액 계산
   useEffect(() => {

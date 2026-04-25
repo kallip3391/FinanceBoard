@@ -400,4 +400,59 @@ export class TransactionManager {
     if (error) return [];
     return data || [];
   }
+
+  static async getExchangeRate(date, fromCurrency = 'USD', toCurrency = 'KRW') {
+    if (fromCurrency === toCurrency) return 1;
+    
+    try {
+      // 1. 미래 날짜 판정 (시간 제외 문자열 비교로 정확도 향상)
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (date > todayStr) {
+        return await this.getLatestRateOnly(fromCurrency);
+      }
+
+      // 2. DB 조회 (정확한 일자)
+      if (toCurrency === 'KRW') {
+        const { data: dbData } = await supabase
+          .from('exchange_rates')
+          .select('rate')
+          .eq('exchange_date', date)
+          .eq('currency', fromCurrency.toUpperCase())
+          .maybeSingle();
+
+        if (dbData && dbData.rate) return dbData.rate;
+      }
+
+      // 3. 외부 API 시도 (Frankfurter API)
+      try {
+        const resp = await fetch(`https://api.frankfurter.app/${date}?from=${fromCurrency}&to=${toCurrency}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.rates && data.rates[toCurrency]) return data.rates[toCurrency];
+        }
+      } catch (e) {}
+      
+      // 4. 최종 Fallback: 데이터가 없으면 DB의 가장 최신 환율이라도 가져옴
+      return await this.getLatestRateOnly(fromCurrency);
+
+    } catch (error) {
+      console.error('환율 조회 실패:', error);
+      return 1350; // 최후의 보루
+    }
+  }
+
+  static async getLatestRateOnly(currency) {
+    try {
+      const { data } = await supabase
+        .from('exchange_rates')
+        .select('rate')
+        .eq('currency', currency.toUpperCase())
+        .order('exchange_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.rate || 1350;
+    } catch (e) {
+      return 1350;
+    }
+  }
 }

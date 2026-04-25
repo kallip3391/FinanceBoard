@@ -686,7 +686,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchRate();
-  }, [isModalOpen, formData.currency]);
+  }, [isModalOpen, formData.currency, formData.year, formData.month, formData.day]);
 
   useEffect(() => {
     const handleClickOutsideSector = (event) => {
