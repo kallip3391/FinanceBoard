@@ -5,12 +5,16 @@ import { supabase } from '@/lib/supabase';
 
 const AuthContext = createContext({
   user: null,
+  profile: null,
   loading: true,
   profileError: null,
   signInWithGoogle: async () => {},
   signOut: async () => {},
   clearProfileError: () => {},
 });
+
+// 미활동 로그아웃 시간 설정 (30분)
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; 
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -41,7 +45,6 @@ export function AuthProvider({ children }) {
                               sessionUser.user_metadata?.name || 
                               sessionUser.email.split('@')[0];
 
-          // 23505(중복 키) 에러 방지를 위해 upsert 사용
           const { error: upsertError } = await supabase
             .from('profiles')
             .upsert({
@@ -54,31 +57,25 @@ export function AuthProvider({ children }) {
             
           localStorage.removeItem('pendingRegistration');
 
-          // 중복 에러(23505)나 RLS 정책 에러(42501)는 이미 데이터가 들어갔음을 의미하므로 무시
           if (upsertError && !['23505', '42501'].includes(upsertError.code)) {
             console.error('[Auth Error 상세]', upsertError);
             setProfileError(`등록 오류: ${upsertError.message || upsertError.code}`);
-            await supabase.auth.signOut();
             return false;
           }
 
-          // 등록 신청 성공 안내 (미승인 상태)
           setProfileError('사용자 등록 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다.');
-          await supabase.auth.signOut();
           return false;
         }
 
         setProfileError('미등록 사용자입니다. 관리자에게 문의해 주세요.');
-        await supabase.auth.signOut();
         return false;
       }
 
-      // 3. 데이터가 존재하지만 승인되지 않은 경우 차단
+      // 3. 데이터가 존재하지만 승인되지 않은 경우
       if (data) {
         setProfile(data);
         if (data.is_approved === false) {
           setProfileError('관리자 승인을 대기 중입니다. 승인 완료 후 이용 가능합니다.');
-          await supabase.auth.signOut();
           return false;
         }
         
@@ -86,10 +83,8 @@ export function AuthProvider({ children }) {
         return true;
       }
 
-      // 그 외 기타 에러 처리
       if (error) {
         setProfileError(`권한 확인 중 오류가 발생했습니다. (${error.code})`);
-        await supabase.auth.signOut();
       }
       
       return false;
@@ -100,54 +95,106 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const getSession = async () => {
+    let mounted = true;
+
+    const getInitialSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.warn('세션 확인 중 에러 발생:', error.message);
-          if (error.message.includes('Refresh Token Not Found') || error.status === 400) {
-            await supabase.auth.signOut();
-            setUser(null);
+        }
+
+        if (mounted) {
+          if (session?.user) {
+            const isAllowed = await checkProfile(session.user.id);
+            if (isAllowed && mounted) {
+              setUser(session.user);
+            } else if (mounted) {
+              await signOut();
+            }
           }
-        } else if (session?.user) {
-          const isAllowed = await checkProfile(session.user.id);
-          if (isAllowed) {
-            setUser(session.user);
-          } else {
-            setUser(null);
-          }
+          setLoading(false);
         }
       } catch (err) {
         console.error('세션 확인 예외:', err);
-      } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    getSession();
+    getInitialSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session?.user) {
-          const isAllowed = await checkProfile(session.user.id);
-          if (isAllowed) {
-            setUser(session.user);
-            setProfileError(null);
-          } else {
-            setUser(null);
-            setProfile(null);
+        if (!mounted) return;
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user) {
+            const isAllowed = await checkProfile(session.user.id);
+            if (isAllowed && mounted) {
+              setUser(session.user);
+            } else if (mounted) {
+              // 승인되지 않은 경우 세션을 확실히 종료하여 쿠키 꼬임 방지
+              await signOut();
+            }
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
+          setProfileError(null);
         }
-        setLoading(false);
+        
+        if (mounted) setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  // --- 자동 로그아웃 (미활동 30분) 로직 추가 ---
+  useEffect(() => {
+    if (!user) return;
+
+    let inactivityTimer;
+
+    const resetInactivityTimer = () => {
+      // 로컬 스토리지에 마지막 활동 시간 기록 (탭 간 공유 가능)
+      localStorage.setItem('lastActivity', Date.now().toString());
+    };
+
+    const checkInactivity = async () => {
+      const lastActivity = localStorage.getItem('lastActivity');
+      if (lastActivity) {
+        const elapsed = Date.now() - parseInt(lastActivity);
+        if (elapsed >= INACTIVITY_TIMEOUT) {
+          console.log('[Auth] 30분 미활동으로 자동 로그아웃합니다.');
+          await signOut();
+        }
+      } else {
+        resetInactivityTimer();
+      }
+    };
+
+    // 활동 감지 이벤트 리스너 등록
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetInactivityTimer);
+    });
+
+    // 1분마다 미활동 여부 체크
+    inactivityTimer = setInterval(checkInactivity, 60 * 1000);
+    resetInactivityTimer(); // 초기화
+
+    return () => {
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetInactivityTimer);
+      });
+      if (inactivityTimer) clearInterval(inactivityTimer);
+    };
+  }, [user]); // user 상태가 있을 때만 작동
 
   const signInWithGoogle = async () => {
     setProfileError(null);
@@ -169,11 +216,23 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
-    setProfileError(null);
-    setProfile(null);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('로그아웃 에러:', error);
+    try {
+      setLoading(true);
+      setProfileError(null);
+      setProfile(null);
+      setUser(null);
+      localStorage.removeItem('pendingRegistration');
+      
+      // 전역 로그아웃 시도
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('로그아웃 중 오류:', error);
+        // 오류가 나더라도 로컬 데이터는 모두 삭제했으므로 상태를 강제 초기화
+      }
+    } catch (err) {
+      console.error('로그아웃 프로세스 오류:', err);
+    } finally {
+      setLoading(false);
     }
   };
 

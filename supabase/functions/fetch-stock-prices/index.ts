@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MARKETSTACK_URL = "http://api.marketstack.com/v1/eod";
+const MARKETSTACK_URL = "https://api.marketstack.com/v1/eod";
 const BASE_STOCK = "https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService";
 const BASE_PRODUCT = "https://apis.data.go.kr/1160100/service/GetSecuritiesProductInfoService";
 
@@ -23,68 +23,81 @@ Deno.serve(async (req) => {
     const { data: securities } = await supabase.from("security").select("*");
     if (!securities) throw new Error("종목 리스트를 불러올 수 없습니다.");
 
-    // [Step 1] 최근 3일 수집용 날짜 (SECTION A, B 전용)
+    // [Step 1] 최근 3일 수집용 날짜 생성 (한국/해외 분리 로직 적용)
     const targetDates = getPastDaysIncludingWeekends(3);
-    const reversedDates = [...targetDates].reverse();
+    const reversedDates = [...targetDates].reverse(); // 과거부터 채워야 복사 로직이 정확하게 작동
 
-    // --- [SECTION A: 해외 종목 수집 (기존 로직 보존)] ---
+    // --- [SECTION A: 해외 종목 수집 (USD/해외)] ---
     if (!requestType || requestType !== "KRW") {
       const usdStocks = securities.filter(s => s.currency !== "KRW");
       if (usdStocks.length > 0 && MS_KEY) {
-        console.log(`🌐 [해외] 최근 3일 스캔 시작...`);
+        console.log(`\n🌐 [해외] 최근 3일 스캔 시작...`);
         const tickers = usdStocks.map(s => s.code.trim().toUpperCase());
         const lastSuccessMap = new Map();
 
         for (const dateObj of reversedDates) {
-          const bulkData = await fetchBulkFromMarketStack(tickers, dateObj.dbFormatted, MS_KEY);
+          // [핵심] 해외 종목은 usdApiYmd를 사용해 API 호출 (하루 전 날짜 적용)
+          const bulkData = await fetchBulkFromMarketStack(tickers, dateObj.usdApiYmd, MS_KEY);
+          
           if (bulkData && bulkData.length > 0) {
-            for (const item of bulkData) lastSuccessMap.set(item.symbol, item);
+            for (const item of bulkData) {
+              if (item.close && item.close > 0) lastSuccessMap.set(item.symbol, item);
+            }
           }
+
           for (const stock of usdStocks) {
             const ticker = stock.code.trim().toUpperCase();
             const apiData = (bulkData || []).find(d => d.symbol === ticker);
+            
+            // 오늘 데이터가 없으면 이전에 성공했던 데이터를 사용 (휴일/장마감 전 보완)
             const finalData = apiData || lastSuccessMap.get(ticker);
+
             if (finalData) {
               await supabase.from("stock_prices").upsert({
                 security_id: stock.security_id,
-                price_date: dateObj.dbFormatted,
+                price_date: dateObj.dbFormatted, // DB에는 요청한 한국 시간 기준의 날짜로 저장
                 close_price: finalData.close,
                 open_price: finalData.open,
                 high_price: finalData.high,
                 low_price: finalData.low,
-                volume: (dateObj.isWeekend || !apiData) ? 0 : finalData.volume,
+                volume: (dateObj.isWeekend || !apiData) ? 0 : (finalData.volume || 0),
                 currency: stock.currency,
                 updated_at: new Date().toISOString()
               }, { onConflict: "security_id,price_date" });
+
               const status = !apiData ? "📋 (복사저장)" : "✅ (저장완료)";
-              console.log(`${status} [해외/ ${ticker}] ${dateObj.dbFormatted}: ${finalData.close}`);
+              console.log(`${status} [해외/ ${ticker}] ${dateObj.dbFormatted} (API: ${dateObj.usdApiYmd}): ${finalData.close}`);
             }
           }
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 1000)); // Rate Limit 방지
         }
       }
     }
 
-    // --- [SECTION B: 국내 종목 수집 (기존 로직 보존)] ---
+    // --- [SECTION B: 국내 종목 수집 (KRW)] ---
     if (!requestType || requestType === "KRW") {
       const krwStocks = securities.filter(s => s.currency === "KRW");
       for (const stock of krwStocks) {
         console.log(`\n🇰🇷 [국내] ${stock.name} 수집 시작...`);
         let lastSuccessPrice: any = null;
+
         for (const dateObj of reversedDates) {
-          let priceData = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, dateObj.apiYmd, stock.code);
+          // [핵심] 국내 종목은 krwApiYmd를 사용해 API 호출
+          let priceData = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, dateObj.krwApiYmd, stock.code);
           if (!priceData) {
             for (const apiName of ["getETFPriceInfo", "getETNPriceInfo", "getELWPriceInfo"]) {
-              priceData = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, dateObj.apiYmd, stock.code);
+              priceData = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, dateObj.krwApiYmd, stock.code);
               if (priceData) break;
             }
           }
+          
           if (priceData) lastSuccessPrice = priceData;
           const finalPriceData = priceData || lastSuccessPrice;
+
           if (finalPriceData) {
             await supabase.from("stock_prices").upsert({
               security_id: stock.security_id,
-              price_date: dateObj.dbFormatted,
+              price_date: dateObj.dbFormatted, // DB 저장 기준일
               close_price: Math.round(finalPriceData.close),
               open_price: Math.round(finalPriceData.open),
               high_price: Math.round(finalPriceData.high),
@@ -93,6 +106,7 @@ Deno.serve(async (req) => {
               currency: "KRW",
               updated_at: new Date().toISOString()
             }, { onConflict: "security_id,price_date" });
+
             const status = !priceData ? "📋 (복사저장)" : "✅ (저장완료)";
             console.log(`${status} [국내/ ${stock.name}] ${dateObj.dbFormatted}: ${Math.round(finalPriceData.close)}`);
           }
@@ -101,75 +115,44 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- [SECTION C: 데이터 공백/오류 보완 (4일 전 ~ 10일 전) - 정밀 수정본] ---
-    console.log(`\n🔍 [데이터 보완] 4~10일 전 구간 점검 시작...`);
-    
-    const now = new Date();
-    const kstDate = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+    // --- [SECTION C: 과거 데이터 공백 보완 (4~10일 전)] ---
+    console.log(`\n🔍 [데이터 보완] 과거 4~10일 구간 점검 시작...`);
+    const kstDate = new Date(new Date().getTime() + (9 * 60 * 60 * 1000));
     const kstToday = new Date(kstDate.getUTCFullYear(), kstDate.getUTCMonth(), kstDate.getUTCDate());
 
-    const checkStartLimit = new Date(kstToday);
-    checkStartLimit.setDate(kstToday.getDate() - 10);
-    const checkEndLimit = new Date(kstToday);
-    checkEndLimit.setDate(kstToday.getDate() - 4); 
+    const checkStartLimit = new Date(kstToday); checkStartLimit.setDate(kstToday.getDate() - 10);
+    const checkEndLimit = new Date(kstToday); checkEndLimit.setDate(kstToday.getDate() - 4); 
 
     let patchedCount = 0;
-
     for (const stock of securities) {
       const { data: minRec } = await supabase.from("stock_prices").select("price_date").eq("security_id", stock.security_id).order("price_date", { ascending: true }).limit(1).maybeSingle();
       if (!minRec) continue;
 
-      const dbMinDate = new Date(minRec.price_date);
-      const actualStart = checkStartLimit > dbMinDate ? checkStartLimit : dbMinDate;
-      const fillRange = getDatesInRange(actualStart, checkEndLimit);
+      const fillRange = getDatesInRange(new Date(minRec.price_date) > checkStartLimit ? new Date(minRec.price_date) : checkStartLimit, checkEndLimit);
 
       for (const dateStr of fillRange) {
-        // 1. 해당 날짜에 데이터가 존재하는지 확인 (PK인 security_id, price_date 사용)
-        const { data: current } = await supabase
-          .from("stock_prices")
-          .select("close_price")
-          .eq("security_id", stock.security_id)
-          .eq("price_date", dateStr)
-          .maybeSingle();
+        const { data: current } = await supabase.from("stock_prices").select("close_price").eq("security_id", stock.security_id).eq("price_date", dateStr).maybeSingle();
+        if (current && current.close_price > 0) continue; 
 
-        // 2. [의도 반영] 정상 데이터(가격 > 0)가 이미 있으면 절대 건드리지 않고 스킵
-        if (current && current.close_price > 0) {
-          continue; 
-        }
-
-        // 3. 데이터가 없거나 0원인 경우만 과거 정상가 조회
-        const { data: lastValid } = await supabase
-          .from("stock_prices")
-          .select("*")
-          .eq("security_id", stock.security_id)
-          .lt("price_date", dateStr)
-          .gt("close_price", 0) 
-          .order("price_date", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { data: lastValid } = await supabase.from("stock_prices").select("*").eq("security_id", stock.security_id).lt("price_date", dateStr).gt("close_price", 0).order("price_date", { ascending: false }).limit(1).maybeSingle();
 
         if (lastValid) {
           await supabase.from("stock_prices").upsert({
-            security_id: stock.security_id,
-            price_date: dateStr,
-            close_price: lastValid.close_price,
-            open_price: lastValid.open_price,
-            high_price: lastValid.high_price,
-            low_price: lastValid.low_price,
-            volume: 0,
-            currency: stock.currency,
-            updated_at: new Date().toISOString()
+            security_id: stock.security_id, price_date: dateStr, close_price: lastValid.close_price,
+            open_price: lastValid.open_price, high_price: lastValid.high_price, low_price: lastValid.low_price,
+            volume: 0, currency: stock.currency, updated_at: new Date().toISOString()
           }, { onConflict: "security_id,price_date" });
           
           patchedCount++;
-          const action = !current ? "➕ [신규추가]" : "🛠️ [값 복구]";
-          console.log(`${action} ${stock.name} (${dateStr}) <- ${lastValid.price_date} 데이터 복사완료`);
+          // 💡 복구 로그 추가
+          console.log(`🛠️ [값 복구] ${stock.name} (${dateStr}) <- ${lastValid.price_date} 정상가 복사 완료`);
         }
       }
     }
     
-    console.log(`\n✅ [보완 완료] 4~10일 구간 점검을 마쳤습니다. (실제 보정: ${patchedCount}건)`);
-
+    // 💡 최종 완료 로그 추가
+    console.log(`\n✅ [보완 완료] 총 ${patchedCount}건의 데이터 공백을 성공적으로 메웠습니다.`);
+    
     return new Response(JSON.stringify({ success: true, patched: patchedCount }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
@@ -182,16 +165,31 @@ Deno.serve(async (req) => {
 
 function getPastDaysIncludingWeekends(count: number) {
   const days = [];
-  const now = new Date();
-  const kstDate = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+  const kstDate = new Date(new Date().getTime() + (9 * 60 * 60 * 1000));
   const today = new Date(kstDate.getUTCFullYear(), kstDate.getUTCMonth(), kstDate.getUTCDate());
+
   for (let i = 0; i < count; i++) {
-    const d = new Date(today); d.setDate(today.getDate() - i);
-    const dayOfWeek = d.getDay();
-    let apiDate = new Date(d);
-    if (dayOfWeek === 0) apiDate.setDate(d.getDate() - 2);
-    else if (dayOfWeek === 6) apiDate.setDate(d.getDate() - 1);
-    days.push({ apiYmd: formatDateToYMD(apiDate), dbFormatted: formatDateToISO(d), isWeekend: (dayOfWeek === 0 || dayOfWeek === 6) });
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dayOfWeek = d.getDay(); // 0:일, 1:월 ... 6:토
+    
+    // 🇰🇷 1. 국내 주식(KRW)용 날짜: 주말만 금요일로 당김
+    let krwApiDate = new Date(d);
+    if (dayOfWeek === 0) krwApiDate.setDate(d.getDate() - 2);      // 일 -> 금
+    else if (dayOfWeek === 6) krwApiDate.setDate(d.getDate() - 1); // 토 -> 금
+
+    // 🇺🇸 2. 해외 주식(USD)용 날짜: 시차 때문에 기본적으로 하루(-1일) 늦춤
+    let usdApiDate = new Date(d);
+    if (dayOfWeek === 0) usdApiDate.setDate(d.getDate() - 2);      // 일 -> 금
+    else if (dayOfWeek === 1) usdApiDate.setDate(d.getDate() - 3); // 월 -> 금 (주말+시차)
+    else usdApiDate.setDate(d.getDate() - 1);                      // 화~토 -> 월~금
+
+    days.push({ 
+      dbFormatted: formatDateToISO(d), // DB 저장용 (한국 기준 날짜)
+      krwApiYmd: formatDateToISO(krwApiDate), // 국내 API 호출용
+      usdApiYmd: formatDateToISO(usdApiDate), // MarketStack API 호출용
+      isWeekend: (dayOfWeek === 0 || dayOfWeek === 6) 
+    });
   }
   return days;
 }
@@ -204,10 +202,6 @@ function getDatesInRange(start: Date, end: Date) {
     curr.setDate(curr.getDate() + 1);
   }
   return dates;
-}
-
-function formatDateToYMD(date: Date) {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function formatDateToISO(date: Date) {
@@ -225,7 +219,9 @@ async function fetchBulkFromMarketStack(tickers: string[], date: string, apiKey:
 
 async function fetchFromPublic(apiUrl: string, key: string, ymd: string, code: string) {
   try {
-    const url = `${apiUrl}?serviceKey=${key}&resultType=json&basDt=${ymd}&likeSrtnCd=${code}&numOfRows=10`;
+    // 국내 공공데이터는 YYYYMMDD 형식을 사용
+    const cleanYmd = ymd.replace(/-/g, '');
+    const url = `${apiUrl}?serviceKey=${key}&resultType=json&basDt=${cleanYmd}&likeSrtnCd=${code}&numOfRows=10`;
     const res = await fetch(url);
     const data = await res.json();
     const item = data.response?.body?.items?.item;
