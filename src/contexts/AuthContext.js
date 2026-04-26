@@ -92,6 +92,10 @@ export function AuthProvider({ children }) {
     let mounted = true;
 
     if (AUTH_BYPASS) {
+      // 로컬 테스트 시에도 진입 시 초기화 적용
+      localStorage.removeItem('stockViewMode');
+      localStorage.removeItem('dividendViewMode');
+      
       setUser(MOCK_USER);
       setProfile(MOCK_PROFILE);
       setLoading(false);
@@ -234,6 +238,10 @@ export function AuthProvider({ children }) {
       sessionStorage.setItem('is_manual_login', 'true');
     }
 
+    // [사용자 요청] 로그인 시작 시 뷰 모드 초기화 (최초 로그인 시 카드형 기본을 위해)
+    localStorage.removeItem('stockViewMode');
+    localStorage.removeItem('dividendViewMode');
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -247,6 +255,11 @@ export function AuthProvider({ children }) {
   const signOut = async () => {
     try {
       console.log('[Auth] 로그아웃 프로세스 시작');
+      
+      // [사용자 요청] 로그아웃 시 뷰 모드 초기화
+      localStorage.removeItem('stockViewMode');
+      localStorage.removeItem('dividendViewMode');
+      
       // 로컬 상태만 먼저 비워서 UI 차단 시각화
       setUser(null);
       setProfile(null);

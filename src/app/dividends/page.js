@@ -60,6 +60,16 @@ export default function DividendsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 뷰 모드 설정 (세션 내 유지)
+  useEffect(() => {
+    const saved = localStorage.getItem('dividendViewMode');
+    if (saved) setViewMode(saved);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('dividendViewMode', viewMode);
+  }, [viewMode]);
+
   const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
 
 

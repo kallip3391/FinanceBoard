@@ -50,8 +50,11 @@ export default function HoldingsPage() {
   useEffect(() => {
     setIsClient(true);
     const timer = setTimeout(() => setChartReady(true), 150);
+    
+    // 세션 내 상태 유지를 위해 로컬스토리지 복원
     const saved = localStorage.getItem('stockViewMode');
     if (saved) setStockViewMode(saved);
+    
     return () => clearTimeout(timer);
   }, []);
 
