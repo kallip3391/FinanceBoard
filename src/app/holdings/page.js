@@ -651,7 +651,7 @@ export default function HoldingsPage() {
                         ))}
                         {/* 오리지널: 역동적인 질감을 위해 ease-out 적용 (1500ms) */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}`}
+                          key={`profit-rate-fill-${selectedPeriod}-${isTrendLoading}`}
                           yAxisId="right"
                           type="monotone" 
                           dataKey="profitRate" 
