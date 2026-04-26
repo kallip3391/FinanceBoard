@@ -31,6 +31,7 @@ export default function HoldingsPage() {
   const [chartReady, setChartReady] = useState(false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
   const [currentAccPage, setCurrentAccPage] = useState(1);
+  const [loadedPeriods, setLoadedPeriods] = useState(new Set(['3개월', '6개월', '1년']));
   const STOCKS_PER_PAGE = 6;
   const LIST_PER_PAGE = 8;
 
@@ -97,6 +98,26 @@ export default function HoldingsPage() {
       refreshTrendData(days);
     }
   }, [selectedPeriod, refreshTrendData]);
+
+  // 로딩 완료 후 해당 기간 로드 완료 처리
+  useEffect(() => {
+    if (!isTrendLoading && (selectedPeriod === "3년" || selectedPeriod === "전체")) {
+      setLoadedPeriods(prev => {
+        if (prev.has(selectedPeriod)) return prev;
+        const next = new Set(prev);
+        next.add(selectedPeriod);
+        return next;
+      });
+    }
+  }, [isTrendLoading, selectedPeriod]);
+
+  // 애니메이션 시간 및 방식 계산
+  const isLongPeriod = selectedPeriod === "3년" || selectedPeriod === "전체";
+  const isFirstLoad = !loadedPeriods.has(selectedPeriod);
+  
+  // 최초 로딩이거나 DB 조회 후 로딩 완료된 시점에는 '그리기' 방식(Key 변경), 그 외에는 '모핑' 방식(Key 고정)
+  const topChartKey = isFirstLoad && isTrendLoading ? 'loading' : (isFirstLoad ? `draw-${selectedPeriod}` : 'cached');
+  const animDuration = isFirstLoad ? (isLongPeriod ? 4000 : 2500) : 2500;
 
   const sectorData = useMemo(() => {
     return holdings.reduce((acc, h) => {
@@ -551,7 +572,7 @@ export default function HoldingsPage() {
                         ))}
                         {/* 1. 매수금액 (회색선) */}
                         <Area 
-                          key={`asset-invest-layer-${selectedPeriod}`}
+                          key={`asset-invest-${topChartKey}`}
                           yAxisId="left"
                           type="monotone" 
                           dataKey="invest" 
@@ -562,12 +583,12 @@ export default function HoldingsPage() {
                           name="매수금액" 
                           activeDot={{ r: 3, fill: '#64748b' }}
                           isAnimationActive={true}
-                          animationDuration={1500}
+                          animationDuration={animDuration}
                           animationEasing="ease-in-out"
                         />
                         {/* 2. 평가금액 (파란색 면) */}
                         <Area 
-                          key={`asset-eval-layer-${selectedPeriod}`}
+                          key={`asset-eval-${topChartKey}`}
                           yAxisId="left"
                           type="monotone" 
                           dataKey="eval" 
@@ -577,7 +598,7 @@ export default function HoldingsPage() {
                           name="평가금액" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#3b82f6' }}
                           isAnimationActive={true}
-                          animationDuration={1500}
+                          animationDuration={animDuration}
                           animationEasing="ease-in-out"
                           filter="url(#shadow)"
                         />
@@ -649,9 +670,9 @@ export default function HoldingsPage() {
                             alwaysShow={true}
                           />
                         ))}
-                        {/* 오리지널: 역동적인 질감을 위해 ease-out 적용 (1500ms) */}
+                        {/* 수익률 (항상 좌->우 채워지기 위해 key에 selectedPeriod 포함) */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}`}
+                          key={`profit-rate-fill-${selectedPeriod}-${isTrendLoading}`}
                           yAxisId="right"
                           type="monotone" 
                           dataKey="profitRate" 
@@ -663,7 +684,7 @@ export default function HoldingsPage() {
                           name="수익률" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#ff4d6d', filter: 'url(#glow)' }}
                           isAnimationActive={true}
-                          animationDuration={1500}
+                          animationDuration={animDuration}
                           animationEasing="ease-in-out"
                         />
                       </AreaChart>
