@@ -551,7 +551,7 @@ export default function HoldingsPage() {
                         ))}
                         {/* 1. 매수금액 (회색선) */}
                         <Area 
-                          key="asset-invest-layer"
+                          key={`asset-invest-layer-${selectedPeriod}`}
                           yAxisId="left"
                           type="monotone" 
                           dataKey="invest" 
@@ -567,7 +567,7 @@ export default function HoldingsPage() {
                         />
                         {/* 2. 평가금액 (파란색 면) */}
                         <Area 
-                          key="asset-eval-layer"
+                          key={`asset-eval-layer-${selectedPeriod}`}
                           yAxisId="left"
                           type="monotone" 
                           dataKey="eval" 
@@ -651,7 +651,7 @@ export default function HoldingsPage() {
                         ))}
                         {/* 오리지널: 역동적인 질감을 위해 ease-out 적용 (1500ms) */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}-${isTrendLoading}`}
+                          key={`profit-rate-fill-${selectedPeriod}`}
                           yAxisId="right"
                           type="monotone" 
                           dataKey="profitRate" 

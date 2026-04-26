@@ -204,24 +204,27 @@ export function AssetProvider({ children }) {
       if (days === Infinity || (startDateStr && startDateStr < currentOldest)) {
         if (currentData.length === 0) setIsTrendLoading(true);
         
-        const data = await TransactionManager.getDailyTrendData(days === Infinity ? null : startDateStr);
-        
-        setTrendData(prev => {
-          const combined = [...prev];
-          const existingDates = new Set(prev.map(d => d.date));
+        try {
+          const data = await TransactionManager.getDailyTrendData(days === Infinity ? null : startDateStr);
           
-          data.forEach(d => {
-            if (!existingDates.has(d.date)) {
-              combined.push(d);
-            }
+          setTrendData(prev => {
+            const combined = [...prev];
+            const existingDates = new Set(prev.map(d => d.date));
+            
+            data.forEach(d => {
+              if (!existingDates.has(d.date)) {
+                combined.push(d);
+              }
+            });
+            
+            return combined.sort((a, b) => new Date(a.date) - new Date(b.date));
           });
-          
-          return combined.sort((a, b) => new Date(a.date) - new Date(b.date));
-        });
+        } finally {
+          setIsTrendLoading(false);
+        }
       }
     } catch (e) {
       if (user) console.error("트렌드 데이터 로드 오류:", e);
-    } finally {
       setIsTrendLoading(false);
     }
   }, [user]);
