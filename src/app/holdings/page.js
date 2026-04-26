@@ -678,11 +678,11 @@ export default function HoldingsPage() {
                             alwaysShow={true}
                           />
                         ))}
-                        {/* 수익률 (항상 좌->우 채워지기 위해 key에 selectedPeriod 포함) */}
+                        {/* 수익률 (3년/전체에서 애니메이션이 씹히는 것을 방지하기 위해 key와 duration 최적화) */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}-${isTrendLoading}`}
+                          key={`profit-rate-fill-${selectedPeriod}-${trendData.length}`}
                           yAxisId="right"
-                          type="monotone" 
+                          type={isLongPeriod ? "linear" : "monotone"} 
                           dataKey="profitRate" 
                           stroke="#94a3b8" 
                           strokeWidth={1.5} 
@@ -693,6 +693,7 @@ export default function HoldingsPage() {
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#ff4d6d', filter: 'url(#glow)' }}
                           isAnimationActive={true}
                           animationDuration={2000}
+                          animationBegin={50} // 미세한 딜레이를 주어 브라우저가 연산할 시간을 확보
                           animationEasing="ease-in-out"
                         />
                       </AreaChart>
