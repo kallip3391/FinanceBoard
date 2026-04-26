@@ -310,7 +310,7 @@ export function AssetProvider({ children }) {
   const refreshAssets = useCallback(async () => {
     await Promise.all([
       calculateAssets(),
-      refreshTrendData(),
+      refreshTrendData(1095),
       refreshTransactions(),
       refreshAccounts(),
       refreshMonthlyDividends()
