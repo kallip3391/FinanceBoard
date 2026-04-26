@@ -651,7 +651,7 @@ export default function HoldingsPage() {
                         ))}
                         {/* 오리지널: 역동적인 질감을 위해 ease-out 적용 (1500ms) */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}-${chartReady}`}
+                          key="profit-rate-fill"
                           yAxisId="right"
                           type="monotone" 
                           dataKey="profitRate" 
@@ -663,7 +663,7 @@ export default function HoldingsPage() {
                           name="수익률" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#ff4d6d', filter: 'url(#glow)' }}
                           isAnimationActive={true}
-                          animationDuration={1500}
+                          animationDuration={1000}
                           animationEasing="ease-in-out"
                         />
                       </AreaChart>
