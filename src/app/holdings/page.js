@@ -63,6 +63,13 @@ export default function HoldingsPage() {
     }
   }, [stockViewMode, isClient]);
 
+  // 로그아웃 시 선택된 계좌 초기화
+  useEffect(() => {
+    if (!user) {
+      setSelectedAccount("");
+    }
+  }, [user]);
+
   // 대시보드 진입 시 별도의 refreshAssets() 호출 불필요 (이미 Context에서 처리됨)
 
   useEffect(() => {

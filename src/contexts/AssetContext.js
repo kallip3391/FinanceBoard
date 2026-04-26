@@ -33,7 +33,14 @@ export function AssetProvider({ children }) {
     if (!user) {
       setHoldings([]);
       setHoldingsByAccount({});
-      setSummary(prev => ({ ...prev, isLoading: false }));
+      setSummary({
+        totalEvaluation: 0,
+        totalProfit: 0,
+        totalDividend: 0,
+        avgProfitRate: 0,
+        avgTotalReturn: 0,
+        isLoading: false
+      });
       return;
     }
 
@@ -196,6 +203,7 @@ export function AssetProvider({ children }) {
     if (!user) {
       setDomesticTransactions([]);
       setOverseasTransactions([]);
+      setDividendTransactions([]);
       setIsTransactionsLoading(false);
       return;
     }
@@ -262,8 +270,9 @@ export function AssetProvider({ children }) {
   }, [calculateAssets, refreshTrendData, refreshTransactions, refreshAccounts]);
 
   useEffect(() => {
-    // [보안/에러방지] 인증 로딩 중이거나 유저가 없으면 데이터를 요청하지 않음
-    if (authLoading || !user) return;
+    // [수정] 인증 정보 로딩 중일 때만 대기하고, user가 null이 되는(로그아웃) 시점에도 
+    // refreshAssets를 호출하여 내부의 상태 초기화 로직이 작동하게 합니다.
+    if (authLoading) return;
     
     refreshAssets();
   }, [user, authLoading, refreshAssets]);

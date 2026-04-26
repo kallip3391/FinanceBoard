@@ -2453,7 +2453,7 @@ export default function TransactionsPage() {
                 {/* 기간 선택 */}
                 <div className="relative z-20">
                   <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">기간</label>
-                  <div className="space-y-3 w-[320px]">
+                  <div className="space-y-3 w-full">
                     <div className="flex items-center gap-2 w-full">
                       <div className="relative flex-1">
                         <input 

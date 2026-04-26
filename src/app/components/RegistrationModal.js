@@ -53,7 +53,7 @@ export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-        <div className="relative bg-white rounded-[2.5rem] p-10 w-[300px] shadow-2xl animate-slide-up text-center border border-slate-100">
+        <div className="relative bg-white rounded-[2.5rem] p-10 w-[380px] shadow-2xl animate-slide-up text-center border border-slate-100">
           <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle size={40} strokeWidth={2.5} />
           </div>
@@ -69,7 +69,7 @@ export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-[320px] overflow-hidden animate-slide-up border border-slate-100 flex flex-col min-h-[420px]">
+      <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-[480px] overflow-hidden animate-slide-up border border-slate-100 flex flex-col min-h-[420px]">
         {/* Header */}
         <div className="px-6 py-5 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
           <div className="flex items-center gap-2.5">

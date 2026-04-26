@@ -628,92 +628,103 @@ export default function DividendsPage() {
 
       {user && viewMode === 'card' ? (
         <div key={`card-view-${selectedYear}`} className="animate-fade-in">
-          {/* 연간 배당 합계 요약 창 (Full Width Premium) */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-8 mb-10 shadow-xl shadow-slate-200/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group opacity-0 animate-page-slide">
-            <div className="flex items-center gap-6 z-10">
-              <div className="flex flex-col">
-                <div className="flex items-center mb-1.5">
-                  <span className="text-sm font-black text-brand uppercase tracking-[0.2em]">{selectedYear} ANNUAL REPORT</span>
-                </div>
-                <h2 className="text-3xl font-black text-slate-800 tracking-tight">연간 총 배당현황</h2>
-                <div className="flex items-center gap-1.5 text-slate-500 mt-1.5">
-                  <CheckCircle size={14} strokeWidth={3} className="text-brand/60" />
-                  <p className="text-base font-bold">
-                    {groupedData[selectedYear]?.count || 0} 건의 배당 내역이 있습니다
-                  </p>
-                </div>
+          {!user ? (
+            <div className="bg-white border border-slate-100 rounded-3xl p-20 shadow-sm flex flex-col items-center justify-center text-slate-500 gap-4 mb-10">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                <LayoutDashboard size={32} />
               </div>
+              <span className="text-lg font-bold">로그인 후 배당내역을 확인할 수 있습니다.</span>
             </div>
-            
-            <div className="flex flex-col items-center md:items-end z-10">
-              <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 font-bold">Total Dividends Received</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-black text-brand-dark tabular-nums tracking-tighter">
-                  {formatCurrency(groupedData[selectedYear]?.total || 0)}
-                </span>
-                <span className="text-xl font-bold text-slate-400">원</span>
-              </div>
-            </div>
-
-            {/* 배경용 데코 장착 */}
-            <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-brand/5 to-transparent pointer-events-none"></div>
-            <div className="absolute top-0 left-0 w-2 h-full bg-brand"></div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
-          {Array.from({ length: 12 }, (_, i) => {
-            const m = (i + 1).toString().padStart(2, '0');
-            const monthData = groupedData[selectedYear]?.months[m];
-            const amount = monthData?.total || 0;
-            const hasData = amount > 0;
-
-            return (
-              <div 
-                key={`${selectedYear}-${m}`} 
-                className={`relative group overflow-hidden rounded-[1.25rem] p-4 transition-all duration-500 border opacity-0 animate-page-slide stagger-${i + 1} cursor-pointer ${
-                  hasData 
-                    ? 'bg-white border-brand/10 shadow-lg shadow-brand/5 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/10 active:scale-95' 
-                    : 'bg-slate-50/50 border-slate-100 hover:bg-white transition-colors duration-500'
-                }`}
-              >
-                {/* 좌측 포인트 바 */}
-                <div className={`absolute top-0 left-0 w-1.5 h-full z-20 ${hasData ? 'bg-brand' : 'bg-slate-200'}`}></div>
-                
-                {/* 상단: 월 표시 */}
-                <div className="flex justify-between items-start mb-4">
+          ) : (
+            <>
+              {/* 연간 배당 합계 요약 창 (Full Width Premium) */}
+              <div className="bg-white border border-slate-100 rounded-3xl p-8 mb-10 shadow-xl shadow-slate-200/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group opacity-0 animate-page-slide">
+                <div className="flex items-center gap-6 z-10">
                   <div className="flex flex-col">
-                    <span className={`text-[9px] font-black uppercase tracking-[0.15em] ${hasData ? 'text-brand' : 'text-slate-400'}`}>MONTH</span>
-                    <h3 className={`text-2xl font-black ${hasData ? 'text-slate-800' : 'text-slate-400'}`}>{i + 1}월</h3>
-                  </div>
-                  {hasData && (
-                    <div className="flex items-center justify-center text-brand group-hover:rotate-12 group-hover:scale-110 transition-all duration-500">
-                      <TrendingUp size={24} strokeWidth={2.5} />
+                    <div className="flex items-center mb-1.5">
+                      <span className="text-sm font-black text-brand uppercase tracking-[0.2em]">{selectedYear} ANNUAL REPORT</span>
                     </div>
-                  )}
+                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">연간 총 배당현황</h2>
+                    <div className="flex items-center gap-1.5 text-slate-500 mt-1.5">
+                      <CheckCircle size={14} strokeWidth={3} className="text-brand/60" />
+                      <p className="text-base font-bold">
+                        {groupedData[selectedYear]?.count || 0} 건의 배당 내역이 있습니다
+                      </p>
+                    </div>
+                  </div>
                 </div>
-
-                {/* 하단: 금액 표시 */}
-                <div className="flex flex-col items-end">
-                  <span className={`text-[9px] font-bold uppercase tracking-tight mb-1 ${hasData ? 'text-brand' : 'text-slate-300'}`}>TOTAL</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className={`text-xl font-black tabular-nums transition-all ${
-                      hasData ? 'text-brand-dark' : 'text-slate-300'
-                    }`}>
-                      {formatCurrency(amount)}
+                
+                <div className="flex flex-col items-center md:items-end z-10">
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 font-bold">Total Dividends Received</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-brand-dark tabular-nums tracking-tighter">
+                      {formatCurrency(groupedData[selectedYear]?.total || 0)}
                     </span>
-                    <span className={`text-[10px] font-bold ${hasData ? 'text-slate-400' : 'text-slate-200'}`}>원</span>
+                    <span className="text-xl font-bold text-slate-400">원</span>
                   </div>
                 </div>
 
-                {/* 프리미엄 장식 요소 */}
-                {hasData && (
-                  <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-brand/5 rounded-full blur-3xl group-hover:bg-brand/10 transition-all duration-700"></div>
-                )}
+                {/* 배경용 데코 장착 */}
+                <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-brand/5 to-transparent pointer-events-none"></div>
+                <div className="absolute top-0 left-0 w-2 h-full bg-brand"></div>
               </div>
-            );
-          })}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
+                {Array.from({ length: 12 }, (_, i) => {
+                  const m = (i + 1).toString().padStart(2, '0');
+                  const monthData = groupedData[selectedYear]?.months[m];
+                  const amount = monthData?.total || 0;
+                  const hasData = amount > 0;
+
+                  return (
+                    <div 
+                      key={`${selectedYear}-${m}`} 
+                      className={`relative group overflow-hidden rounded-[1.25rem] p-4 transition-all duration-500 border opacity-0 animate-page-slide stagger-${i + 1} cursor-pointer ${
+                        hasData 
+                          ? 'bg-white border-brand/10 shadow-lg shadow-brand/5 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand/10 active:scale-95' 
+                          : 'bg-slate-50/50 border-slate-100 hover:bg-white transition-colors duration-500'
+                      }`}
+                    >
+                      {/* 좌측 포인트 바 */}
+                      <div className={`absolute top-0 left-0 w-1.5 h-full z-20 ${hasData ? 'bg-brand' : 'bg-slate-200'}`}></div>
+                      
+                      {/* 상단: 월 표시 */}
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex flex-col">
+                          <span className={`text-[9px] font-black uppercase tracking-[0.15em] ${hasData ? 'text-brand' : 'text-slate-400'}`}>MONTH</span>
+                          <h3 className={`text-2xl font-black ${hasData ? 'text-slate-800' : 'text-slate-400'}`}>{i + 1}월</h3>
+                        </div>
+                        {hasData && (
+                          <div className="flex items-center justify-center text-brand group-hover:rotate-12 group-hover:scale-110 transition-all duration-500">
+                            <TrendingUp size={24} strokeWidth={2.5} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 하단: 금액 표시 */}
+                      <div className="flex flex-col items-end">
+                        <span className={`text-[9px] font-bold uppercase tracking-tight mb-1 ${hasData ? 'text-brand' : 'text-slate-300'}`}>TOTAL</span>
+                        <div className="flex items-baseline gap-1">
+                          <span className={`text-xl font-black tabular-nums transition-all ${
+                            hasData ? 'text-brand-dark' : 'text-slate-300'
+                          }`}>
+                            {formatCurrency(amount)}
+                          </span>
+                          <span className={`text-[10px] font-bold ${hasData ? 'text-slate-400' : 'text-slate-200'}`}>원</span>
+                        </div>
+                      </div>
+
+                      {/* 프리미엄 장식 요소 */}
+                      {hasData && (
+                        <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-brand/5 rounded-full blur-3xl group-hover:bg-brand/10 transition-all duration-700"></div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
-      </div>
     ) : (
         /* 리스트형 테이블 - 상세 정보 */
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm mb-10">
@@ -727,13 +738,15 @@ export default function DividendsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {sortedYears.length === 0 && !loading && (
-              <tr>
-                <td colSpan="3" className="px-6 py-12 text-center text-slate-500">
-                  {user ? '등록된 배당금 내역이 없습니다.' : '로그인 후 배당내역을 확인할 수 있습니다.'}
-                </td>
-              </tr>
-            )}
+              {sortedYears.length === 0 && !loading && (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-slate-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <span>{user ? '등록된 배당금 내역이 없습니다.' : '로그인 후 배당내역을 확인할 수 있습니다.'}</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
 
             {sortedYears.map((year) => {
               const yearData = groupedData[year];

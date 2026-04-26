@@ -29,6 +29,11 @@ export const TRADE_TYPES = {
 export class TransactionManager {
   // 현재 로그인한 사용자 ID 가져오기
   static async getCurrentUserId() {
+    // 로컬 개발용 인증 우회 (localhost 접속 시)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return '00000000-0000-0000-0000-000000000000';
+    }
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || !session.user) return null;

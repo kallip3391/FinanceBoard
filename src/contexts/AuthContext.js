@@ -13,6 +13,21 @@ const AuthContext = createContext({
   clearProfileError: () => {},
 });
 
+// 로컬 개발 시 로그인 없이 확인하려면 true로 설정
+const AUTH_BYPASS = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+const MOCK_USER = {
+  id: '00000000-0000-0000-0000-000000000000',
+  email: 'guest@example.com',
+  user_metadata: { full_name: 'Guest User' }
+};
+const MOCK_PROFILE = {
+  user_id: MOCK_USER.id,
+  email: MOCK_USER.email,
+  display_name: 'Guest User',
+  is_approved: true,
+  is_admin: true
+};
+
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; 
 
 export function AuthProvider({ children }) {
@@ -75,6 +90,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
+
+    if (AUTH_BYPASS) {
+      setUser(MOCK_USER);
+      setProfile(MOCK_PROFILE);
+      setLoading(false);
+      return;
+    }
 
     // 인증 세션 처리 로직 통합
     const handleSession = async (session, eventType) => {
@@ -232,7 +254,10 @@ export function AuthProvider({ children }) {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('is_manual_login');
       }
-      await supabase.auth.signOut();
+      
+      if (!AUTH_BYPASS) {
+        await supabase.auth.signOut();
+      }
       console.log('[Auth] 로그아웃 프로세스 종료');
     } catch (err) {
       console.error('[Auth] 로그아웃 중 오류:', err);
