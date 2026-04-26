@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { TransactionManager } from '@/lib/transactionManager';
 import MarketPriceManager from '@/lib/marketPriceManager';
@@ -28,14 +28,6 @@ export function AssetProvider({ children }) {
   const [accounts, setAccounts] = useState([]);
   const [accountNameById, setAccountNameById] = useState({});
   const [isAccountsLoading, setIsAccountsLoading] = useState(false);
-  const [monthlyDividendSummary, setMonthlyDividendSummary] = useState([]);
-  const [isDividendsLoading, setIsDividendsLoading] = useState(true);
-  
-  // 상태 참조용 Ref (의존성 무한 루프 방지용)
-  const trendDataRef = useRef([]);
-  useEffect(() => {
-    trendDataRef.current = trendData;
-  }, [trendData]);
 
   const calculateAssets = useCallback(async () => {
     if (!user) {
@@ -119,12 +111,10 @@ export function AssetProvider({ children }) {
       let totalDiv = 0;
       let totalProfit = 0;
 
-      const finalHoldingsByAccount = {};
       viewData.forEach(h => {
         const sid = h.security_id;
         const processed = processHolding(h);
         
-        // 1. 전체 종목별 합산 (holdings)
         if (!securityMap[sid]) {
           securityMap[sid] = { ...processed };
         } else {
@@ -140,13 +130,7 @@ export function AssetProvider({ children }) {
           prev.returnRate = prev.purchasePrice > 0 ? ((prev.currentPrice / prev.purchasePrice) - 1) * 100 : 0;
           prev.totalReturnRate = prev.totalCostKRW > 0 ? ((prev.profitAmountKRW + prev.dividend) / prev.totalCostKRW) * 100 : 0;
         }
-
-        // 2. 계좌별 그룹화 (holdingsByAccount)
-        const accName = h.account_name || '알수없음';
-        if (!finalHoldingsByAccount[accName]) finalHoldingsByAccount[accName] = [];
-        finalHoldingsByAccount[accName].push(processed);
         
-        // 3. 전체 합계 (summary)
         totalEval += processed.evaluationAmountKRW;
         totalDiv += processed.dividend;
         totalProfit += processed.profitAmountKRW;
@@ -155,6 +139,13 @@ export function AssetProvider({ children }) {
       const finalHoldings = Object.values(securityMap).sort((a, b) => {
         if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
         return b.evaluationAmountKRW - a.evaluationAmountKRW;
+      });
+
+      const finalHoldingsByAccount = {};
+      viewData.forEach(h => {
+        const accName = h.account_name || '알수없음';
+        if (!finalHoldingsByAccount[accName]) finalHoldingsByAccount[accName] = [];
+        finalHoldingsByAccount[accName].push(processHolding(h));
       });
 
       Object.keys(finalHoldingsByAccount).forEach(accName => {
@@ -181,7 +172,7 @@ export function AssetProvider({ children }) {
     }
   }, [user]);
 
-  const refreshTrendData = useCallback(async (days = 365) => {
+  const refreshTrendData = useCallback(async () => {
     if (!user) {
       setTrendData([]);
       setIsTrendLoading(false);
@@ -189,42 +180,24 @@ export function AssetProvider({ children }) {
     }
 
     try {
-      const now = new Date();
-      let startDateStr = null;
-      if (days !== Infinity) {
-        const startDate = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
-        startDateStr = startDate.toISOString().split('T')[0];
+      if (trendData.length === 0) {
+        setIsTrendLoading(true);
       }
-
-      // 이미 더 넓은 범위를 가지고 있는지 체크
-      const currentData = trendDataRef.current;
-      const currentOldest = currentData.length > 0 ? currentData[0].date : "9999-99-99";
       
-      // 요청한 시작일이 현재 가진 가장 오래된 데이터보다 이전일 때만 DB 조회
-      if (days === Infinity || (startDateStr && startDateStr < currentOldest)) {
-        if (currentData.length === 0) setIsTrendLoading(true);
-        
-        const data = await TransactionManager.getDailyTrendData(days === Infinity ? null : startDateStr);
-        
-        setTrendData(prev => {
-          const combined = [...prev];
-          const existingDates = new Set(prev.map(d => d.date));
-          
-          data.forEach(d => {
-            if (!existingDates.has(d.date)) {
-              combined.push(d);
-            }
-          });
-          
-          return combined.sort((a, b) => new Date(a.date) - new Date(b.date));
-        });
-      }
+      const data = await TransactionManager.getDailyTrendData();
+      const sortedData = data.map(d => ({
+        ...d,
+        date: d.date.split(' ')[0].replace(/\./g, '-')
+      })).sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      setTrendData(sortedData);
     } catch (e) {
       if (user) console.error("트렌드 데이터 로드 오류:", e);
+      setTrendData([]);
     } finally {
       setIsTrendLoading(false);
     }
-  }, [user]);
+  }, [user, trendData.length]);
 
   const refreshTransactions = useCallback(async () => {
     if (!user) {
@@ -236,8 +209,9 @@ export function AssetProvider({ children }) {
     }
 
     try {
-      // 최초 로딩 시에만 스켈레톤 표시
-      setIsTransactionsLoading(true);
+      if (domesticTransactions.length === 0 && overseasTransactions.length === 0 && dividendTransactions.length === 0) {
+        setIsTransactionsLoading(true);
+      }
       
       const [domestic, overseas, dividend] = await Promise.all([
         TransactionManager.getDomesticTransactions(),
@@ -253,7 +227,7 @@ export function AssetProvider({ children }) {
     } finally {
       setIsTransactionsLoading(false);
     }
-  }, [user]);
+  }, [user, domesticTransactions.length, overseasTransactions.length, dividendTransactions.length]);
 
   const refreshAccounts = useCallback(async () => {
     if (!user) {
@@ -286,31 +260,12 @@ export function AssetProvider({ children }) {
     }
   }, [user]);
 
-  const refreshMonthlyDividends = useCallback(async () => {
-    if (!user) {
-      setMonthlyDividendSummary([]);
-      setIsDividendsLoading(false);
-      return;
-    }
-
-    try {
-      setIsDividendsLoading(true);
-      const data = await TransactionManager.getMonthlyDividendSummary();
-      setMonthlyDividendSummary(data || []);
-    } catch (e) {
-      if (user) console.error("배당 요약 데이터 로드 오류:", e);
-    } finally {
-      setIsDividendsLoading(false);
-    }
-  }, [user]);
-
   const refreshAssets = useCallback(async () => {
     await Promise.all([
       calculateAssets(),
       refreshTrendData(),
       refreshTransactions(),
-      refreshAccounts(),
-      refreshMonthlyDividends()
+      refreshAccounts()
     ]);
   }, [calculateAssets, refreshTrendData, refreshTransactions, refreshAccounts]);
 
@@ -338,10 +293,7 @@ export function AssetProvider({ children }) {
     refreshAssets,
     refreshTrendData,
     refreshTransactions,
-    refreshAccounts,
-    monthlyDividendSummary,
-    isDividendsLoading,
-    refreshMonthlyDividends
+    refreshAccounts
   };
 
   return <AssetContext.Provider value={value}>{children}</AssetContext.Provider>;

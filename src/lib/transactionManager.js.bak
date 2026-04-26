@@ -246,7 +246,56 @@ export class TransactionManager {
     return Math.round(amount * exchangeRate);
   }
 
+  // 통계 데이터 계산
+  static async getStatistics(transactionType = null) {
+    const userId = await this.getCurrentUserId();
+    if (!userId) return { totalBuy: 0, totalSell: 0, totalDividend: 0, transactionCount: 0, currencyBreakdown: {} };
 
+    let query = supabase
+      .from('transactions')
+      .select('trade_type, amount, currency, transaction_type')
+      .eq('user_id', userId)
+      .eq('mate_stat', '01');
+
+    if (transactionType) {
+      query = query.eq('transaction_type', transactionType);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const stats = {
+      totalBuy: 0, totalSell: 0, totalDividend: 0, transactionCount: data?.length || 0, currencyBreakdown: {}
+    };
+
+    data?.forEach(tx => {
+      if (tx.transaction_type === TRANSACTION_TYPES.DIVIDEND) {
+        stats.totalDividend += tx.total_dividend || 0;
+      } else if (tx.trade_type === TRADE_TYPES.BUY) {
+        stats.totalBuy += tx.amount || 0;
+      } else if (tx.trade_type === TRADE_TYPES.SELL) {
+        stats.totalSell += tx.amount || 0;
+      }
+      const currency = tx.currency || 'KRW';
+      if (!stats.currencyBreakdown[currency]) stats.currencyBreakdown[currency] = 0;
+      stats.currencyBreakdown[currency] += tx.amount || 0;
+    });
+
+    return stats;
+  }
+
+  // 종목 목록 조회
+  static async getStocks() {
+    const userId = await this.getCurrentUserId();
+    if (!userId) return [];
+    const { data, error } = await supabase
+      .from('security')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
 
   // 이름으로 종목 검색
   static async searchStocksByName(name, currency = 'KRW') {
@@ -273,8 +322,7 @@ export class TransactionManager {
     const { data, error } = await supabase
       .from('exchange_rates')
       .select('currency, rate, exchange_date')
-      .order('exchange_date', { ascending: false })
-      .limit(50);
+      .order('exchange_date', { ascending: false });
     if (error) return { 'KRW': 1 };
     const rates = { 'KRW': 1 };
     if (data) {
@@ -287,7 +335,7 @@ export class TransactionManager {
   }
 
   // 자산 트렌드 (일별) 데이터 조회
-  static async getDailyTrendData(startDate = null) {
+  static async getDailyTrendData() {
     const userId = await this.getCurrentUserId();
     if (!userId) return [];
 
@@ -297,18 +345,12 @@ export class TransactionManager {
     let hasMore = true;
 
     while (hasMore) {
-      let query = supabase
+      const { data, error } = await supabase
         .from('v_daily_asset_trends')
         .select('*')
         .eq('user_id', userId)
         .order('record_date', { ascending: true })
         .range(from, from + pageSize - 1);
-
-      if (startDate) {
-        query = query.gte('record_date', startDate);
-      }
-
-      const { data, error } = await query;
 
       if (error) break;
       if (!data || data.length === 0) hasMore = false;

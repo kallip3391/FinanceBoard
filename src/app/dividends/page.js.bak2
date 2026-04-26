@@ -7,7 +7,6 @@ import {
 } from 'recharts';
 import { useAuth } from "@/contexts/AuthContext";
 import { TransactionManager } from "@/lib/transactionManager";
-import { useAssets } from "@/contexts/AssetContext";
 
 const getCurrencyBadgeStyles = (currency) => {
   const styles = {
@@ -37,7 +36,8 @@ const getCurrencyStyle = (currency) => {
 
 export default function DividendsPage() {
   const { user } = useAuth();
-  const { monthlyDividendSummary, isDividendsLoading: loading } = useAssets();
+  const [dividends, setDividends] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [chartReady, setChartReady] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('1년');
 
@@ -88,7 +88,7 @@ export default function DividendsPage() {
       return (currentYear - parseInt(year)) * 12 + (currentMonth - (parseInt(month) - 1));
     };
 
-    monthlyDividendSummary.forEach(item => {
+    dividends.forEach(item => {
       const recordMonth = item.record_month || ''; // 'YYYY-MM'
       if (!recordMonth || recordMonth.length < 7) return;
       
@@ -173,7 +173,7 @@ export default function DividendsPage() {
       totalDividends: totalObj,
       availableYears: Object.keys(grouped).sort((a, b) => b - a)
     };
-  }, [monthlyDividendSummary, selectedPeriod]);
+  }, [dividends, selectedPeriod]);
 
 
 
@@ -231,6 +231,27 @@ export default function DividendsPage() {
   const [isRevealing, setIsRevealing] = useState(false); // 초기 로딩 애니메이션 제어
 
   useEffect(() => {
+    async function fetchData() {
+      if (user) {
+        try {
+          setLoading(true);
+          const data = await TransactionManager.getMonthlyDividendSummary();
+          setDividends(data || []);
+          setExpandedYears(new Set());
+          setExpandedMonths(new Set());
+        } catch (error) {
+          console.error('배당금 내역 로드 오류:', error);
+          setDividends([]);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+        setDividends([]);
+      }
+    }
+    fetchData();
+
     if (!chartReady) {
       const timer = setTimeout(() => {
         setChartReady(true);
@@ -240,7 +261,7 @@ export default function DividendsPage() {
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [chartReady]);
+  }, [user?.id, chartReady]);
 
   const handlePeriodChange = (p) => {
     if (p === selectedPeriod) return;

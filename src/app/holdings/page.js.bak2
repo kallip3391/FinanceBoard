@@ -23,11 +23,12 @@ import {
 
 export default function HoldingsPage() {
   const { user } = useAuth();
-  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
+  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshAssets } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [stockViewMode, setStockViewMode] = useState("card");
   const [isClient, setIsClient] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [chartReady, setChartReady] = useState(false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
   const [currentAccPage, setCurrentAccPage] = useState(1);
@@ -81,72 +82,49 @@ export default function HoldingsPage() {
     setCurrentAccPage(1);
   }, [holdingsByAccount, selectedAccount]);
 
-  // 기간 변경 시 필요한 데이터 추가 로드 (하이브리드 방식)
-  useEffect(() => {
-    let days = 365;
-    switch (selectedPeriod) {
-      case "3개월": days = 90; break;
-      case "6개월": days = 180; break;
-      case "1년": days = 365; break;
-      case "3년": days = 1095; break;
-      case "전체": days = Infinity; break;
+  const sectorData = holdings.reduce((acc, h) => {
+    const sector = h.sector || "기타";
+    const amount = h.evaluationAmountKRW || 0;
+    if (amount > 0) {
+      const idx = acc.findIndex(item => item.name === sector);
+      if (idx > -1) acc[idx].value += amount;
+      else acc.push({ name: sector, value: amount });
     }
-    
-    // 1년 이상인 경우에만 추가 로드 시도 (AssetContext 내부에서 중복 체크함)
-    if (days > 365 || days === Infinity) {
-      refreshTrendData(days);
+    return acc;
+  }, []).sort((a, b) => b.value - a.value);
+
+  const currencyData = holdings.reduce((acc, h) => {
+    const currencyMap = {
+      'KRW': '한국', 'USD': '미국', 'EUR': '유럽',
+      'JPY': '일본', 'GBP': '영국', 'CNY': '중국', 'HKD': '홍콩'
+    };
+    const currency = h.currency || "KRW";
+    const name = currencyMap[currency] || '해외';
+    const amount = h.evaluationAmountKRW || 0;
+    if (amount > 0) {
+      const idx = acc.findIndex(item => item.name === name);
+      if (idx > -1) acc[idx].value += amount;
+      else acc.push({ name: name, value: amount });
     }
-  }, [selectedPeriod, refreshTrendData]);
+    return acc;
+  }, []).sort((a, b) => b.value - a.value);
 
-  const sectorData = useMemo(() => {
-    return holdings.reduce((acc, h) => {
-      const sector = h.sector || "기타";
-      const amount = h.evaluationAmountKRW || 0;
-      if (amount > 0) {
-        const idx = acc.findIndex(item => item.name === sector);
-        if (idx > -1) acc[idx].value += amount;
-        else acc.push({ name: sector, value: amount });
-      }
-      return acc;
-    }, []).sort((a, b) => b.value - a.value);
-  }, [holdings]);
-
-  const currencyData = useMemo(() => {
-    return holdings.reduce((acc, h) => {
-      const currencyMap = {
-        'KRW': '한국', 'USD': '미국', 'EUR': '유럽',
-        'JPY': '일본', 'GBP': '영국', 'CNY': '중국', 'HKD': '홍콩'
-      };
-      const currency = h.currency || "KRW";
-      const name = currencyMap[currency] || '해외';
-      const amount = h.evaluationAmountKRW || 0;
-      if (amount > 0) {
-        const idx = acc.findIndex(item => item.name === name);
-        if (idx > -1) acc[idx].value += amount;
-        else acc.push({ name: name, value: amount });
-      }
-      return acc;
-    }, []).sort((a, b) => b.value - a.value);
-  }, [holdings]);
-
-  const stockDataRaw = useMemo(() => {
-    return holdings.reduce((acc, h) => {
-      const displayName = h.code ? `${h.name} (${h.code})` : (h.name || "알수없음");
-      const amount = h.evaluationAmountKRW || 0;
-      if (amount > 0) {
-        const idx = acc.findIndex(item => item.name === displayName);
-        if (idx > -1) acc[idx].value += amount;
-        else acc.push({ 
-          name: displayName, 
-          value: amount,
-          code: h.code,
-          currency: h.currency,
-          sector: h.sector
-        });
-      }
-      return acc;
-    }, []).sort((a, b) => b.value - a.value);
-  }, [holdings]);
+  const stockDataRaw = holdings.reduce((acc, h) => {
+    const displayName = h.code ? `${h.name} (${h.code})` : (h.name || "알수없음");
+    const amount = h.evaluationAmountKRW || 0;
+    if (amount > 0) {
+      const idx = acc.findIndex(item => item.name === displayName);
+      if (idx > -1) acc[idx].value += amount;
+      else acc.push({ 
+        name: displayName, 
+        value: amount,
+        code: h.code,
+        currency: h.currency,
+        sector: h.sector
+      });
+    }
+    return acc;
+  }, []).sort((a, b) => b.value - a.value);
 
   const stockData = stockDataRaw.length > 10
     ? [
