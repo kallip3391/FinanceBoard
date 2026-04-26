@@ -31,7 +31,7 @@ export default function HoldingsPage() {
   const [chartReady, setChartReady] = useState(false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
   const [currentAccPage, setCurrentAccPage] = useState(1);
-  const [loadedPeriods, setLoadedPeriods] = useState(new Set());
+  const [loadedPeriods, setLoadedPeriods] = useState(new Set(['3개월', '6개월', '1년', '3년']));
   const STOCKS_PER_PAGE = 6;
   const LIST_PER_PAGE = 8;
 
@@ -591,7 +591,7 @@ export default function HoldingsPage() {
                           name="매수금액" 
                           activeDot={{ r: 3, fill: '#64748b' }}
                           isAnimationActive={true}
-                          animationDuration={animDuration}
+                          animationDuration={2000}
                           animationEasing="ease-in-out"
                         />
                         {/* 2. 평가금액 (파란색 면) */}
@@ -606,7 +606,7 @@ export default function HoldingsPage() {
                           name="평가금액" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#3b82f6' }}
                           isAnimationActive={true}
-                          animationDuration={animDuration}
+                          animationDuration={2000}
                           animationEasing="ease-in-out"
                           filter="url(#shadow)"
                         />
@@ -692,7 +692,7 @@ export default function HoldingsPage() {
                           name="수익률" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#ff4d6d', filter: 'url(#glow)' }}
                           isAnimationActive={true}
-                          animationDuration={animDuration}
+                          animationDuration={2000}
                           animationEasing="ease-in-out"
                         />
                       </AreaChart>
