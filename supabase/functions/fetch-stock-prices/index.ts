@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     // 💡 [수집 범위 설정] 
     // 국내는 그대로 3일, 해외(USD)는 현재 2일치 수집 (나중에 1로 변경 가능)
     const krwDates = getPastDaysIncludingWeekends(3).reverse(); 
-    const usdDates = getPastDaysIncludingWeekends(3).reverse(); // 👈 나중에 여기를 1로 바꾸세요!
+    const usdDates = getPastDaysIncludingWeekends(1).reverse(); // 👈 나중에 여기를 1로 바꾸세요!
 
     // --- [SECTION A: 해외 종목 수집] ---
     if (!requestType || requestType !== "KRW") {
