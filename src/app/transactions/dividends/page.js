@@ -897,9 +897,9 @@ export default function TransactionsPage() {
   };
 
   const filteredTransactions = transactions.filter(tx => {
-    // 1. 거래구분 필터
+    // 1. 통화 필터
     if (activeFilters.type !== '전체') {
-      const typeStr = (tx.trade_type === TRADE_TYPES.BUY || tx.type === '매수') ? '매수' : '매도';
+      const typeStr = tx.currency || 'KRW';
       if (typeStr !== activeFilters.type) return false;
     }
     
@@ -2575,15 +2575,15 @@ export default function TransactionsPage() {
                         className="w-full px-1 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer shadow-sm text-center flex items-center justify-center gap-1 min-h-[48px]"
                       >
                         <span className={`text-[14px] ${
-                          tempFilters.type === '매수' ? 'text-rose-500' : 
-                          tempFilters.type === '매도' ? 'text-blue-500' : 'text-slate-600'
+                          tempFilters.type === 'KRW' ? 'text-blue-500' : 
+                          tempFilters.type === 'USD' ? 'text-emerald-500' : 'text-slate-600'
                         }`}>
                           {tempFilters.type === '전체' ? '전체' : tempFilters.type}
                         </span>
                       </button>
                       {isFilterTypeDropdownOpen && (
                         <div className="absolute top-0 left-0 w-full bg-white border border-slate-200 shadow-2xl z-[70] overflow-hidden animate-slide-up" style={{ borderRadius: '12px' }}>
-                          {['전체', '매수', '매도'].map(type => (
+                          {['전체', 'KRW', 'USD'].map(type => (
                             <button
                               key={type}
                               type="button"
@@ -2592,8 +2592,8 @@ export default function TransactionsPage() {
                                 setIsFilterTypeDropdownOpen(false);
                               }}
                               className={`w-full px-1 py-3 text-[14px] font-bold text-center hover:bg-slate-50 transition-colors cursor-pointer ${
-                                type === '매수' ? 'text-rose-500' : 
-                                type === '매도' ? 'text-blue-500' : 'text-slate-600'
+                                type === 'KRW' ? 'text-blue-500' : 
+                                type === 'USD' ? 'text-emerald-500' : 'text-slate-600'
                               }`}
                               style={{ minHeight: '48px' }}
                             >
