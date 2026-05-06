@@ -610,8 +610,11 @@ export default function TransactionsPage() {
 
     if (preTax > 0) {
       const krwTotal = formData.currency === 'KRW' ? preTax : (preTax * exRate);
-      // 원 단위에서 반올림 (10원 단위로 처리)
-      const roundedTotal = Math.round(krwTotal / 10) * 10;
+      // KRW가 아닌 경우 (해외 배당) 기존대로 10원 단위 반올림
+      // KRW인 경우 (국내 배당) 원 단위까지 모두 표시 (소수점만 반올림)
+      const roundedTotal = formData.currency === 'KRW' 
+        ? Math.round(krwTotal) 
+        : Math.round(krwTotal / 10) * 10;
 
       setFormData(prev => ({
         ...prev,

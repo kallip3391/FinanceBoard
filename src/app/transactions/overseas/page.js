@@ -1873,7 +1873,11 @@ export default function TransactionsPage() {
                     <span className="text-sm font-bold text-slate-500">거래금액</span>
                     <div className="text-right flex items-baseline gap-1.5">
                       <span className="text-2xl font-black text-brand tabular-nums">{formData.amount || '0'}</span>
-                      <span className="font-bold text-slate-400 text-sm">원</span>
+                      <span className="font-bold text-slate-400 text-sm">
+                        {{
+                          'USD': '$', 'EUR': '€', 'JPY': '¥', 'CNY': '¥', 'GBP': '£', 'HKD': 'HK$', 'KRW': '₩'
+                        }[formData.currency] || formData.currency || '$'}
+                      </span>
                     </div>
                   </div>
                 </div>
