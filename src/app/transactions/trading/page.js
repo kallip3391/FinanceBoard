@@ -2018,58 +2018,13 @@ export default function TransactionsPage() {
 
                   <div>
                     <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">통화</label>
-                    <div className="relative" ref={currencyRef}>
+                    <div className="relative">
                       <input
                         type="text"
                         readOnly
-                        placeholder="통화 선택"
-                        value={stockForm.currency}
-                        className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-medium text-slate-700 bg-slate-50 cursor-pointer text-center shadow-sm"
-                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                        value="KRW"
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100 font-medium text-slate-500 cursor-not-allowed text-center shadow-sm"
                       />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3"
-                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
-                      >
-                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      {isCurrencyDropdownOpen && (
-                        <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10">
-                          <div className="py-2 max-h-[210px] overflow-y-auto">
-                            {['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'HKD'].map((cur) => {
-                              const getCurrencySymbol = (currency) => {
-                                switch (currency) {
-                                  case 'USD': return '$';
-                                  case 'EUR': return '€';
-                                  case 'GBP': return '£';
-                                  case 'JPY': return '¥';
-                                  case 'CNY': return '¥';
-                                  case 'HKD': return 'HK$';
-                                  default: return currency;
-                                }
-                              };
-                              return (
-                                <button
-                                  key={cur}
-                                  type="button"
-                                  className="w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center"
-                                  onClick={() => {
-                                    setStockForm(prev => ({ ...prev, currency: cur }));
-                                    setIsCurrencyDropdownOpen(false);
-                                  }}
-                                >
-                                  <span className="font-semibold text-sm text-slate-700">
-                                    {cur} ({getCurrencySymbol(cur)})
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -2098,8 +2053,8 @@ export default function TransactionsPage() {
                       showAlert("입력 오류", "섹터를 선택해 주세요.", "error");
                       return;
                     }
-                    if (!stockForm.currency.trim()) {
-                      showAlert("입력 오류", "통화를 선택해 주세요.", "error");
+                    if (stockForm.currency.trim() !== 'KRW') {
+                      showAlert("입력 오류", "국내 종목은 KRW 통화만 등록 가능합니다.", "error");
                       return;
                     }
 

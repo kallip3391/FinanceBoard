@@ -248,6 +248,49 @@ export class TransactionManager {
 
 
 
+  // 종목 중복 체크
+  static async checkStockDuplicate(name, code) {
+    const userId = await this.getCurrentUserId();
+    if (!userId) throw new Error('로그인이 필요합니다.');
+
+    const { data: nameData } = await supabase
+      .from('security')
+      .select('security_id')
+      .eq('user_id', userId)
+      .eq('name', name)
+      .limit(1);
+      
+    if (nameData && nameData.length > 0) return true;
+
+    const { data: codeData } = await supabase
+      .from('security')
+      .select('security_id')
+      .eq('user_id', userId)
+      .eq('code', code)
+      .limit(1);
+      
+    return codeData && codeData.length > 0;
+  }
+
+  // 신규 종목 등록
+  static async addStock(stockData) {
+    const userId = await this.getCurrentUserId();
+    if (!userId) throw new Error('로그인이 필요합니다.');
+
+    const { data, error } = await supabase
+      .from('security')
+      .insert({
+        ...stockData,
+        user_id: userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select();
+
+    if (error) throw error;
+    return data?.[0] ?? null;
+  }
+
   // 이름으로 종목 검색
   static async searchStocksByName(name, currency = 'KRW') {
     const userId = await this.getCurrentUserId();
