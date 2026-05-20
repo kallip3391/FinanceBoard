@@ -737,7 +737,7 @@ export default function DividendsPage() {
                 </tr>
               )}
 
-            {sortedYears.map((year) => {
+            {sortedYears.map((year, yearIdx) => {
               const yearData = groupedData[year];
               const sortedMonths = Object.keys(yearData.months).sort((a, b) => Number(b) - Number(a));
 
@@ -745,7 +745,7 @@ export default function DividendsPage() {
                 <React.Fragment key={`year-${year}`}>
                   {/* Year Row */}
                   <tr
-                    className="bg-slate-50/30 cursor-pointer"
+                    className={`bg-slate-50/30 cursor-pointer opacity-0 animate-row-fade stagger-${(yearIdx % 20) + 1}`}
                     onClick={() => toggleYear(year)}
                   >
                     <td className="px-6 py-5 flex items-center gap-2 font-black text-lg text-slate-800">
@@ -760,13 +760,13 @@ export default function DividendsPage() {
                   </tr>
 
                   {/* Months & Stocks */}
-                  {isYearExpanded(year) && sortedMonths.map((month) => {
+                  {isYearExpanded(year) && sortedMonths.map((month, monthIdx) => {
                     const monthData = yearData.months[month];
                     return (
                       <React.Fragment key={`month-${year}-${month}`}>
                         {/* Month Row */}
                         <tr
-                          className="cursor-pointer hover:bg-slate-50/50 transition-colors"
+                          className={`cursor-pointer hover:bg-slate-50/50 transition-colors opacity-0 animate-row-fade stagger-${(monthIdx % 20) + 1}`}
                           onClick={() => toggleMonth(year, month)}
                         >
                           <td className="px-12 py-3 flex items-center gap-2 font-bold text-base text-slate-700">
@@ -788,7 +788,7 @@ export default function DividendsPage() {
 
                         {/* Stocks aggregation by month is already handled in useMemo */}
                         {isMonthExpanded(year, month) && monthData.items.map((item, idx) => (
-                          <tr key={`item-${item.name}-${idx}`} className="text-slate-500 hover:bg-slate-50/50 transition-colors">
+                          <tr key={`item-${item.name}-${idx}`} className={`text-slate-500 hover:bg-slate-50/50 transition-colors opacity-0 animate-row-fade stagger-${(idx % 20) + 1}`}>
                             <td className="px-20 py-2">
                               <div className="flex items-center gap-3">
                                 <div className={`w-1 h-6 rounded-full ${getCurrencyStyle(item.currency).accent}`}></div>
