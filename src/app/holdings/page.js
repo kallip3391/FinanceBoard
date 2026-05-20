@@ -746,7 +746,7 @@ export default function HoldingsPage() {
           {stockViewMode === "card" ? (
             <div className="flex flex-col gap-6">
               {user && summary.totalEvaluation > 0 && (
-                <div className="bg-brand/5 p-5 rounded-2xl border-2 border-brand/20 shadow-sm">
+                <div className="bg-brand/5 p-5 rounded-2xl border-2 border-brand/20 shadow-sm animate-summary-pop">
                   <div className="flex items-center justify-between mb-4 border-b border-brand/10 pb-2"><span className="text-brand font-bold uppercase tracking-wider text-lg">현황</span></div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div className="flex flex-col items-center">
