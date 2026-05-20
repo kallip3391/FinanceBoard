@@ -206,6 +206,7 @@ export default function DividendsPage() {
     const years = new Set(Object.keys(groupedData));
     setExpandedYears(years);
     setExpandedMonths(new Set());
+    setListAnimKey(prev => prev + 1);
   };
 
   const expandToStocks = () => {
@@ -218,17 +219,20 @@ export default function DividendsPage() {
     });
     setExpandedYears(years);
     setExpandedMonths(months);
+    setListAnimKey(prev => prev + 1);
   };
 
   const collapseAll = () => {
     setExpandedYears(new Set());
     setExpandedMonths(new Set());
+    setListAnimKey(prev => prev + 1);
   };
 
   const sortedYears = Object.keys(groupedData).sort((a, b) => Number(b) - Number(a));
   
   const [isChanging, setIsChanging] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false); // 초기 로딩 애니메이션 제어
+  const [listAnimKey, setListAnimKey] = useState(0); // 리스트 강제 리렌더링 키
 
   useEffect(() => {
     if (!chartReady) {
@@ -726,7 +730,7 @@ export default function DividendsPage() {
               <th className="px-6 py-4 text-right text-[15px] font-bold text-slate-500">배당금{"\u00A0".repeat(4)}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody key={listAnimKey} className="divide-y divide-slate-50">
               {sortedYears.length === 0 && !loading && (
                 <tr>
                   <td colSpan="4" className="px-6 py-12 text-slate-500">
