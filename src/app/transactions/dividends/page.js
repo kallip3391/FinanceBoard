@@ -457,6 +457,7 @@ export default function TransactionsPage() {
     }
 
     try {
+      setLoading(true);
       const dividendData = {
         transaction_type: TRANSACTION_TYPES.DIVIDEND,
         trade_type: TRADE_TYPES.DIV,
@@ -484,13 +485,15 @@ export default function TransactionsPage() {
         await TransactionManager.addTransaction(dividendData);
         await refreshTransactions(); // 전역 거래 데이터 갱신
         await refreshAssets();      // 자산 요약 및 트렌드 갱신
+        setIsModalOpen(false);
+        setEditingId(null);
         showAlert("등록 완료", "배당이 성공적으로 등록되었습니다.", "success");
       }
-
-      setIsModalOpen(false);
     } catch (error) {
       console.error('배당 처리 중 오류:', error);
       showAlert("오류", error.message || "배당 처리 중 문제가 발생했습니다.", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1868,9 +1871,10 @@ export default function TransactionsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-4 rounded-xl bg-brand text-white font-bold hover:bg-brand-dark shadow-lg shadow-brand/30 transition-all cursor-pointer focus:outline-none"
+                  disabled={loading}
+                  className={`flex-1 py-4 rounded-xl font-bold transition-all ${loading ? 'bg-slate-300 text-white cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-dark shadow-lg shadow-brand/30 cursor-pointer'} focus:outline-none`}
                 >
-                  {editingId ? '수정 완료' : '등록 완료'}
+                  {loading ? '처리 중...' : (editingId ? '수정 완료' : '등록 완료')}
                 </button>
               </div>
             </form>
