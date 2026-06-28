@@ -1618,7 +1618,7 @@ export default function TransactionsPage() {
                                 stock: `[${stock.code}] ${stock.name}`,
                                 stockCode: stock.code,
                                 currency: stock.currency || prev.currency,
-                                dividendAmount: '0'
+                                dividendAmount: ''
                               }));
                               setIsStockDropdownOpen(false);
                               setStockFocusedIndex(-1);
@@ -1728,7 +1728,7 @@ export default function TransactionsPage() {
                                     stock: `[${stock.code}] ${stock.name}`,
                                     stockCode: stock.code,
                                     currency: stock.currency || prev.currency,
-                                    dividendAmount: '0'
+                                    dividendAmount: ''
                                   }));
                                   setIsStockDropdownOpen(false);
                                   setStockFocusedIndex(-1);
