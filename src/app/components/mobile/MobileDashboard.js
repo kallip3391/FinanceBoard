@@ -186,7 +186,6 @@ export default function MobileDashboard() {
                     {formatCurrency(summary.totalEvaluation, 'KRW')}
                   </p>
                 </div>
-                <div className="w-px bg-slate-200" />
                 {/* 수익금 */}
                 <div className="flex-1 bg-slate-50 px-3 py-3">
                   <div className="flex items-center gap-1.5 mb-1 justify-start">
