@@ -36,149 +36,6 @@ const getCurrencySymbol = (currency) => {
   }
 };
 
-/* ───────── 임시 모의 데이터 (로컬 테스트용) ───────── */
-const MOCK_HOLDINGS = [
-  {
-    name: "테슬라",
-    code: "TSLA",
-    currency: "USD",
-    purchasePrice: 300,
-    currentPrice: 240,
-    totalQuantity: 20,
-    evaluationAmountKRW: 6480000,
-    profitAmountKRW: -1620000,
-    returnRate: "-20.00",
-  },
-  {
-    name: "삼성전자",
-    code: "005930",
-    currency: "KRW",
-    purchasePrice: 70000,
-    currentPrice: 75000,
-    totalQuantity: 50,
-    evaluationAmountKRW: 3750000,
-    profitAmountKRW: 250000,
-    returnRate: "7.14",
-  },
-  {
-    name: "엔비디아",
-    code: "NVDA",
-    currency: "USD",
-    purchasePrice: 300,
-    currentPrice: 450,
-    totalQuantity: 15,
-    evaluationAmountKRW: 9112500,
-    profitAmountKRW: 3037500,
-    returnRate: "50.00",
-  },
-  {
-    name: "KODEX 미국배당커버드콜 액티브",
-    code: "446720",
-    currency: "KRW",
-    purchasePrice: 10000,
-    currentPrice: 10500,
-    totalQuantity: 100,
-    evaluationAmountKRW: 1050000,
-    profitAmountKRW: 50000,
-    returnRate: "5.00",
-  },
-  {
-    name: "SK하이닉스",
-    code: "000660",
-    currency: "KRW",
-    purchasePrice: 2000000,
-    currentPrice: 2150000,
-    totalQuantity: 2,
-    evaluationAmountKRW: 4300000,
-    profitAmountKRW: 300000,
-    returnRate: "7.50",
-  },
-  {
-    name: "TIME 글로벌휴머노이드로봇산업액티브",
-    code: "478540",
-    currency: "KRW",
-    purchasePrice: 10000,
-    currentPrice: 11200,
-    totalQuantity: 80,
-    evaluationAmountKRW: 896000,
-    profitAmountKRW: 96000,
-    returnRate: "12.00",
-  },
-  {
-    name: "알파벳 C",
-    code: "GOOG",
-    currency: "USD",
-    purchasePrice: 300,
-    currentPrice: 320,
-    totalQuantity: 10,
-    evaluationAmountKRW: 4320000,
-    profitAmountKRW: 270000,
-    returnRate: "6.67",
-  },
-  {
-    name: "스페이스X",
-    code: "SPACEX",
-    currency: "USD",
-    purchasePrice: 150,
-    currentPrice: 180,
-    totalQuantity: 15,
-    evaluationAmountKRW: 3645000,
-    profitAmountKRW: 607500,
-    returnRate: "20.00",
-  },
-  {
-    name: "애플",
-    code: "AAPL",
-    currency: "USD",
-    purchasePrice: 180,
-    currentPrice: 220,
-    totalQuantity: 20,
-    evaluationAmountKRW: 5940000,
-    profitAmountKRW: 1080000,
-    returnRate: "22.22",
-  },
-  {
-    name: "일라이릴리",
-    code: "LLY",
-    currency: "USD",
-    purchasePrice: 850,
-    currentPrice: 920,
-    totalQuantity: 5,
-    evaluationAmountKRW: 6210000,
-    profitAmountKRW: 472500,
-    returnRate: "8.24",
-  },
-  {
-    name: "리얼티인컴",
-    code: "O",
-    currency: "USD",
-    purchasePrice: 55,
-    currentPrice: 52,
-    totalQuantity: 40,
-    evaluationAmountKRW: 2808000,
-    profitAmountKRW: -162000,
-    returnRate: "-5.45",
-  },
-  {
-    name: "QQQ",
-    code: "QQQ",
-    currency: "USD",
-    purchasePrice: 450,
-    currentPrice: 490,
-    totalQuantity: 10,
-    evaluationAmountKRW: 6615000,
-    profitAmountKRW: 540000,
-    returnRate: "8.89",
-  },
-];
-
-const MOCK_SUMMARY = {
-  totalEvaluation: 55126500,
-  totalProfit: 4921500,
-  avgProfitRate: 9.80,
-  isLoading: false,
-};
-
 /* ───────── 파이 툴팁 ───────── */
 function PieTooltip({ active, payload, total }) {
   if (!active || !payload?.length) return null;
@@ -197,18 +54,13 @@ function PieTooltip({ active, payload, total }) {
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
   const { user } = useAuth();
-  const { holdings: realHoldings, summary: realSummary } = useAssets();
+  const { holdings, summary } = useAssets();
   const [chartReady, setChartReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 8;
+  const ITEMS_PER_PAGE = 5;
 
-  // 로컬 테스트용: 실제 보유 데이터가 없으면 임시 데이터 사용
-  const isMock = !realHoldings || realHoldings.length === 0;
-  const holdings = isMock ? MOCK_HOLDINGS : realHoldings;
-  const summary = (realSummary && realSummary.totalEvaluation > 0) ? realSummary : MOCK_SUMMARY;
-
-  const totalPages = Math.ceil(holdings.length / ITEMS_PER_PAGE) || 1;
-  const pagedHoldings = holdings.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil((holdings?.length || 0) / ITEMS_PER_PAGE) || 1;
+  const pagedHoldings = (holdings || []).slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   useEffect(() => {
     const t = setTimeout(() => setChartReady(true), 150);
@@ -217,7 +69,7 @@ export default function MobileDashboard() {
 
   /* 파이 차트 데이터 */
   const stockDataRaw = useMemo(() => {
-    return holdings
+    return (holdings || [])
       .reduce((acc, h) => {
         const name = h.code ? `${h.name} (${h.code})` : (h.name || "알수없음");
         const amt = h.evaluationAmountKRW || 0;
@@ -241,21 +93,14 @@ export default function MobileDashboard() {
       : stockDataRaw;
 
   const total = stockData.reduce((s, x) => s + x.value, 0);
-  const isProfit = summary.totalProfit > 0;
-  const isLoss = summary.totalProfit < 0;
+  const isProfit = (summary?.totalProfit || 0) > 0;
+  const isLoss = (summary?.totalProfit || 0) < 0;
 
   return (
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-20">
       <div className="flex flex-col gap-3 px-3 py-3" style={{ maxWidth: "100%" }}>
-        {isMock && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] px-3 py-1.5 rounded-lg flex items-center justify-between">
-            <span className="font-semibold">💡 로컬 임시 데이터 표시 중</span>
-            <span className="text-[10px] text-emerald-600">(3종목 샘플)</span>
-          </div>
-        )}
-
         {/* ── 섹션 1: 포트폴리오 ── */}
-        {holdings.length > 0 && chartReady && (
+        {user && (holdings?.length || 0) > 0 && chartReady && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
@@ -323,8 +168,9 @@ export default function MobileDashboard() {
         )}
 
         {/* ── 섹션 2: 종목별 보유현황 ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
-          {/* 섹션 헤더 */}
+        {user && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
+            {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
               <div className="w-1 h-4 rounded-full bg-emerald-500" />
               <span className="text-sm font-bold text-slate-700">종목별 보유현황</span>
@@ -520,9 +366,10 @@ export default function MobileDashboard() {
               )}
             </div>
           </div>
+        )}
 
-        {/* 비로그인 안내 (임시 데이터가 아닐 때만 노출) */}
-        {!user && !isMock && (
+        {/* 비로그인 안내 */}
+        {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
             로그인 후 보유 자산을 확인할 수 있습니다.
           </div>
