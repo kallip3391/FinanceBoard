@@ -246,11 +246,18 @@ export default function MobileDashboard() {
                   </div>
                 </div>
 
-                {/* 빈 상태 */}
-                {holdings.length === 0 && (
-                  <div className="py-8 text-center text-slate-400 text-sm">
-                    보유 중인 종목이 없습니다.
+                {/* 로딩 상태 및 빈 상태 */}
+                {summary?.isLoading ? (
+                  <div className="py-10 flex flex-col items-center justify-center gap-2.5 text-slate-400 text-sm">
+                    <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="font-medium text-slate-500 text-xs">자산을 불러오고 있습니다...</span>
                   </div>
+                ) : (
+                  holdings.length === 0 && (
+                    <div className="py-8 text-center text-slate-400 text-sm font-medium">
+                      보유 중인 종목이 없습니다.
+                    </div>
+                  )
                 )}
 
                 {/* 종목 행 (페이지 이동 시 세련된 스태거 페이드인 애니메이션) */}
