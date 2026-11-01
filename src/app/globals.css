@@ -45,6 +45,25 @@
     border: 1px solid rgba(255, 255, 255, 0.3);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
   }
+
+  /* 768px 이상에서만 glass-panel 효과 적용 (모바일에서는 일반 배경) */
+  .md-panel {
+    min-height: 100vh;
+    padding-bottom: 4rem; /* 하단 탭바 공간 */
+  }
+
+  @media (min-width: 768px) {
+    .md-panel {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+      border-radius: 0.75rem;
+      padding: 2rem;
+      min-height: 970px;
+    }
+  }
   
   .glass-card {
     background: rgba(255, 255, 255, 0.85);
@@ -139,5 +158,35 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* ── 모바일 전용 표시 (순수 CSS - Tailwind 의존 없음) ── */
+.mobile-only {
+  display: flex !important;
+}
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+/* ── 모바일 전용 (block) ── */
+.mobile-only-block {
+  display: block !important;
+}
+@media (min-width: 768px) {
+  .mobile-only-block {
+    display: none !important;
+  }
+}
+
+/* ── 데스크톱 전용 표시 ── */
+.desktop-only {
+  display: none !important;
+}
+@media (min-width: 768px) {
+  .desktop-only {
+    display: flex !important;
   }
 }

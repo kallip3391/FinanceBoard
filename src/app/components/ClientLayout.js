@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import TopNav from "./TopNav";
+import MobileBottomNav from "./mobile/MobileBottomNav";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AssetProvider } from "@/contexts/AssetContext";
 
@@ -11,68 +12,62 @@ export default function ClientLayout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const pathname = usePathname();
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen((prev) => !prev);
-  };
-
-  const closeSidebar = () => {
-    setIsSidebarOpen(false);
-  };
+  const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
+  const closeSidebar = () => setIsSidebarOpen(false);
 
   // 5대 핵심 화면에서 ESC 키로 사이드바 토글
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        // 지정된 5개 화면에서만 작동
+      if (e.key === "Escape") {
         const authorizedPaths = [
-          '/holdings',
-          '/transactions/trading',
-          '/transactions/overseas',
-          '/transactions/dividends',
-          '/dividends'
+          "/holdings",
+          "/transactions/trading",
+          "/transactions/overseas",
+          "/transactions/dividends",
+          "/dividends",
         ];
-
         if (!authorizedPaths.includes(pathname)) return;
-
-        // 모달이 열려있는지 확인 (z-index 50 이상인 요소가 사이드바 외에 있는지 체크)
-        // 우리 서비스의 모든 모달은 z-50 또는 z-[100] 이상을 사용함
-        const fixedElements = document.querySelectorAll('.fixed.inset-0');
-        const hasOpenModal = Array.from(fixedElements).some(el => {
+        const fixedElements = document.querySelectorAll(".fixed.inset-0");
+        const hasOpenModal = Array.from(fixedElements).some((el) => {
           const zIndex = window.getComputedStyle(el).zIndex;
-          // 사이드바의 z-index는 50이므로, 50 이상이면서 사이드바나 사이드바 배경(z-40)이 아닌 요소가 있는지 확인
-          // 실제 모달들은 z-50 (overseas, dividends) 또는 z-[100] 이상을 사용
-          // el.closest('.z-50') 등을 통해 사이드바인지 판별 가능하지만, 간단히 z-index 숫자로 판별
-          return zIndex && parseInt(zIndex) >= 50 && !el.closest('.translate-x-0, .-translate-x-full');
+          return (
+            zIndex &&
+            parseInt(zIndex) >= 50 &&
+            !el.closest(".translate-x-0, .-translate-x-full")
+          );
         });
-
-        if (!hasOpenModal) {
-          setIsSidebarOpen(prev => !prev);
-        }
+        if (!hasOpenModal) setIsSidebarOpen((prev) => !prev);
       }
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [pathname]);
 
   return (
     <AuthProvider>
       <AssetProvider>
         <div className="flex bg-slate-50 min-h-screen text-slate-800 font-sans">
-          {/* Sidebar Component */}
+          {/* Sidebar (드로어 - 모바일/데스크톱 공통) */}
           <Sidebar isOpen={isSidebarOpen} onClose={closeSidebar} />
 
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col items-center">
+          <div className="flex-1 flex flex-col items-center min-w-0">
             {/* Top Navigation */}
             <TopNav onMenuClick={toggleSidebar} />
 
-            {/* Page Content */}
-            <main className="w-full max-w-[1400px] p-6 mt-4">
-              <div className="glass-panel rounded-xl p-8 min-h-[970px]">
+            {/*
+              md-panel 클래스 (globals.css에 정의):
+                - 모바일 (<768px): 배경 없음, pb-16 (하단탭 공간)
+                - 데스크톱 (≥768px): glass-panel 스타일, p-8, min-h-[970px]
+            */}
+            <main className="w-full md:max-w-[1400px] md:p-6 md:mt-4">
+              <div className="md-panel">
                 {children}
               </div>
             </main>
+
+            {/* 하단 탭 네비게이션 (모바일 전용 - MobileBottomNav 내부에서 md:hidden 처리) */}
+            <MobileBottomNav />
           </div>
         </div>
       </AssetProvider>

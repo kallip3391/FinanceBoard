@@ -35,76 +35,76 @@ export default function TopNav({ onMenuClick }) {
 
   return (
     <header className="w-full bg-white shadow-sm border-b border-slate-100 sticky top-0 z-30">
-      <div className="flex items-center justify-between px-4 py-3 h-16 w-full max-w-[1600px] mx-auto">
-        <div className="flex items-center gap-4 shrink-0 overflow-visible">
-          <button onClick={onMenuClick} className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors shrink-0">
-            <Menu size={24} />
+      <div className="flex items-center justify-between px-3 md:px-4 py-3 h-14 md:h-16 w-full max-w-[1600px] mx-auto">
+        {/* 좌측: 햄버거 + 로고(데스크톱만) */}
+        <div className="flex items-center gap-1 md:gap-4 shrink-0">
+          <button onClick={onMenuClick} className="p-2 -ml-1 md:-ml-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors shrink-0">
+            <Menu size={22} />
           </button>
           
-          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full font-bold border border-emerald-100/50 shrink-0">
-            <TrendingUp size={18} />
-            <span className="whitespace-nowrap">FINANCE BOARD</span>
+          <div className="desktop-only items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full font-bold border border-emerald-100/50 shrink-0">
+            <TrendingUp size={16} />
+            <span className="whitespace-nowrap text-sm">FINANCE BOARD</span>
           </div>
 
-          <div className="h-6 w-px bg-slate-200 mx-2 shrink-0"></div>
-
-          {/* Auth Section (Back to Left Side) */}
-          <div className="flex items-center gap-3 shrink-0">
-            {!loading ? (
-              user ? (
-                <div className="flex items-center gap-3">
-                  {profile?.is_admin && (
-                    <button 
-                      onClick={() => setIsAdminModalOpen(true)}
-                      className="flex items-center gap-2 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg border border-amber-200/50 hover:bg-amber-100 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap"
-                    >
-                      <Settings size={16} />
-                      <span className="text-sm font-bold">승인 설정</span>
-                    </button>
-                  )}
-                  <div className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm leading-none min-w-[120px] justify-center shrink-0">
-                    <div className="w-5 h-5 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center shrink-0">
-                      <User size={12} />
-                    </div>
-                    <span className="text-sm font-bold whitespace-nowrap">{getDisplayName(user)}</span>
-                  </div>
-                  <button onClick={signOut} className="flex items-center gap-2 bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-200 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap">
-                    <LogOut size={16} />
-                    <span className="text-sm font-bold">로그아웃</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <button onClick={signInWithGoogle} className="flex items-center gap-2 bg-brand text-white px-5 py-2 rounded-lg hover:bg-brand-dark transition-all shadow-md shadow-brand/20 cursor-pointer active:scale-95 min-w-[100px] justify-center shrink-0 whitespace-nowrap">
-                    <User size={16} />
-                    <span className="text-sm font-bold">로그인</span>
-                  </button>
-                  <button 
-                    onClick={() => setIsRegModalOpen(true)}
-                    className="flex items-center gap-2 bg-indigo-500 text-white px-5 py-2 rounded-lg hover:bg-indigo-600 transition-all font-bold shadow-md shadow-indigo-100 cursor-pointer active:scale-95 min-w-[120px] justify-center shrink-0 whitespace-nowrap"
-                  >
-                    <UserPlus size={16} />
-                    <span className="text-sm">등록 신청</span>
-                  </button>
-                  {profileError && (
-                    <div className="px-3 py-1.5 rounded-lg border text-xs font-bold animate-shake bg-red-50 text-red-600 border-red-100 shrink-0">
-                      {profileError}
-                    </div>
-                  )}
-                </div>
-              )
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="w-[100px] h-9 bg-slate-200 animate-pulse rounded-lg"></div>
-                <div className="w-[120px] h-9 bg-slate-200/60 animate-pulse rounded-lg"></div>
-              </div>
-            )}
-          </div>
+          <div className="h-5 w-px bg-slate-200 mx-1 shrink-0 desktop-only"></div>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
-          {/* Asset Summary Area (Right) */}
-          <div className="flex items-center gap-3 text-sm font-medium shrink-0">
+        {/* 우측: 인증 버튼 + 자산요약(데스크톱만) */}
+        <div className="flex items-center gap-1 md:gap-3 shrink-0">
+          {/* Auth Section */}
+          {!loading ? (
+            user ? (
+              <div className="flex items-center gap-1 md:gap-3">
+                {profile?.is_admin && (
+                  <button 
+                    onClick={() => setIsAdminModalOpen(true)}
+                    className="flex items-center gap-1 md:gap-2 bg-amber-50 text-amber-600 px-2 md:px-3 py-1.5 rounded-lg border border-amber-200/50 hover:bg-amber-100 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap"
+                  >
+                    <Settings size={14} />
+                    <span className="text-xs md:text-sm font-bold">승인 설정</span>
+                  </button>
+                )}
+                <div className="flex items-center gap-1 md:gap-2 bg-slate-100 text-slate-700 px-2 md:px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm leading-none min-w-0 justify-center shrink-0">
+                  <div className="w-4 h-4 md:w-5 md:h-5 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center shrink-0">
+                    <User size={10} />
+                  </div>
+                  <span className="text-xs md:text-sm font-bold whitespace-nowrap">{getDisplayName(user)}</span>
+                </div>
+                <button onClick={signOut} className="flex items-center gap-1 md:gap-2 bg-red-50 text-red-600 px-2 md:px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-200 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 whitespace-nowrap">
+                  <LogOut size={14} />
+                  <span className="text-xs md:text-sm font-bold">로그아웃</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 md:gap-3">
+                <button onClick={signInWithGoogle} className="flex items-center gap-1 md:gap-2 bg-brand text-white px-3 md:px-5 py-2 rounded-lg hover:bg-brand-dark transition-all shadow-md shadow-brand/20 cursor-pointer active:scale-95 justify-center shrink-0 whitespace-nowrap">
+                  <User size={14} />
+                  <span className="text-xs md:text-sm font-bold">로그인</span>
+                </button>
+                <button 
+                  onClick={() => setIsRegModalOpen(true)}
+                  className="flex items-center gap-1 md:gap-2 bg-indigo-500 text-white px-3 md:px-5 py-2 rounded-lg hover:bg-indigo-600 transition-all font-bold shadow-md shadow-indigo-100 cursor-pointer active:scale-95 justify-center shrink-0 whitespace-nowrap"
+                >
+                  <UserPlus size={14} />
+                  <span className="text-xs md:text-sm">등록 신청</span>
+                </button>
+                {profileError && (
+                  <div className="px-2 py-1.5 rounded-lg border text-xs font-bold animate-shake bg-red-50 text-red-600 border-red-100 shrink-0">
+                    {profileError}
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
+            <div className="flex items-center gap-1 md:gap-3">
+              <div className="w-[80px] md:w-[100px] h-9 bg-slate-200 animate-pulse rounded-lg"></div>
+              <div className="w-[80px] md:w-[120px] h-9 bg-slate-200/60 animate-pulse rounded-lg"></div>
+            </div>
+          )}
+
+          {/* 자산 요약 (데스크톱 전용) */}
+          <div className="desktop-only items-center gap-3 text-sm font-medium shrink-0">
             {user && (
               <>
                 <div className="hidden lg:flex items-center gap-2 text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm shrink-0">

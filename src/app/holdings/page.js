@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { LayoutDashboard, List, Globe, LayoutList, PieChart as PieChartIcon } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
+import MobileDashboard from "@/app/components/mobile/MobileDashboard";
 import {
   AreaChart,
   Area,
@@ -55,7 +56,9 @@ export default function HoldingsPage() {
     const saved = localStorage.getItem('stockViewMode');
     if (saved) setStockViewMode(saved);
     
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -483,7 +486,15 @@ export default function HoldingsPage() {
   if (!isClient) return null;
 
   return (
-    <div className="animate-fade-in flex flex-col gap-10 w-full min-w-0">
+    <>
+      {/* ── 모바일 화면 (768px 미만) ── */}
+      <div className="mobile-only-block">
+        <MobileDashboard />
+      </div>
+
+      {/* ── 데스크톱 화면 (768px 이상) ── */}
+      <div className="desktop-only flex-col gap-10 w-full min-w-0 animate-fade-in">
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -882,6 +893,9 @@ export default function HoldingsPage() {
           )}
         </div>
       </div>
-    </div>
+
+      {/* 데스크톱 섹션 닫기 */}
+      </div>
+    </>
   );
 }
