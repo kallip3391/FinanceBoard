@@ -324,12 +324,12 @@ export default function MobileDashboard() {
                     return (
                       <div
                         key={`${currentPage}-${h.code || idx}`}
-                        className={`flex items-stretch opacity-0 animate-row-fade stagger-${idx + 1}`}
+                        className={`flex items-stretch min-h-[50px] opacity-0 animate-row-fade stagger-${idx + 1}`}
                         style={{ width: "100%" }}
                       >
                         {/* 종목명 (좌측 정렬, 세로선 없음) */}
-                        <div style={{ width: 86, flexShrink: 0 }} className="pl-2.5 pr-1 py-1 bg-slate-50/40 flex flex-col items-start justify-center text-left">
-                          <span className="text-[10px] font-bold text-slate-800 leading-[13px] line-clamp-2 break-all h-[26px] block">
+                        <div style={{ width: 86, flexShrink: 0 }} className="pl-2.5 pr-1 py-1.5 bg-slate-50/40 flex flex-col items-start justify-center text-left">
+                          <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 break-all">
                             {h.name}
                           </span>
                           <span className="text-[8px] text-slate-400 font-mono mt-0.5 truncate leading-tight">

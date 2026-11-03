@@ -245,7 +245,7 @@ export default function MobileTransactionList({
                       <div
                         key={tx.id || idx}
                         onClick={() => onEdit && onEdit(tx)}
-                        className={`flex items-stretch opacity-0 animate-row-fade stagger-${idx + 1} hover:bg-slate-50/80 active:bg-slate-100 transition-colors cursor-pointer`}
+                        className={`flex items-stretch min-h-[50px] opacity-0 animate-row-fade stagger-${idx + 1} hover:bg-slate-50/80 active:bg-slate-100 transition-colors cursor-pointer`}
                         style={{ width: "100%" }}
                       >
                         {/* 종목명 (좌측 92px, 3번: 계좌 숨김) */}
@@ -254,7 +254,7 @@ export default function MobileTransactionList({
                             <div className={`w-[2px] h-7 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || (type === 'overseas' ? 'USD' : 'KRW')).accent}`} />
                           )}
                           <div className="flex flex-col justify-center min-w-0">
-                            <span className="text-[10px] font-bold text-slate-800 leading-[13px] line-clamp-2 break-all h-[26px] block">
+                            <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 break-all">
                               {stockName}
                             </span>
                             <span className="text-[8px] text-slate-400 font-mono mt-0.5 truncate leading-tight">
