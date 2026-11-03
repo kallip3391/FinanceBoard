@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
-import { LayoutDashboard, ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { MOCK_HOLDINGS, MOCK_SUMMARY } from "@/lib/mockHoldings";
 
 /* ───────── 상수 / 유틸 (웹버전과 100% 동일한 로직) ───────── */
 const PIE_COLORS = [
@@ -50,45 +51,6 @@ function PieTooltip({ active, payload, total }) {
     </div>
   );
 }
-
-/* ───────── 로컬 개발/테스트용 임시 데이터 (2종목) ───────── */
-const MOCK_HOLDINGS = [
-  {
-    name: "테슬라",
-    code: "TSLA",
-    currency: "USD",
-    purchasePrice: 200,
-    currentPrice: 240,
-    totalQuantity: 20,
-    evaluationAmountKRW: 6480000,
-    profitAmountKRW: 1080000,
-    returnRate: "20.00",
-    dividend: 0,
-    totalCostKRW: 5400000,
-    totalReturnRate: "20.00",
-  },
-  {
-    name: "구글",
-    code: "GOOG",
-    currency: "USD",
-    purchasePrice: 150,
-    currentPrice: 175,
-    totalQuantity: 30,
-    evaluationAmountKRW: 7087500,
-    profitAmountKRW: 1012500,
-    returnRate: "16.67",
-    dividend: 150000,
-    totalCostKRW: 6075000,
-    totalReturnRate: "19.14",
-  },
-];
-
-const MOCK_SUMMARY = {
-  totalEvaluation: 13567500,
-  totalProfit: 2092500,
-  avgProfitRate: 18.24,
-  isLoading: false,
-};
 
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
@@ -148,7 +110,7 @@ export default function MobileDashboard() {
         {isMock && (
           <div className="bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] text-amber-800 font-medium">
             <span>💡 로컬 테스트 임시 데이터 표시 중</span>
-            <span className="font-bold text-amber-700">2종목 (테슬라, 구글)</span>
+            <span className="font-bold text-amber-700">30종목 (국내 15 · 해외 15)</span>
           </div>
         )}
 
@@ -438,16 +400,13 @@ export default function MobileDashboard() {
                           ) : (
                             <>
                               {/* 2열 (배당·총손익 탭): 배당금 */}
-                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
+                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex items-center justify-end">
                                 <span
                                   className={`text-[11px] font-bold tabular-nums leading-tight block ${
                                     (h.dividend || 0) > 0 ? "text-emerald-600" : "text-slate-400"
                                   }`}
                                 >
                                   {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}` : "0"}
-                                </span>
-                                <span className="text-[9.5px] font-medium text-slate-400 tabular-nums leading-tight block mt-0.5">
-                                  원
                                 </span>
                               </div>
 

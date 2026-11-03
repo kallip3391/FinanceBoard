@@ -5,6 +5,8 @@ import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRigh
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
+import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
+import { MOCK_DOMESTIC_TRANSACTIONS } from "@/lib/mockTransactions";
 
 
 
@@ -733,11 +735,11 @@ export default function TransactionsPage() {
       stock: tx.security?.name || tx.stock_name || tx.stock || '',
       stockCode: tx.security?.code || tx.stock_code || tx.stockCode || '',
       security_id: tx.security_id || '',
-      type: tx.trade_type === TRADE_TYPES.BUY ? '매수' : '매도',
-      quantity: typeof tx.quantity === 'number' ? tx.quantity.toLocaleString('ko-KR') : tx.quantity.toString(),
-      price: typeof tx.price === 'number' ? tx.price.toLocaleString('ko-KR') : tx.price.toString(),
-      amount: typeof tx.amount === 'number' ? tx.amount.toLocaleString('ko-KR') : tx.amount.toString(),
-      currency: tx.currency || 'USD',
+      type: tx.trade_type === TRADE_TYPES.BUY || tx.trade_type === 'BUY' || tx.type === '매수' ? '매수' : '매도',
+      quantity: typeof tx.quantity === 'number' ? tx.quantity.toLocaleString('ko-KR') : (tx.quantity?.toString() || ''),
+      price: typeof tx.price === 'number' ? tx.price.toLocaleString('ko-KR') : (tx.price?.toString() || ''),
+      amount: typeof tx.amount === 'number' ? tx.amount.toLocaleString('ko-KR') : (tx.amount?.toString() || ''),
+      currency: tx.currency || 'KRW',
       exchangeRate: tx.exchange_rate ? tx.exchange_rate.toString() : '',
       totalKRW: tx.exchange_total_rate ? tx.exchange_total_rate.toLocaleString('ko-KR') : '',
       exchange_code: tx.security?.exchange_code || ''
@@ -834,7 +836,11 @@ export default function TransactionsPage() {
 
   // 필터링된 거래 내역 (메모이제이션)
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(tx => {
+    const sourceList = (transactions && transactions.length > 0)
+      ? transactions
+      : MOCK_DOMESTIC_TRANSACTIONS;
+
+    return sourceList.filter(tx => {
       // 1. 거래구분 필터 (매수/매도)
       if (activeFilters.type !== '전체') {
         const typeStr = (tx.trade_type === TRADE_TYPES.BUY || tx.type === '매수') ? '매수' : '매도';
@@ -879,8 +885,62 @@ export default function TransactionsPage() {
 
   return (
     <div className="animate-fade-in text-slate-900">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      {/* Mobile Transaction View */}
+      <div className="mobile-only-block w-full">
+        <MobileTransactionList
+          type="trading"
+          transactions={filteredTransactions}
+          paginatedTransactions={paginatedTransactions}
+          loading={loading}
+          user={user}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+          onOpenFilter={() => {
+            if (!activeFilters.dateFrom && !activeFilters.dateTo) {
+              const todayStr = new Date().toLocaleDateString('en-CA');
+              const oneMonthAgo = new Date();
+              oneMonthAgo.setMonth(new Date().getMonth() - 1);
+              setTempFilters({
+                ...activeFilters,
+                dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
+                dateTo: todayStr
+              });
+            } else {
+              setTempFilters({ ...activeFilters, dateTo: new Date().toLocaleDateString('en-CA') });
+            }
+            setIsFilterModalOpen(true);
+          }}
+          onOpenRegister={() => toggleModal()}
+          isFilterActive={isFilterActive}
+          onResetFilter={() => {
+            const initial = {
+              dateFrom: '',
+              dateTo: '',
+              type: '전체',
+              stockName: '',
+              stockCode: '',
+              security_id: ''
+            };
+            setActiveFilters(initial);
+            setTempFilters(initial);
+            setStockSearchResults([]);
+            setIsFilterStockDropdownOpen(false);
+            setCurrentPage(1);
+            showAlert("필터초기화", "설정된 필터가 초기화 되었습니다.", "success");
+          }}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          accountNameById={accountNameById}
+          formatCurrency={formatCurrency}
+          getCurrencyStyle={getCurrencyStyle}
+        />
+      </div>
+
+      {/* Desktop Transaction View */}
+      <div className="desktop-only flex-col w-full">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100/50 shadow-sm">
             <ArrowLeftRight size={20} strokeWidth={2.5} />
@@ -1121,21 +1181,22 @@ export default function TransactionsPage() {
           </button>
         </div>
       )}
+      </div>
 
       {/* Add Transaction Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={toggleModal}></div>
 
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
               <h3 className="text-xl font-bold text-slate-800">{editingId ? '수정' : '등록'}</h3>
               <button onClick={toggleModal} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-2 gap-4 overflow-y-auto">
               <div className="col-span-2">
                 <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">거래일</label>
                 <div className="flex items-center gap-2 w-full">

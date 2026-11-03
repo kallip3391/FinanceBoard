@@ -6,6 +6,8 @@ import { Edit2, Trash2, Filter, RotateCcw, Plus, X, Calendar, ChevronLeft, Chevr
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES, CURRENCIES } from "@/lib/transactionManager";
+import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
+import { MOCK_DIVIDEND_TRANSACTIONS } from "@/lib/mockTransactions";
 
 
 
@@ -124,6 +126,12 @@ export default function TransactionsPage() {
       case 'GBP': return { accent: 'bg-violet-500' };
       default: return { accent: 'bg-slate-400' };
     }
+  };
+  
+  const formatCurrency = (val, cur='KRW') => {
+    if (val === undefined || val === null) return '0';
+    if (cur === 'KRW') return new Intl.NumberFormat('ko-KR').format(Math.round(val));
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
   };
   const [isSectorDropdownOpen, setIsSectorDropdownOpen] = useState(false);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
@@ -899,7 +907,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const filteredTransactions = transactions.filter(tx => {
+  const filteredTransactions = (transactions && transactions.length > 0 ? transactions : MOCK_DIVIDEND_TRANSACTIONS).filter(tx => {
     // 1. 통화 필터
     if (activeFilters.type !== '전체') {
       const typeStr = tx.currency || 'KRW';
@@ -941,7 +949,59 @@ export default function TransactionsPage() {
 
   return (
     <div className="animate-fade-in text-slate-900">
-      {/* Header Section */}
+      {/* Mobile Transaction View */}
+      <div className="mobile-only-block w-full">
+        <MobileTransactionList
+          type="dividends"
+          transactions={filteredTransactions}
+          paginatedTransactions={paginatedTransactions}
+          loading={loading}
+          user={user}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+          onOpenFilter={() => {
+            if (!activeFilters.dateFrom && !activeFilters.dateTo) {
+              const todayStr = new Date().toLocaleDateString('en-CA');
+              const oneMonthAgo = new Date();
+              oneMonthAgo.setMonth(new Date().getMonth() - 1);
+              setTempFilters({
+                ...activeFilters,
+                dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
+                dateTo: todayStr
+              });
+            } else {
+              setTempFilters({ ...activeFilters });
+            }
+            setIsFilterModalOpen(true);
+          }}
+          onOpenRegister={() => toggleModal()}
+          isFilterActive={isFilterActive}
+          onResetFilter={() => {
+            const initial = {
+              dateFrom: '',
+              dateTo: '',
+              type: '전체',
+              stockName: '',
+              stockCode: '',
+              security_id: ''
+            };
+            setActiveFilters(initial);
+            setTempFilters(initial);
+            setCurrentPage(1);
+            showAlert('필터 초기화', '모든 필터 조건이 초기화되었습니다.', 'success');
+          }}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          accountNameById={accountNameById}
+          formatCurrency={formatCurrency}
+          getCurrencyStyle={getCurrencyStyle}
+        />
+      </div>
+
+      {/* Desktop Transaction View */}
+      <div className="desktop-only flex-col w-full">
+        {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl border border-amber-100/50 shadow-sm">
@@ -1180,13 +1240,14 @@ export default function TransactionsPage() {
           </button>
         </div>
       )}
+      </div>
 
       {/* Add Transaction Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 1000 }}>
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={toggleModal}></div>
 
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up">
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-bold text-slate-800">{editingId ? '수정' : '등록'}</h3>
               <button onClick={toggleModal} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
@@ -1194,7 +1255,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-2 gap-4 overflow-y-auto">
               <div className="col-span-2">
                 <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">배당일</label>
                 <div className="flex items-center gap-2 w-full">

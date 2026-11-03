@@ -6,6 +6,7 @@ import { useAssets } from "@/contexts/AssetContext";
 import { LayoutDashboard, List, Globe, LayoutList, PieChart as PieChartIcon } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import MobileDashboard from "@/app/components/mobile/MobileDashboard";
+import { MOCK_HOLDINGS, MOCK_SUMMARY } from "@/lib/mockHoldings";
 import {
   AreaChart,
   Area,
@@ -24,7 +25,22 @@ import {
 
 export default function HoldingsPage() {
   const { user } = useAuth();
-  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
+  const { holdings: realHoldings, holdingsByAccount: realHoldingsByAccount, summary: realSummary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
+
+  // 실제 데이터가 없거나 로컬 개발 시 mock 데이터 적용
+  const isMock = !realHoldings || realHoldings.length === 0;
+  const holdings = isMock ? MOCK_HOLDINGS : realHoldings;
+  const summary = (realSummary && realSummary.totalEvaluation > 0) ? realSummary : (isMock ? MOCK_SUMMARY : realSummary);
+
+  const mockHoldingsByAccount = useMemo(() => {
+    return MOCK_HOLDINGS.reduce((acc, h) => {
+      const accName = h.account || '일반계좌';
+      if (!acc[accName]) acc[accName] = [];
+      acc[accName].push(h);
+      return acc;
+    }, {});
+  }, []);
+  const holdingsByAccount = isMock ? mockHoldingsByAccount : realHoldingsByAccount;
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [stockViewMode, setStockViewMode] = useState("card");
@@ -767,9 +783,9 @@ export default function HoldingsPage() {
                         <div className={`text-[15px] font-black tabular-nums ${summary.totalProfit > 0 ? "text-red-500" : "text-blue-500"}`}>({formatCurrency(summary.totalProfit, 'KRW')})</div>
                       </div>
                     </div>
-                    <div><div className="text-sm text-slate-500 mb-1">수익률</div><div className={`text-xl font-black ${summary.avgProfitRate > 0 ? "text-red-600" : "text-blue-600"}`}>{summary.avgProfitRate.toFixed(2)}%</div></div>
-                    <div><div className="text-sm text-slate-500 mb-1">배당금</div><div className="text-xl font-black text-emerald-600">{formatCurrency(summary.totalDividend, 'KRW')}</div></div>
-                    <div><div className="text-sm text-slate-500 mb-1">총 수익률</div><div className={`text-xl font-black ${summary.avgTotalReturn > 0 ? "text-red-600" : "text-blue-600"}`}>{summary.avgTotalReturn.toFixed(2)}%</div></div>
+                    <div><div className="text-sm text-slate-500 mb-1">수익률</div><div className={`text-xl font-black ${(summary?.avgProfitRate || 0) > 0 ? "text-red-600" : "text-blue-600"}`}>{(summary?.avgProfitRate ?? 0).toFixed(2)}%</div></div>
+                    <div><div className="text-sm text-slate-500 mb-1">배당금</div><div className="text-xl font-black text-emerald-600">{formatCurrency(summary?.totalDividend ?? 0, 'KRW')}</div></div>
+                    <div><div className="text-sm text-slate-500 mb-1">총 수익률</div><div className={`text-xl font-black ${(summary?.avgTotalReturn || 0) > 0 ? "text-red-600" : "text-blue-600"}`}>{(summary?.avgTotalReturn ?? 0).toFixed(2)}%</div></div>
                   </div>
                 </div>
               )}
@@ -819,7 +835,7 @@ export default function HoldingsPage() {
               <table className="w-full border-collapse">
                 <thead><tr className="bg-slate-50/50 border-b border-slate-200"><th className="px-4 py-4 text-center text-sm font-semibold text-slate-500 w-[300px]">종목명</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수량</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">매수가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">현재가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액&nbsp;&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액(원)&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수익률&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">배당금&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">총수익률&nbsp;</th></tr></thead>
                 <tbody key={`stock-list-${currentStockPage}`} className="divide-y divide-slate-50">
-                  {user && holdings.length > 0 && <tr className="bg-brand/5 border-b-2 border-brand/10 font-bold"><td colSpan="5" className="px-4 py-3 text-center text-sm text-brand">합계</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-[15px] font-bold tabular-nums text-slate-900">{formatCurrency(summary.totalEvaluation, 'KRW')}</span><span className={`text-[12px] mt-0.5 tabular-nums font-bold ${summary.totalProfit > 0 ? "text-red-500" : (summary.totalProfit < 0 ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(summary.totalProfit, 'KRW')})</span></div></td><td className={`px-3 py-3 text-right text-sm ${summary.avgProfitRate > 0 ? "text-red-600" : (summary.avgProfitRate < 0 ? "text-blue-600" : "text-slate-400")}`}>{summary.avgProfitRate.toFixed(2)}%</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700">{formatCurrency(summary.totalDividend, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm ${summary.avgTotalReturn > 0 ? "text-red-600" : (summary.avgTotalReturn < 0 ? "text-blue-600" : "text-slate-400")}`}>{summary.avgTotalReturn.toFixed(2)}%</td></tr>}
+                  {user && holdings.length > 0 && <tr className="bg-brand/5 border-b-2 border-brand/10 font-bold"><td colSpan="5" className="px-4 py-3 text-center text-sm text-brand">합계</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-[15px] font-bold tabular-nums text-slate-900">{formatCurrency(summary?.totalEvaluation ?? 0, 'KRW')}</span><span className={`text-[12px] mt-0.5 tabular-nums font-bold ${(summary?.totalProfit || 0) > 0 ? "text-red-500" : (((summary?.totalProfit || 0) < 0) ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(summary?.totalProfit ?? 0, 'KRW')})</span></div></td><td className={`px-3 py-3 text-right text-sm ${(summary?.avgProfitRate || 0) > 0 ? "text-red-600" : (((summary?.avgProfitRate || 0) < 0) ? "text-blue-600" : "text-slate-400")}`}>{(summary?.avgProfitRate ?? 0).toFixed(2)}%</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700">{formatCurrency(summary?.totalDividend ?? 0, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm ${(summary?.avgTotalReturn || 0) > 0 ? "text-red-600" : (((summary?.avgTotalReturn || 0) < 0) ? "text-blue-600" : "text-slate-400")}`}>{(summary?.avgTotalReturn ?? 0).toFixed(2)}%</td></tr>}
                   {holdings.slice((currentStockPage - 1) * LIST_PER_PAGE, currentStockPage * LIST_PER_PAGE).map((h, i) => (
                     <tr key={i} className={`hover:bg-slate-50/80 transition-colors opacity-0 animate-row-fade stagger-${i + 1}`}><td className="px-4 py-3"><div className="flex items-center gap-2"><div className={`w-[2px] h-8 rounded-full ${getCurrencyStyle(h.currency).accent}`}></div><div className="flex flex-col"><span className="text-sm text-slate-900 font-semibold">{h.name}</span><span className="text-[12px] text-slate-400 font-mono">{h.code}</span></div></div></td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{formatCurrency(h.totalQuantity, 'QTY')}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.currentPrice || h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{(h.totalQuantity * (h.currentPrice || h.purchasePrice)) > 0 ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.totalQuantity * (h.currentPrice || h.purchasePrice), h.currency)}` : '-'}</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-sm font-bold tabular-nums text-slate-900">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</span>{h.evaluationAmountKRW > 0 && <span className={`text-[11px] tabular-nums font-bold ${h.profitAmountKRW > 0 ? "text-red-500" : (h.profitAmountKRW < 0 ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(h.profitAmountKRW, 'KRW')})</span>}</div></td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.returnRate) > 0 ? "text-red-600" : (parseFloat(h.returnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.returnRate) === 0 ? "0.00%" : `${h.returnRate}%`}</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(h.dividend, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.totalReturnRate) > 0 ? "text-red-600" : (parseFloat(h.totalReturnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.totalReturnRate) === 0 ? "0.00%" : `${h.totalReturnRate}%`}</td></tr>
                   ))}
