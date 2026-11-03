@@ -1112,16 +1112,16 @@ export default function TransactionsPage() {
               </tr>
             ) : (
               paginatedTransactions.map((tx, i) => (
-                <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${i + 1}`}>
+                <tr key={tx.id} className={`h-[72px] hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${i + 1}`}>
                   <td className="px-6 py-4 text-sm text-slate-500 text-center">{formatDisplayDate(tx.date)}</td>
                   <td className="px-6 py-4 text-sm text-slate-700 font-medium text-center">
                     {accountNameById[tx.account_id] || tx.account || ''}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-[2px] h-8 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || 'KRW').accent}`}></div>
-                      <div className="flex flex-col max-w-[240px]">
-                        <span className="text-sm text-slate-900 font-semibold leading-snug break-words">{tx.security?.name || tx.stock_name || tx.stock || '-'}</span>
+                      <div className={`w-[2px] h-9 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || 'KRW').accent}`}></div>
+                      <div className="flex flex-col max-w-[280px]">
+                        <span className="text-sm text-slate-900 font-semibold leading-snug line-clamp-2 break-all">{tx.security?.name || tx.stock_name || tx.stock || '-'}</span>
                         <span className="text-[12px] text-slate-400 font-mono mt-0.5">{tx.security?.code || tx.stock_code || tx.stockCode || ''}</span>
                       </div>
                     </div>
@@ -1164,8 +1164,8 @@ export default function TransactionsPage() {
               )).concat(
                 paginatedTransactions.length > 0 && paginatedTransactions.length < ITEMS_PER_PAGE ?
                   [...Array(ITEMS_PER_PAGE - paginatedTransactions.length)].map((_, i) => (
-                    <tr key={`empty-${i}`} className={`opacity-0 animate-row-fade stagger-${paginatedTransactions.length + i + 1}`}>
-                      <td colSpan="7" className="px-6 py-[27px]">&nbsp;</td>
+                    <tr key={`empty-${i}`} className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedTransactions.length + i + 1}`}>
+                      <td colSpan="7" className="px-6 py-4">&nbsp;</td>
                     </tr>
                   )) : []
               )
