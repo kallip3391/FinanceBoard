@@ -1113,25 +1113,25 @@ export default function TransactionsPage() {
             ) : (
               paginatedTransactions.map((tx, i) => (
                 <tr key={tx.id} className={`h-[72px] hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${i + 1}`}>
-                  <td className="px-6 py-4 text-sm text-slate-500 text-center">{formatDisplayDate(tx.date)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-700 font-medium text-center">
+                  <td className="px-6 py-2 text-sm text-slate-500 text-center">{formatDisplayDate(tx.date)}</td>
+                  <td className="px-6 py-2 text-sm text-slate-700 font-medium text-center">
                     {accountNameById[tx.account_id] || tx.account || ''}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+                  <td className="px-6 py-2">
+                    <div className="flex items-center gap-3 min-h-[52px]">
                       <div className={`w-[2px] h-9 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || 'KRW').accent}`}></div>
-                      <div className="flex flex-col max-w-[280px]">
-                        <span className="text-sm text-slate-900 font-semibold leading-snug line-clamp-2 break-all">{tx.security?.name || tx.stock_name || tx.stock || '-'}</span>
+                      <div className="flex flex-col justify-center max-w-[280px]">
+                        <span className="text-sm text-slate-900 font-semibold leading-tight line-clamp-2 break-all">{tx.security?.name || tx.stock_name || tx.stock || '-'}</span>
                         <span className="text-[12px] text-slate-400 font-mono mt-0.5">{tx.security?.code || tx.stock_code || tx.stockCode || ''}</span>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-6 py-2 text-center">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getCurrencyBadgeStyles(tx.currency || 'KRW')}`}>
                       {tx.currency || 'KRW'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium text-slate-600 text-right">
+                  <td className="px-6 py-2 text-sm font-medium text-slate-600 text-right">
                     {typeof tx.dividend_amount === 'number' ?
                       (tx.currency === 'KRW' ?
                         '' :
@@ -1139,10 +1139,10 @@ export default function TransactionsPage() {
                       tx.dividend_amount
                     }&nbsp;&nbsp;&nbsp;
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-900 text-right">
+                  <td className="px-6 py-2 text-sm font-bold text-slate-900 text-right">
                     {typeof tx.total_dividend === 'number' ? tx.total_dividend.toLocaleString('ko-KR') : tx.total_dividend}&nbsp;&nbsp;&nbsp;
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-6 py-2 text-center">
                     <div className="flex items-center justify-center gap-2 transition-all">
                       <button
                         onClick={() => handleEdit(tx)}
@@ -1165,7 +1165,7 @@ export default function TransactionsPage() {
                 paginatedTransactions.length > 0 && paginatedTransactions.length < ITEMS_PER_PAGE ?
                   [...Array(ITEMS_PER_PAGE - paginatedTransactions.length)].map((_, i) => (
                     <tr key={`empty-${i}`} className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedTransactions.length + i + 1}`}>
-                      <td colSpan="7" className="px-6 py-4">&nbsp;</td>
+                      <td colSpan="7" className="px-6 py-2"><div className="min-h-[52px]">&nbsp;</div></td>
                     </tr>
                   )) : []
               )
