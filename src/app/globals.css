@@ -161,31 +161,30 @@
   }
 }
 
-/* ── 모바일 전용 표시 (순수 CSS - Tailwind 의존 없음) ── */
+/* ── 모바일 / 데스크톱 분기 미디어 쿼리 ──
+   기본값: 모바일 화면 (세로모드 스마트폰 및 가로모드 스마트폰)
+   데스크톱 전환 조건:
+   1) 가로 768px 이상이면서 세로 501px 이상 (일반 PC, 노트북, 태블릿)
+   2) 가로 768px 이상이면서 마우스(fine 포인터)를 사용하는 PC 환경
+   ※ 스마트폰 가로모드(가로 800~930px, 세로 500px 이하, 터치)는 모바일 화면 유지!
+*/
 .mobile-only {
   display: flex !important;
 }
-@media (min-width: 768px) {
-  .mobile-only {
-    display: none !important;
-  }
-}
-
-/* ── 모바일 전용 (block) ── */
 .mobile-only-block {
   display: block !important;
 }
-@media (min-width: 768px) {
-  .mobile-only-block {
-    display: none !important;
-  }
-}
-
-/* ── 데스크톱 전용 표시 ── */
 .desktop-only {
   display: none !important;
 }
-@media (min-width: 768px) {
+
+@media (min-width: 768px) and (min-height: 501px), (min-width: 768px) and (pointer: fine) {
+  .mobile-only {
+    display: none !important;
+  }
+  .mobile-only-block {
+    display: none !important;
+  }
   .desktop-only {
     display: flex !important;
   }

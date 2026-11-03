@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
-import { LayoutDashboard, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 
 /* ───────── 상수 / 유틸 (웹버전과 100% 동일한 로직) ───────── */
@@ -51,13 +51,58 @@ function PieTooltip({ active, payload, total }) {
   );
 }
 
+/* ───────── 로컬 개발/테스트용 임시 데이터 (2종목) ───────── */
+const MOCK_HOLDINGS = [
+  {
+    name: "테슬라",
+    code: "TSLA",
+    currency: "USD",
+    purchasePrice: 200,
+    currentPrice: 240,
+    totalQuantity: 20,
+    evaluationAmountKRW: 6480000,
+    profitAmountKRW: 1080000,
+    returnRate: "20.00",
+    dividend: 0,
+    totalCostKRW: 5400000,
+    totalReturnRate: "20.00",
+  },
+  {
+    name: "구글",
+    code: "GOOG",
+    currency: "USD",
+    purchasePrice: 150,
+    currentPrice: 175,
+    totalQuantity: 30,
+    evaluationAmountKRW: 7087500,
+    profitAmountKRW: 1012500,
+    returnRate: "16.67",
+    dividend: 150000,
+    totalCostKRW: 6075000,
+    totalReturnRate: "19.14",
+  },
+];
+
+const MOCK_SUMMARY = {
+  totalEvaluation: 13567500,
+  totalProfit: 2092500,
+  avgProfitRate: 18.24,
+  isLoading: false,
+};
+
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
   const { user } = useAuth();
-  const { holdings, summary } = useAssets();
+  const { holdings: realHoldings, summary: realSummary } = useAssets();
   const [chartReady, setChartReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [tableTab, setTableTab] = useState("basic"); // "basic" | "dividend"
   const ITEMS_PER_PAGE = 5;
+
+  // 실제 데이터가 없거나 비어있을 때 로컬 임시 데이터 적용
+  const isMock = !realHoldings || realHoldings.length === 0;
+  const holdings = isMock ? MOCK_HOLDINGS : realHoldings;
+  const summary = (realSummary && realSummary.totalEvaluation > 0) ? realSummary : (isMock ? MOCK_SUMMARY : realSummary);
 
   const totalPages = Math.ceil((holdings?.length || 0) / ITEMS_PER_PAGE) || 1;
   const pagedHoldings = (holdings || []).slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -99,8 +144,16 @@ export default function MobileDashboard() {
   return (
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-20">
       <div className="flex flex-col gap-3 px-3 py-3" style={{ maxWidth: "100%" }}>
+        {/* 로컬 테스트 안내 배지 */}
+        {isMock && (
+          <div className="bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] text-amber-800 font-medium">
+            <span>💡 로컬 테스트 임시 데이터 표시 중</span>
+            <span className="font-bold text-amber-700">2종목 (테슬라, 구글)</span>
+          </div>
+        )}
+
         {/* ── 섹션 1: 포트폴리오 ── */}
-        {user && (holdings?.length || 0) > 0 && chartReady && (
+        {((user && (holdings?.length || 0) > 0) || isMock) && chartReady && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
@@ -168,12 +221,35 @@ export default function MobileDashboard() {
         )}
 
         {/* ── 섹션 2: 종목별 보유현황 ── */}
-        {user && (
+        {(user || isMock) && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
-            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
-              <div className="w-1 h-4 rounded-full bg-emerald-500" />
-              <span className="text-sm font-bold text-slate-700">종목별 보유현황</span>
+            <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 rounded-full bg-emerald-500" />
+                <span className="text-sm font-bold text-slate-700">종목별 보유현황</span>
+              </div>
+
+              {/* 미니멀 아웃라인 칩 버튼 */}
+              <button
+                type="button"
+                onClick={() => setTableTab((prev) => (prev === "basic" ? "dividend" : "basic"))}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all duration-150 active:scale-95 cursor-pointer ${
+                  tableTab === "dividend"
+                    ? "border border-emerald-500/80 bg-emerald-50/70 text-emerald-700 font-bold shadow-2xs"
+                    : "border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-medium shadow-2xs"
+                }`}
+                aria-label="조회 항목 전환"
+              >
+                <span>{tableTab === "basic" ? "배당·총손익" : "기본 보기"}</span>
+                <ArrowLeftRight
+                  size={11}
+                  strokeWidth={2}
+                  className={`transition-colors ${
+                    tableTab === "dividend" ? "text-emerald-600" : "text-slate-400"
+                  }`}
+                />
+              </button>
             </div>
 
             {/* 요약 카드: 평가액 | 수익금 */}
@@ -232,16 +308,35 @@ export default function MobileDashboard() {
                       <span className="text-[9px] font-semibold text-slate-500 leading-tight block">매수가</span>
                       <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">현재가</span>
                     </div>
-                    {/* 2열: 잔고수량 / 평가금액 */}
-                    <div className="px-1 py-1.5 text-center flex flex-col justify-center">
-                      <span className="text-[9px] font-semibold text-slate-500 leading-tight block">잔고수량</span>
-                      <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">평가금액</span>
-                    </div>
-                    {/* 3열: 평가손익 / 수익률 */}
-                    <div className="px-1 py-1.5 text-center flex flex-col justify-center">
-                      <span className="text-[9px] font-semibold text-slate-500 leading-tight block">평가손익</span>
-                      <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">수익률</span>
-                    </div>
+
+                    {tableTab === "basic" ? (
+                      <>
+                        {/* 2열: 잔고수량 / 평가금액 */}
+                        <div className="px-1 py-1.5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-semibold text-slate-500 leading-tight block">잔고수량</span>
+                          <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">평가금액</span>
+                        </div>
+                        {/* 3열: 평가손익 / 수익률 */}
+                        <div className="px-1 py-1.5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-semibold text-slate-500 leading-tight block">평가손익</span>
+                          <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">수익률</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* 2열: 배당금(원) */}
+                        <div className="px-1 py-1.5 text-center flex items-center justify-center">
+                          <span className="text-[9px] font-bold text-emerald-700 leading-tight whitespace-nowrap">
+                            배당금(원)
+                          </span>
+                        </div>
+                        {/* 3열: 총손익 / 총수익률 */}
+                        <div className="px-1 py-1.5 text-center flex flex-col justify-center">
+                          <span className="text-[9px] font-bold text-slate-700 leading-tight block">총손익</span>
+                          <span className="text-[9px] text-slate-400 leading-tight block mt-0.5">총수익률</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -260,12 +355,23 @@ export default function MobileDashboard() {
                 )}
 
                 {/* 종목 행 (페이지 이동 시 세련된 스태거 페이드인 애니메이션) */}
-                <div key={`stock-page-${currentPage}`} className="divide-y divide-slate-100">
+                <div key={`stock-page-${currentPage}-${tableTab}`} className="divide-y divide-slate-100">
                   {pagedHoldings.map((h, idx) => {
-                    const profitPos = h.profitAmountKRW > 0;
-                    const profitNeg = h.profitAmountKRW < 0;
+                    const profitPos = (h.profitAmountKRW || 0) > 0;
+                    const profitNeg = (h.profitAmountKRW || 0) < 0;
                     const ratePos = parseFloat(h.returnRate) > 0;
                     const rateNeg = parseFloat(h.returnRate) < 0;
+
+                    const totalProfitKRW = (h.profitAmountKRW || 0) + (h.dividend || 0);
+                    const totalProfitPos = totalProfitKRW > 0;
+                    const totalProfitNeg = totalProfitKRW < 0;
+                    const rawTotalRate = h.totalReturnRate !== undefined
+                      ? h.totalReturnRate
+                      : (h.totalCostKRW > 0
+                        ? (((totalProfitKRW) / h.totalCostKRW) * 100).toFixed(2)
+                        : h.returnRate);
+                    const totalRatePos = parseFloat(rawTotalRate) > 0;
+                    const totalRateNeg = parseFloat(rawTotalRate) < 0;
 
                     return (
                       <div
@@ -297,35 +403,75 @@ export default function MobileDashboard() {
                             </span>
                           </div>
 
-                          {/* 2열: 잔고수량 / 평가금액 */}
-                          <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
-                            <span className="text-[11px] font-semibold text-slate-800 tabular-nums leading-tight block">
-                              {formatCurrency(h.totalQuantity, 'QTY')}주
-                            </span>
-                            <span className="text-[9.5px] font-medium text-slate-500 tabular-nums leading-tight block mt-0.5">
-                              {formatCurrency(h.evaluationAmountKRW, 'KRW')}
-                            </span>
-                          </div>
+                          {tableTab === "basic" ? (
+                            <>
+                              {/* 2열: 잔고수량 / 평가금액 */}
+                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
+                                <span className="text-[11px] font-semibold text-slate-800 tabular-nums leading-tight block">
+                                  {formatCurrency(h.totalQuantity, 'QTY')}주
+                                </span>
+                                <span className="text-[9.5px] font-medium text-slate-500 tabular-nums leading-tight block mt-0.5">
+                                  {formatCurrency(h.evaluationAmountKRW, 'KRW')}
+                                </span>
+                              </div>
 
-                          {/* 3열: 평가손익 / 수익률 */}
-                          <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
-                            <span
-                              className={`text-[11px] font-bold tabular-nums leading-tight block ${
-                                profitPos ? "text-red-600" : profitNeg ? "text-blue-600" : "text-slate-700"
-                              }`}
-                            >
-                              {profitPos ? "+" : ""}
-                              {formatCurrency(h.profitAmountKRW, 'KRW')}
-                            </span>
-                            <span
-                              className={`text-[9.5px] font-bold tabular-nums leading-tight block mt-0.5 ${
-                                ratePos ? "text-red-500" : rateNeg ? "text-blue-500" : "text-slate-500"
-                              }`}
-                            >
-                              {ratePos ? "+" : ""}
-                              {parseFloat(h.returnRate) === 0 ? "0.00" : h.returnRate}%
-                            </span>
-                          </div>
+                              {/* 3열: 평가손익 / 수익률 */}
+                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
+                                <span
+                                  className={`text-[11px] font-bold tabular-nums leading-tight block ${
+                                    profitPos ? "text-red-600" : profitNeg ? "text-blue-600" : "text-slate-700"
+                                  }`}
+                                >
+                                  {profitPos ? "+" : ""}
+                                  {formatCurrency(h.profitAmountKRW, 'KRW')}
+                                </span>
+                                <span
+                                  className={`text-[9.5px] font-bold tabular-nums leading-tight block mt-0.5 ${
+                                    ratePos ? "text-red-500" : rateNeg ? "text-blue-500" : "text-slate-500"
+                                  }`}
+                                >
+                                  {ratePos ? "+" : ""}
+                                  {parseFloat(h.returnRate) === 0 ? "0.00" : h.returnRate}%
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* 2열 (배당·총손익 탭): 배당금 */}
+                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
+                                <span
+                                  className={`text-[11px] font-bold tabular-nums leading-tight block ${
+                                    (h.dividend || 0) > 0 ? "text-emerald-600" : "text-slate-400"
+                                  }`}
+                                >
+                                  {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}` : "0"}
+                                </span>
+                                <span className="text-[9.5px] font-medium text-slate-400 tabular-nums leading-tight block mt-0.5">
+                                  원
+                                </span>
+                              </div>
+
+                              {/* 3열 (배당·총손익 탭): 총손익 / 총수익률 */}
+                              <div className="pl-0.5 pr-2.5 py-1.5 text-right flex flex-col justify-center">
+                                <span
+                                  className={`text-[11px] font-bold tabular-nums leading-tight block ${
+                                    totalProfitPos ? "text-red-600" : totalProfitNeg ? "text-blue-600" : "text-slate-700"
+                                  }`}
+                                >
+                                  {totalProfitPos ? "+" : ""}
+                                  {formatCurrency(totalProfitKRW, 'KRW')}
+                                </span>
+                                <span
+                                  className={`text-[9.5px] font-bold tabular-nums leading-tight block mt-0.5 ${
+                                    totalRatePos ? "text-red-500" : totalRateNeg ? "text-blue-500" : "text-slate-500"
+                                  }`}
+                                >
+                                  {totalRatePos ? "+" : ""}
+                                  {parseFloat(rawTotalRate) === 0 ? "0.00" : rawTotalRate}%
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -375,7 +521,7 @@ export default function MobileDashboard() {
         )}
 
         {/* 비로그인 안내 */}
-        {!user && (
+        {!user && !isMock && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
             로그인 후 보유 자산을 확인할 수 있습니다.
           </div>
