@@ -23,7 +23,7 @@ export default function MobileTransactionList({
   formatCurrency,
   getCurrencyStyle,
 }) {
-  const ITEMS_PER_PAGE = 7;
+  const ITEMS_PER_PAGE = 8;
 
   const displayTotalCount = transactions ? transactions.length : 0;
   const displayTotalPages = Math.ceil(displayTotalCount / ITEMS_PER_PAGE) || 1;
@@ -249,12 +249,12 @@ export default function MobileTransactionList({
                         style={{ width: "100%" }}
                       >
                         {/* 종목명 (좌측 92px, 3번: 계좌 숨김) */}
-                        <div style={{ width: 92, flexShrink: 0 }} className="pl-2 pr-1 py-2 bg-slate-50/40 flex items-center gap-1.5 text-left">
+                        <div style={{ width: 92, flexShrink: 0 }} className="pl-2 pr-1 py-1.5 bg-slate-50/40 flex items-center gap-1.5 text-left">
                           {getCurrencyStyle && (
-                            <div className={`w-[2px] h-6 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || (type === 'overseas' ? 'USD' : 'KRW')).accent}`} />
+                            <div className={`w-[2px] h-7 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || (type === 'overseas' ? 'USD' : 'KRW')).accent}`} />
                           )}
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 break-all">
+                          <div className="flex flex-col justify-center min-w-0">
+                            <span className="text-[10px] font-bold text-slate-800 leading-[13px] line-clamp-2 break-all h-[26px] block">
                               {stockName}
                             </span>
                             <span className="text-[8px] text-slate-400 font-mono mt-0.5 truncate leading-tight">

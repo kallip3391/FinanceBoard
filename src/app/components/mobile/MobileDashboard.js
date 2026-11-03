@@ -329,7 +329,7 @@ export default function MobileDashboard() {
                       >
                         {/* 종목명 (좌측 정렬, 세로선 없음) */}
                         <div style={{ width: 86, flexShrink: 0 }} className="pl-2.5 pr-1 py-1 bg-slate-50/40 flex flex-col items-start justify-center text-left">
-                          <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 break-all">
+                          <span className="text-[10px] font-bold text-slate-800 leading-[13px] line-clamp-2 break-all h-[26px] block">
                             {h.name}
                           </span>
                           <span className="text-[8px] text-slate-400 font-mono mt-0.5 truncate leading-tight">
