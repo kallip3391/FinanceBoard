@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Filter, RotateCcw, ChevronLeft, ChevronRight, Plus, Edit2, Trash2, X } from "lucide-react";
-import { MOCK_DOMESTIC_TRANSACTIONS, MOCK_OVERSEAS_TRANSACTIONS, MOCK_DIVIDEND_TRANSACTIONS } from "@/lib/mockTransactions";
 
 export default function MobileTransactionList({
   type = "trading", // "trading" | "overseas" | "dividends"
@@ -26,17 +25,9 @@ export default function MobileTransactionList({
 }) {
   const ITEMS_PER_PAGE = 10;
 
-  // 데이터가 없을 때 로컬 테스트용 mock 데이터 사용
-  const activeMockList = type === "dividends"
-    ? MOCK_DIVIDEND_TRANSACTIONS
-    : (type === "overseas" ? MOCK_OVERSEAS_TRANSACTIONS : MOCK_DOMESTIC_TRANSACTIONS);
-  const isMock = !transactions || transactions.length === 0;
-  
-  const displayTotalCount = isMock ? activeMockList.length : transactions.length;
-  const displayTotalPages = isMock ? Math.ceil(activeMockList.length / ITEMS_PER_PAGE) || 1 : totalPages;
-  const displayList = isMock
-    ? activeMockList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-    : paginatedTransactions;
+  const displayTotalCount = transactions ? transactions.length : 0;
+  const displayTotalPages = totalPages;
+  const displayList = paginatedTransactions || [];
 
   // 날짜 포맷 (YY.MM.DD)
   const formatShortDate = (dateStr) => {
@@ -146,14 +137,6 @@ export default function MobileTransactionList({
             </button>
           </div>
         </div>
-
-        {/* 로컬 테스트 안내 배지 */}
-        {isMock && (
-          <div className="bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] text-amber-800 font-medium">
-            <span>💡 로컬 테스트 임시 거래내역 ({type === 'trading' ? '국내' : (type === 'overseas' ? '해외' : '배당')})</span>
-            <span className="font-bold text-amber-700">{displayTotalCount}건</span>
-          </div>
-        )}
 
         {/* ── 2. 거래내역 카드 (대시보드 패밀리 룩) ── */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>

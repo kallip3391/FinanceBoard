@@ -6,7 +6,6 @@ import { useAssets } from "@/contexts/AssetContext";
 import { LayoutDashboard, List, Globe, LayoutList, PieChart as PieChartIcon } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import MobileDashboard from "@/app/components/mobile/MobileDashboard";
-import { MOCK_HOLDINGS, MOCK_SUMMARY } from "@/lib/mockHoldings";
 import {
   AreaChart,
   Area,
@@ -25,22 +24,7 @@ import {
 
 export default function HoldingsPage() {
   const { user } = useAuth();
-  const { holdings: realHoldings, holdingsByAccount: realHoldingsByAccount, summary: realSummary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
-
-  // 실제 데이터가 없거나 로컬 개발 시 mock 데이터 적용
-  const isMock = !realHoldings || realHoldings.length === 0;
-  const holdings = isMock ? MOCK_HOLDINGS : realHoldings;
-  const summary = (realSummary && realSummary.totalEvaluation > 0) ? realSummary : (isMock ? MOCK_SUMMARY : realSummary);
-
-  const mockHoldingsByAccount = useMemo(() => {
-    return MOCK_HOLDINGS.reduce((acc, h) => {
-      const accName = h.account || '일반계좌';
-      if (!acc[accName]) acc[accName] = [];
-      acc[accName].push(h);
-      return acc;
-    }, {});
-  }, []);
-  const holdingsByAccount = isMock ? mockHoldingsByAccount : realHoldingsByAccount;
+  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [stockViewMode, setStockViewMode] = useState("card");

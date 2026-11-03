@@ -6,7 +6,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
-import { MOCK_OVERSEAS_TRANSACTIONS } from "@/lib/mockTransactions";
 
 
 
@@ -859,11 +858,7 @@ export default function TransactionsPage() {
   };
 
   const filteredTransactions = useMemo(() => {
-    const sourceList = (overseasTransactions && overseasTransactions.length > 0)
-      ? overseasTransactions
-      : MOCK_OVERSEAS_TRANSACTIONS;
-
-    return sourceList.filter(tx => {
+    return (overseasTransactions || []).filter(tx => {
       // 1. 거래구분 필터 (매수/매도)
       if (activeFilters.type !== '전체') {
         const typeStr = (tx.trade_type === TRADE_TYPES.BUY || tx.type === '매수') ? '매수' : '매도';

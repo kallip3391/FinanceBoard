@@ -5,7 +5,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import { MOCK_HOLDINGS, MOCK_SUMMARY } from "@/lib/mockHoldings";
 
 /* ───────── 상수 / 유틸 (웹버전과 100% 동일한 로직) ───────── */
 const PIE_COLORS = [
@@ -55,16 +54,11 @@ function PieTooltip({ active, payload, total }) {
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
   const { user } = useAuth();
-  const { holdings: realHoldings, summary: realSummary } = useAssets();
+  const { holdings, summary } = useAssets();
   const [chartReady, setChartReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [tableTab, setTableTab] = useState("basic"); // "basic" | "dividend"
   const ITEMS_PER_PAGE = 5;
-
-  // 실제 데이터가 없거나 비어있을 때 로컬 임시 데이터 적용
-  const isMock = !realHoldings || realHoldings.length === 0;
-  const holdings = isMock ? MOCK_HOLDINGS : realHoldings;
-  const summary = (realSummary && realSummary.totalEvaluation > 0) ? realSummary : (isMock ? MOCK_SUMMARY : realSummary);
 
   const totalPages = Math.ceil((holdings?.length || 0) / ITEMS_PER_PAGE) || 1;
   const pagedHoldings = (holdings || []).slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -106,16 +100,8 @@ export default function MobileDashboard() {
   return (
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-20">
       <div className="flex flex-col gap-3 px-3 py-3" style={{ maxWidth: "100%" }}>
-        {/* 로컬 테스트 안내 배지 */}
-        {isMock && (
-          <div className="bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] text-amber-800 font-medium">
-            <span>💡 로컬 테스트 임시 데이터 표시 중</span>
-            <span className="font-bold text-amber-700">30종목 (국내 15 · 해외 15)</span>
-          </div>
-        )}
-
         {/* ── 섹션 1: 포트폴리오 ── */}
-        {((user && (holdings?.length || 0) > 0) || isMock) && chartReady && (
+        {user && (holdings?.length || 0) > 0 && chartReady && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
@@ -183,7 +169,7 @@ export default function MobileDashboard() {
         )}
 
         {/* ── 섹션 2: 종목별 보유현황 ── */}
-        {(user || isMock) && (
+        {user && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-slate-50">
@@ -480,7 +466,7 @@ export default function MobileDashboard() {
         )}
 
         {/* 비로그인 안내 */}
-        {!user && !isMock && (
+        {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
             로그인 후 보유 자산을 확인할 수 있습니다.
           </div>

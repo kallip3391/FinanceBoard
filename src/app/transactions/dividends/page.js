@@ -7,7 +7,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES, CURRENCIES } from "@/lib/transactionManager";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
-import { MOCK_DIVIDEND_TRANSACTIONS } from "@/lib/mockTransactions";
 
 
 
@@ -907,7 +906,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const filteredTransactions = (transactions && transactions.length > 0 ? transactions : MOCK_DIVIDEND_TRANSACTIONS).filter(tx => {
+  const filteredTransactions = (transactions || []).filter(tx => {
     // 1. 통화 필터
     if (activeFilters.type !== '전체') {
       const typeStr = tx.currency || 'KRW';
