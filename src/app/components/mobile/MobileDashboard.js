@@ -58,7 +58,7 @@ export default function MobileDashboard() {
   const [chartReady, setChartReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [tableTab, setTableTab] = useState("basic"); // "basic" | "dividend"
-  const ITEMS_PER_PAGE = 5;
+  const ITEMS_PER_PAGE = 4;
 
   const totalPages = Math.ceil((holdings?.length || 0) / ITEMS_PER_PAGE) || 1;
   const pagedHoldings = (holdings || []).slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);

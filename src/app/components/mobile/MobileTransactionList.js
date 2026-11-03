@@ -23,11 +23,14 @@ export default function MobileTransactionList({
   formatCurrency,
   getCurrencyStyle,
 }) {
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 7;
 
   const displayTotalCount = transactions ? transactions.length : 0;
-  const displayTotalPages = totalPages;
-  const displayList = paginatedTransactions || [];
+  const displayTotalPages = Math.ceil(displayTotalCount / ITEMS_PER_PAGE) || 1;
+  const displayList = (transactions || []).slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   // 날짜 포맷 (YY.MM.DD)
   const formatShortDate = (dateStr) => {
@@ -251,7 +254,7 @@ export default function MobileTransactionList({
                             <div className={`w-[2px] h-6 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || (type === 'overseas' ? 'USD' : 'KRW')).accent}`} />
                           )}
                           <div className="flex flex-col min-w-0">
-                            <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-1 break-all">
+                            <span className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 break-all">
                               {stockName}
                             </span>
                             <span className="text-[8px] text-slate-400 font-mono mt-0.5 truncate leading-tight">
