@@ -1,20 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { LayoutDashboard, List, Globe, LayoutList, PieChart as PieChartIcon } from "lucide-react";
-import { TransactionManager } from "@/lib/transactionManager";
 import MobileDashboard from "@/app/components/mobile/MobileDashboard";
 import {
   AreaChart,
   Area,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -22,14 +19,15 @@ import {
   ReferenceLine
 } from "recharts";
 
+const emptySubscribe = () => () => {};
+
 export default function HoldingsPage() {
   const { user } = useAuth();
-  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshAssets, refreshTrendData } = useAssets();
+  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [stockViewMode, setStockViewMode] = useState("card");
-  const [isClient, setIsClient] = useState(false);
-  const [chartReady, setChartReady] = useState(false);
+  const [stockViewMode, setStockViewMode] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("stockViewMode") || "card" : "card"));
+  const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
   const [currentAccPage, setCurrentAccPage] = useState(1);
   const [loadedPeriods, setLoadedPeriods] = useState(new Set(['3개월', '6개월', '1년', '3년']));
@@ -47,19 +45,6 @@ export default function HoldingsPage() {
   const accProfit = accSummary.totalEval - accSummary.totalCost;
   const accProfitRate = accSummary.totalCost > 0 ? (accSummary.totalEval / accSummary.totalCost - 1) * 100 : 0;
   const accTotalReturn = accSummary.totalCost > 0 ? ((accSummary.totalEval + accSummary.totalDiv) / accSummary.totalCost - 1) * 100 : 0;
-
-  useEffect(() => {
-    setIsClient(true);
-    const timer = setTimeout(() => setChartReady(true), 150);
-    
-    // 세션 내 상태 유지를 위해 로컬스토리지 복원
-    const saved = localStorage.getItem('stockViewMode');
-    if (saved) setStockViewMode(saved);
-    
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
 
   useEffect(() => {
     if (isClient) {
@@ -515,7 +500,7 @@ export default function HoldingsPage() {
         )}
       </div>
 
-      {user && chartReady && (
+      {user && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">자산 트렌드</h2>
@@ -533,8 +518,8 @@ export default function HoldingsPage() {
             ) : (
               <div className="flex-1 w-full p-2 pb-0 flex flex-col gap-2 min-h-[400px] min-w-0 overflow-hidden">
                   <div className="h-[250px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "250px" }}>
-                    {isClient && chartReady && (
-                      <ResponsiveContainer width="100%" height={250} debounce={100}>
+                    {isClient && (
+                      <ResponsiveContainer width="100%" height={250} debounce={100} minWidth={0}>
                         <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 10, right: 2, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorEval" x1="0" y1="0" x2="0" y2="1">
@@ -631,8 +616,8 @@ export default function HoldingsPage() {
 
                 {/* 하단: 수익률 차트 (37.5%) */}
                 <div className="h-[150px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "150px" }}>
-                  {isClient && chartReady && (
-                    <ResponsiveContainer width="100%" height={150} debounce={100}>
+                  {isClient && (
+                    <ResponsiveContainer width="100%" height={150} debounce={100} minWidth={0}>
                       <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 0, right: 2, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
@@ -717,7 +702,7 @@ export default function HoldingsPage() {
         </div>
       )}
 
-      {holdings.length > 0 && chartReady && (
+      {holdings.length > 0 && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">포트폴리오</h2>
@@ -725,17 +710,35 @@ export default function HoldingsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><PieChartIcon size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3></div>
-              <div className="w-full h-[280px]"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart></ResponsiveContainer></div>
+              <div className="w-full h-[280px]">
+                {isClient && (
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                    <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
               <CustomDashboardLegend data={sectorData} colors={PIE_COLORS} total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />
             </div>
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><Globe size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3></div>
-              <div className="w-full h-[280px]"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart></ResponsiveContainer></div>
+              <div className="w-full h-[280px]">
+                {isClient && (
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                    <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
               <CustomDashboardLegend data={currencyData} colors={PIE_COLORS.slice(4).concat(PIE_COLORS.slice(0, 4))} total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />
             </div>
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><LayoutList size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3></div>
-              <div className="w-full h-[280px]"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart></ResponsiveContainer></div>
+              <div className="w-full h-[280px]">
+                {isClient && (
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                    <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
               <CustomDashboardLegend data={stockData} colors={PIE_COLORS.slice(8).concat(PIE_COLORS.slice(0, 8))} total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />
             </div>
           </div>

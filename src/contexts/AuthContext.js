@@ -64,19 +64,28 @@ export function AuthProvider({ children }) {
           }, { onConflict: 'user_id' }).select().single();
           if (newData) setProfile(newData);
           localStorage.removeItem('pendingRegistration');
-          setProfileError('사용자 등록 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다.');
+          const msg = '사용자 등록 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다.';
+          setProfileError(msg);
+          if (typeof window !== 'undefined') sessionStorage.setItem('auth_profile_error', msg);
         } else {
-          setProfileError('미등록 사용자입니다. 관리자에게 문의해 주세요.');
+          const msg = "미등록 계정입니다. '등록 신청'을 먼저 진행해 주세요.";
+          setProfileError(msg);
+          if (typeof window !== 'undefined') sessionStorage.setItem('auth_profile_error', msg);
         }
         return false;
       }
 
       if (data) {
         setProfile(data);
+        localStorage.removeItem('pendingRegistration');
         if (data.is_approved === false) {
-          setProfileError('관리자 승인을 대기 중입니다. 승인 완료 후 이용 가능합니다.');
+          const msg = '관리자 승인을 대기 중입니다. 승인 완료 후 이용 가능합니다.';
+          setProfileError(msg);
+          if (typeof window !== 'undefined') sessionStorage.setItem('auth_profile_error', msg);
           return false;
         }
+        if (typeof window !== 'undefined') sessionStorage.removeItem('auth_profile_error');
+        setProfileError(null);
         return true;
       }
       return false;
@@ -132,9 +141,10 @@ export function AuthProvider({ children }) {
           if (isAllowed === true) {
             setUser(session.user);
             setProfileError(null);
+            if (typeof window !== 'undefined') sessionStorage.removeItem('auth_profile_error');
           } else if (isAllowed === false) {
-            // 명시적으로 거절된 경우(비승인 등)에만 로그아웃
-            await signOut();
+            // 명시적으로 거절된 경우(비승인/미등록) 에러 메시지를 보존하며 세션 정리
+            await signOut(true);
           }
           // 'checking'인 경우는 이미 다른 루프에서 처리 중이므로 무시
         }
@@ -155,6 +165,13 @@ export function AuthProvider({ children }) {
     const initAuth = async () => {
       try {
         setLoading(true); // 시작 즉시 로딩 고정
+
+        // 보존된 프로필 에러 메시지 복원
+        const storedError = typeof window !== 'undefined' ? sessionStorage.getItem('auth_profile_error') : null;
+        if (storedError) {
+          setProfileError(storedError);
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         
         const isManualLogin = typeof window !== 'undefined' && 
@@ -163,7 +180,7 @@ export function AuthProvider({ children }) {
         // 수동 로그인이 아닌 세션 발견 시, 즉시 로그아웃을 수행하고 완료될 때까지 로딩 유지
         if (session && !isManualLogin) {
           console.log('[Auth] 요구사항에 따라 세션 정밀 초기화 중...');
-          await signOut(); 
+          await signOut(true); 
           if (mounted) setLoading(false);
           return;
         }
@@ -193,7 +210,12 @@ export function AuthProvider({ children }) {
         if (event === 'SIGNED_OUT') {
           setUser(null);
           setProfile(null);
-          setProfileError(null);
+          const storedError = typeof window !== 'undefined' ? sessionStorage.getItem('auth_profile_error') : null;
+          if (storedError) {
+            setProfileError(storedError);
+          } else {
+            setProfileError(null);
+          }
           setLoading(false);
           return;
         }
@@ -233,7 +255,7 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const signInWithGoogle = async () => {
-    setProfileError(null);
+    clearProfileError();
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('is_manual_login', 'true');
     }
@@ -250,9 +272,9 @@ export function AuthProvider({ children }) {
     });
   };
 
-  const signOut = async () => {
+  const signOut = async (keepProfileError = false) => {
     try {
-      console.log('[Auth] 로그아웃 프로세스 시작');
+      console.log('[Auth] 로그아웃 프로세스 시작 (keepProfileError:', keepProfileError, ')');
       
       // [사용자 요청] 로그아웃 시 뷰 모드 초기화
       localStorage.removeItem('stockViewMode');
@@ -264,6 +286,10 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('pendingRegistration');
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('is_manual_login');
+        if (!keepProfileError) {
+          sessionStorage.removeItem('auth_profile_error');
+          setProfileError(null);
+        }
       }
       
       if (!AUTH_BYPASS) {
@@ -275,7 +301,12 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const clearProfileError = () => setProfileError(null);
+  const clearProfileError = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('auth_profile_error');
+    }
+    setProfileError(null);
+  };
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, profileError, signInWithGoogle, signOut, clearProfileError }}>

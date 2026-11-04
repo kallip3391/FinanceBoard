@@ -6,8 +6,8 @@ import {
    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend
 } from 'recharts';
 import { useAuth } from "@/contexts/AuthContext";
-import { TransactionManager } from "@/lib/transactionManager";
 import { useAssets } from "@/contexts/AssetContext";
+import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
 
 const getCurrencyBadgeStyles = (currency) => {
   const styles = {
@@ -44,7 +44,12 @@ export default function DividendsPage() {
   // 년도/월 토글 상태
   const [expandedYears, setExpandedYears] = useState(new Set());
   const [expandedMonths, setExpandedMonths] = useState(new Set());
-  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dividendViewMode') || 'card';
+    }
+    return 'card';
+  }); // 'card' or 'list'
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [isYearDropdownOpen, setIsYearDropdownOpen] = useState(false);
   const yearDropdownRef = useRef(null);
@@ -60,12 +65,7 @@ export default function DividendsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 뷰 모드 설정 (세션 내 유지)
-  useEffect(() => {
-    const saved = localStorage.getItem('dividendViewMode');
-    if (saved) setViewMode(saved);
-  }, []);
-
+  // 뷰 모드 설정 변경 시 로컬 스토리지 저장
   useEffect(() => {
     localStorage.setItem('dividendViewMode', viewMode);
   }, [viewMode]);
@@ -263,7 +263,22 @@ export default function DividendsPage() {
   };
 
   return (
-    <div className="animate-fade-in h-full flex flex-col pb-10">
+    <>
+      {/* 모바일 화면 (768px 미만) 전용 배당금 대시보드 */}
+      <div className="mobile-only-block w-full">
+        <MobileDividendDashboard
+          user={user}
+          loading={loading}
+          groupedData={groupedData}
+          availableYears={availableYears}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          formatCurrency={formatCurrency}
+        />
+      </div>
+
+      {/* 데스크톱 화면 (768px 이상) 전용 */}
+      <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
       {/* Header Section */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-2.5">
@@ -314,6 +329,12 @@ export default function DividendsPage() {
           </div>
 
           <style>{`
+            @media (min-width: 768px) {
+              .md-panel {
+                min-height: auto !important;
+                padding-bottom: 1.25rem !important;
+              }
+            }
             @keyframes chartFadeIn {
               from { opacity: 0; }
               to { opacity: 1; }
@@ -631,7 +652,7 @@ export default function DividendsPage() {
           ) : (
             <>
               {/* 연간 배당 합계 요약 창 (Full Width Premium) */}
-              <div className="bg-white border border-slate-100 rounded-3xl p-8 mb-10 shadow-xl shadow-slate-200/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group opacity-0 animate-page-slide">
+              <div className="bg-white border border-slate-100 rounded-3xl p-8 mb-5 shadow-xl shadow-slate-200/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group opacity-0 animate-page-slide">
                 <div className="flex items-center gap-6 z-10">
                   <div className="flex flex-col">
                     <div className="flex items-center mb-1.5">
@@ -662,7 +683,7 @@ export default function DividendsPage() {
                 <div className="absolute top-0 left-0 w-2 h-full bg-brand"></div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-0">
                 {Array.from({ length: 12 }, (_, i) => {
                   const m = (i + 1).toString().padStart(2, '0');
                   const monthData = groupedData[selectedYear]?.months[m];
@@ -828,6 +849,7 @@ export default function DividendsPage() {
         </table>
       </div>
     )}
-    </div>
+      </div>
+    </>
   );
 }

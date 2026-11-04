@@ -4,6 +4,18 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useAuth } from './AuthContext';
 import { TransactionManager } from '@/lib/transactionManager';
 import MarketPriceManager from '@/lib/marketPriceManager';
+import {
+  GUEST_ACCOUNTS,
+  GUEST_ACCOUNT_MAP,
+  GUEST_DOMESTIC_TRANSACTIONS,
+  GUEST_OVERSEAS_TRANSACTIONS,
+  GUEST_DIVIDEND_TRANSACTIONS,
+  GUEST_HOLDINGS,
+  GUEST_HOLDINGS_BY_ACCOUNT,
+  GUEST_SUMMARY,
+  GUEST_TREND_DATA,
+  GUEST_MONTHLY_DIVIDENDS
+} from '@/lib/guestMockData';
 
 const AssetContext = createContext();
 
@@ -49,6 +61,14 @@ export function AssetProvider({ children }) {
         avgTotalReturn: 0,
         isLoading: false
       });
+      return;
+    }
+
+    // 게스트 계정인 경우 임시 데이터 즉시 반환
+    if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      setHoldings(GUEST_HOLDINGS);
+      setHoldingsByAccount(GUEST_HOLDINGS_BY_ACCOUNT);
+      setSummary(GUEST_SUMMARY);
       return;
     }
 
@@ -188,6 +208,13 @@ export function AssetProvider({ children }) {
       return;
     }
 
+    // 게스트 계정인 경우 임시 트렌드 데이터 반환
+    if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      setTrendData(GUEST_TREND_DATA);
+      setIsTrendLoading(false);
+      return;
+    }
+
     try {
       const now = new Date();
       let startDateStr = null;
@@ -238,6 +265,15 @@ export function AssetProvider({ children }) {
       return;
     }
 
+    // 게스트 계정인 경우 임시 거래내역 반환
+    if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      setDomesticTransactions(GUEST_DOMESTIC_TRANSACTIONS);
+      setOverseasTransactions(GUEST_OVERSEAS_TRANSACTIONS);
+      setDividendTransactions(GUEST_DIVIDEND_TRANSACTIONS);
+      setIsTransactionsLoading(false);
+      return;
+    }
+
     try {
       // 최초 로딩 시에만 스켈레톤 표시
       setIsTransactionsLoading(true);
@@ -262,6 +298,14 @@ export function AssetProvider({ children }) {
     if (!user) {
       setAccounts([]);
       setAccountNameById({});
+      setIsAccountsLoading(false);
+      return;
+    }
+
+    // 게스트 계정인 경우 임시 계좌 반환
+    if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      setAccounts(GUEST_ACCOUNTS);
+      setAccountNameById(GUEST_ACCOUNT_MAP);
       setIsAccountsLoading(false);
       return;
     }
@@ -292,6 +336,13 @@ export function AssetProvider({ children }) {
   const refreshMonthlyDividends = useCallback(async () => {
     if (!user) {
       setMonthlyDividendSummary([]);
+      setIsDividendsLoading(false);
+      return;
+    }
+
+    // 게스트 계정인 경우 임시 월별 배당 요약 반환
+    if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      setMonthlyDividendSummary(GUEST_MONTHLY_DIVIDENDS);
       setIsDividendsLoading(false);
       return;
     }

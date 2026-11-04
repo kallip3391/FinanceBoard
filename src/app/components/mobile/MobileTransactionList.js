@@ -1,25 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Filter, RotateCcw, ChevronLeft, ChevronRight, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Filter, RotateCcw, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 export default function MobileTransactionList({
   type = "trading", // "trading" | "overseas" | "dividends"
   transactions = [],
-  paginatedTransactions = [],
   loading = false,
   user = null,
   currentPage = 1,
   setCurrentPage,
-  totalPages = 1,
   onOpenFilter,
   onOpenRegister,
   isFilterActive = false,
   onResetFilter,
   onEdit,
-  onDelete,
-  accountNameById = {},
   formatCurrency,
   getCurrencyStyle,
 }) {
@@ -67,8 +62,8 @@ export default function MobileTransactionList({
   };
 
   return (
-    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-20">
-      <div className="flex flex-col gap-3 px-3 py-3" style={{ maxWidth: "100%" }}>
+    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
+      <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
 
         {/* ── 1. 상단 네비게이션 & 액션 영역 (전체 버튼 h-8 높이 동일 통일) ── */}
         <div className="flex items-center justify-between gap-2 pt-1 pb-1">
@@ -219,7 +214,6 @@ export default function MobileTransactionList({
                     const isBuy = tx.trade_type === 'BUY' || tx.type === '매수';
                     const stockName = tx.security?.name || tx.stock_name || tx.stock || '-';
                     const stockCode = tx.security?.code || tx.stock_code || tx.stockCode || '';
-                    const accountName = accountNameById[tx.account_id] || tx.account || '';
 
                     // 금액 계산
                     const formattedQuantity = typeof tx.quantity === 'number'
@@ -233,13 +227,6 @@ export default function MobileTransactionList({
                     const formattedAmount = typeof tx.amount === 'number'
                       ? (formatCurrency ? formatCurrency(tx.amount, tx.currency || (type === 'overseas' ? 'USD' : 'KRW')) : tx.amount.toLocaleString('ko-KR'))
                       : tx.amount;
-
-                    // 해외 원화 환산금액
-                    const krwAmount = tx.exchange_total_rate
-                      ? `₩ ${Number(tx.exchange_total_rate).toLocaleString('ko-KR')}`
-                      : tx.exchange_rate && typeof tx.amount === 'number'
-                      ? `₩ ${Math.round(tx.amount * tx.exchange_rate).toLocaleString('ko-KR')}`
-                      : null;
 
                     return (
                       <div

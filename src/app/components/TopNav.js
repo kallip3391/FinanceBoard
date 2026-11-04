@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Menu, TrendingUp, LogOut, User, UserPlus, Settings } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Menu, TrendingUp, LogOut, User, UserPlus, Settings, AlertCircle, Clock, CheckCircle2, X } from "lucide-react";
 import { useAuth } from '@/contexts/AuthContext';
 import { useAssets } from '@/contexts/AssetContext';
 import RegistrationModal from "./RegistrationModal";
@@ -15,10 +15,19 @@ const getDisplayName = (user) => {
 };
 
 export default function TopNav({ onMenuClick }) {
-  const { user, profile, loading, profileError, signInWithGoogle, signOut } = useAuth();
+  const { user, profile, loading, profileError, signInWithGoogle, signOut, clearProfileError } = useAuth();
   const { summary } = useAssets();
   const [isRegModalOpen, setIsRegModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // 알림 메시지가 뜬 경우 8초 후 자동 닫기
+  useEffect(() => {
+    if (!profileError) return;
+    const timer = setTimeout(() => {
+      clearProfileError();
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [profileError, clearProfileError]);
 
   // 등록 신청 핸들러
   const handleRegistrationSubmit = async () => {
@@ -89,11 +98,6 @@ export default function TopNav({ onMenuClick }) {
                   <UserPlus size={14} />
                   <span className="text-xs md:text-sm">등록 신청</span>
                 </button>
-                {profileError && (
-                  <div className="px-2 py-1.5 rounded-lg border text-xs font-bold animate-shake bg-red-50 text-red-600 border-red-100 shrink-0">
-                    {profileError}
-                  </div>
-                )}
               </div>
             )
           ) : (
@@ -137,6 +141,52 @@ export default function TopNav({ onMenuClick }) {
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
       />
+
+      {/* 권한/등록신청 상태 알림 배너 */}
+      {profileError && (
+        <div className="fixed top-16 md:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-lg animate-fade-in">
+          <div className={`flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl shadow-xl border backdrop-blur-md ${
+            profileError.includes('완료') 
+              ? 'bg-emerald-50/95 border-emerald-200 text-emerald-900 shadow-emerald-500/10'
+              : profileError.includes('대기')
+                ? 'bg-amber-50/95 border-amber-200 text-amber-900 shadow-amber-500/10'
+                : 'bg-rose-50/95 border-rose-200 text-rose-900 shadow-rose-500/10'
+          }`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {profileError.includes('완료') ? (
+                <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              ) : profileError.includes('대기') ? (
+                <Clock size={18} className="text-amber-600 shrink-0" />
+              ) : (
+                <AlertCircle size={18} className="text-rose-600 shrink-0" />
+              )}
+              <span className="text-xs md:text-sm font-semibold leading-relaxed">
+                {profileError}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {profileError.includes('등록 신청') && (
+                <button
+                  onClick={() => {
+                    clearProfileError();
+                    setIsRegModalOpen(true);
+                  }}
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm cursor-pointer whitespace-nowrap"
+                >
+                  신청하기
+                </button>
+              )}
+              <button 
+                onClick={clearProfileError}
+                className="p-1 hover:bg-black/5 rounded-lg text-slate-500 transition-colors cursor-pointer"
+                title="닫기"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

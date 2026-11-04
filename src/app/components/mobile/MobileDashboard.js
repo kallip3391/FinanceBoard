@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+
+const emptySubscribe = () => () => {};
 
 /* ───────── 상수 / 유틸 (웹버전과 100% 동일한 로직) ───────── */
 const PIE_COLORS = [
@@ -55,18 +57,13 @@ function PieTooltip({ active, payload, total }) {
 export default function MobileDashboard() {
   const { user } = useAuth();
   const { holdings, summary } = useAssets();
-  const [chartReady, setChartReady] = useState(false);
+  const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [currentPage, setCurrentPage] = useState(1);
   const [tableTab, setTableTab] = useState("basic"); // "basic" | "dividend"
   const ITEMS_PER_PAGE = 4;
 
   const totalPages = Math.ceil((holdings?.length || 0) / ITEMS_PER_PAGE) || 1;
   const pagedHoldings = (holdings || []).slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-  useEffect(() => {
-    const t = setTimeout(() => setChartReady(true), 150);
-    return () => clearTimeout(t);
-  }, []);
 
   /* 파이 차트 데이터 */
   const stockDataRaw = useMemo(() => {
@@ -98,10 +95,10 @@ export default function MobileDashboard() {
   const isLoss = (summary?.totalProfit || 0) < 0;
 
   return (
-    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-20">
-      <div className="flex flex-col gap-3 px-3 py-3" style={{ maxWidth: "100%" }}>
+    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
+      <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
         {/* ── 섹션 1: 포트폴리오 ── */}
-        {user && (holdings?.length || 0) > 0 && chartReady && (
+        {user && (holdings?.length || 0) > 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
@@ -113,26 +110,28 @@ export default function MobileDashboard() {
             <div className="flex items-start px-2 py-3 gap-1">
               {/* 좌: 파이 차트 */}
               <div style={{ width: 130, height: 130, flexShrink: 0 }}>
-                <ResponsiveContainer width={130} height={130}>
-                  <PieChart>
-                    <Pie
-                      data={stockData}
-                      cx="50%" cy="50%"
-                      innerRadius={0}
-                      outerRadius={60}
-                      paddingAngle={1}
-                      dataKey="value"
-                      stroke="none"
-                      startAngle={90}
-                      endAngle={-270}
-                    >
-                      {stockData.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<PieTooltip total={total} />} />
-                  </PieChart>
-                </ResponsiveContainer>
+                {isClient && (
+                  <ResponsiveContainer width={130} height={130} minWidth={0}>
+                    <PieChart>
+                      <Pie
+                        data={stockData}
+                        cx="50%" cy="50%"
+                        innerRadius={0}
+                        outerRadius={60}
+                        paddingAngle={1}
+                        dataKey="value"
+                        stroke="none"
+                        startAngle={90}
+                        endAngle={-270}
+                      >
+                        {stockData.map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip total={total} />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
 
               {/* 우: 범례 2열 (좌측: 종목명, 우측: 비중) */}
