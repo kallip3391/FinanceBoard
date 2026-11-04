@@ -97,8 +97,17 @@ export default function MobileDashboard() {
   return (
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
+        {/* 로그인 후 자산 로딩 상태 (별도 로딩 화면) */}
+        {user && summary?.isLoading && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span className="font-bold text-slate-700 text-sm">자산을 불러오고 있습니다...</span>
+            <span className="text-xs text-slate-400">잠시만 기다려주세요</span>
+          </div>
+        )}
+
         {/* ── 섹션 1: 포트폴리오 ── */}
-        {user && (holdings?.length || 0) > 0 && (
+        {user && !summary?.isLoading && (holdings?.length || 0) > 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-slate-50">
@@ -168,7 +177,7 @@ export default function MobileDashboard() {
         )}
 
         {/* ── 섹션 2: 종목별 보유현황 ── */}
-        {user && (
+        {user && !summary?.isLoading && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm" style={{ overflow: "hidden" }}>
             {/* 섹션 헤더 */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-slate-50">
@@ -287,18 +296,11 @@ export default function MobileDashboard() {
                   </div>
                 </div>
 
-                {/* 로딩 상태 및 빈 상태 */}
-                {summary?.isLoading ? (
-                  <div className="py-10 flex flex-col items-center justify-center gap-2.5 text-slate-400 text-sm">
-                    <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="font-medium text-slate-500 text-xs">자산을 불러오고 있습니다...</span>
+                {/* 빈 상태 */}
+                {holdings.length === 0 && (
+                  <div className="py-8 text-center text-slate-400 text-sm font-medium">
+                    보유 중인 종목이 없습니다.
                   </div>
-                ) : (
-                  holdings.length === 0 && (
-                    <div className="py-8 text-center text-slate-400 text-sm font-medium">
-                      보유 중인 종목이 없습니다.
-                    </div>
-                  )
                 )}
 
                 {/* 종목 행 (페이지 이동 시 세련된 스태거 페이드인 애니메이션) */}

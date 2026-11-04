@@ -65,8 +65,17 @@ export default function MobileTransactionList({
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
 
-        {/* ── 1. 상단 네비게이션 & 액션 영역 (전체 버튼 h-8 높이 동일 통일) ── */}
-        <div className="flex items-center justify-between gap-2 pt-1 pb-1">
+        {/* 비로그인 안내 (대시보드와 동일한 단일 박스) */}
+        {!user && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
+            로그인 후 보유 자산을 확인할 수 있습니다.
+          </div>
+        )}
+
+        {user && (
+          <>
+            {/* ── 1. 상단 네비게이션 & 액션 영역 (전체 버튼 h-8 높이 동일 통일) ── */}
+            <div className="flex items-center justify-between gap-2 pt-1 pb-1">
           {/* 좌측: [국내] [해외] [배당] 웹버전 스타일 버튼 */}
           <div className="flex items-center gap-1.5">
             <Link
@@ -358,6 +367,8 @@ export default function MobileTransactionList({
 
           </div>
         </div>
+        </>
+        )}
 
       </div>
     </div>

@@ -495,12 +495,19 @@ export default function HoldingsPage() {
 
         {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
-            로그인 후 본인의 거래내역을 관리할 수 있습니다.
+            로그인 후 보유 자산을 확인할 수 있습니다.
           </div>
         )}
       </div>
 
-      {user && (
+      {user && summary?.isLoading ? (
+        <div className="glass-card py-24 flex flex-col items-center justify-center gap-3">
+          <div className="w-9 h-9 border-3 border-brand border-t-transparent rounded-full animate-spin" />
+          <span className="font-bold text-slate-700 text-base">자산을 불러오고 있습니다...</span>
+          <span className="text-sm text-slate-400">잠시만 기다려주세요</span>
+        </div>
+      ) : user ? (
+        <>
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">자산 트렌드</h2>
@@ -700,7 +707,6 @@ export default function HoldingsPage() {
             )}
           </div>
         </div>
-      )}
 
       {holdings.length > 0 && (
         <div className="flex flex-col gap-4">
@@ -896,6 +902,8 @@ export default function HoldingsPage() {
           )}
         </div>
       </div>
+      </>
+      ) : null}
 
       {/* 데스크톱 섹션 닫기 */}
       </div>

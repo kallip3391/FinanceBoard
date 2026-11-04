@@ -291,15 +291,26 @@ export default function DividendsPage() {
         <div className="flex items-center gap-4">
           {!user && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
-              로그인 후 본인의 배당내역을 확인할 수 있습니다.
+              로그인 후 보유 자산을 확인할 수 있습니다.
             </div>
           )}
-          {user && loading && <span className="text-sm text-slate-400 self-center">데이터를 불러오는 중...</span>}
         </div>
       </div>
 
-      {/* Bar Chart Section */}
-      {user && chartReady && (
+      {/* 로딩 화면 */}
+      {user && loading && (
+        <div className="glass-card py-24 flex flex-col items-center justify-center gap-3">
+          <div className="w-9 h-9 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <span className="font-bold text-slate-700 text-base">배당 내역을 불러오는 중...</span>
+          <span className="text-sm text-slate-400">잠시만 기다려주세요</span>
+        </div>
+      )}
+
+      {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
+      {user && !loading && (
+        <>
+        {/* Bar Chart Section */}
+        {chartReady && (
         <div className="glass-card p-6 min-h-[400px] mb-8 overflow-hidden">
           <div className="flex justify-end items-center mb-6">
             <div className="flex flex-col items-end gap-3">
@@ -848,6 +859,8 @@ export default function DividendsPage() {
           </tbody>
         </table>
       </div>
+    )}
+    </>
     )}
       </div>
     </>

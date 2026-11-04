@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { ChevronLeft, ChevronRight, Sprout, Calendar, X, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sprout, Calendar, X } from "lucide-react";
 
 const getCurrencyBadgeStyles = (currency) => {
   const styles = {
@@ -115,63 +115,74 @@ export default function MobileDividendDashboard({
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
 
-        {/* ── 상단 헤더 & 년도 선택 바 ── */}
-        <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/60 shadow-xs">
-              <Sprout size={18} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight">배당금 현황</h1>
-              <span className="text-[11px] font-semibold text-slate-400">
-                {loading ? "데이터 조회 중..." : "1년 기준 월별 배당 분석"}
-              </span>
-            </div>
-          </div>
-
-          {/* 2. 우측 상단 연도: 현재년도(최대) ~ 최초배당년도(최소) 페이징 이동 */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={handlePrevYear}
-              disabled={!canGoPrev}
-              className={`p-1 transition-all ${
-                canGoPrev
-                  ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
-                  : "text-slate-200 cursor-not-allowed"
-              }`}
-              aria-label="이전 연도"
-              title={canGoPrev ? "이전 연도" : "최초 배당 연도입니다"}
-            >
-              <ChevronLeft size={18} strokeWidth={2.5} />
-            </button>
-            <span className="text-[15px] font-black text-slate-800 tracking-tight min-w-[54px] text-center">
-              {selectedYear}년
-            </span>
-            <button
-              onClick={handleNextYear}
-              disabled={!canGoNext}
-              className={`p-1 transition-all ${
-                canGoNext
-                  ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
-                  : "text-slate-200 cursor-not-allowed"
-              }`}
-              aria-label="다음 연도"
-              title={canGoNext ? "다음 연도" : "현재 연도가 최대입니다"}
-            >
-              <ChevronRight size={18} strokeWidth={2.5} />
-            </button>
-          </div>
-        </div>
-
-        {/* 비로그인 안내 배너 */}
+        {/* 비로그인 안내 (대시보드와 동일한 단일 박스) */}
         {!user && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-2">
-            <AlertCircle size={16} className="text-amber-600 shrink-0" />
-            <span>로그인 후 본인의 실제 배당 내역을 확인할 수 있습니다.</span>
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
+            로그인 후 보유 자산을 확인할 수 있습니다.
           </div>
         )}
 
-        {/* ── 섹션 1: 상단 1년 차트 & 연간 총 배당금 요약 ── */}
+        {/* 로그인 후 로딩 상태 */}
+        {user && loading && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span className="font-bold text-slate-700 text-sm">배당 내역을 불러오는 중...</span>
+            <span className="text-xs text-slate-400">잠시만 기다려주세요</span>
+          </div>
+        )}
+
+        {/* 로그인 완료 및 로딩 완료 시 화면 표시 */}
+        {user && !loading && (
+          <>
+            {/* ── 상단 헤더 & 년도 선택 바 ── */}
+            <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/60 shadow-xs">
+                  <Sprout size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight">배당금 현황</h1>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    1년 기준 월별 배당 분석
+                  </span>
+                </div>
+              </div>
+
+              {/* 2. 우측 상단 연도: 현재년도(최대) ~ 최초배당년도(최소) 페이징 이동 */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handlePrevYear}
+                  disabled={!canGoPrev}
+                  className={`p-1 transition-all ${
+                    canGoPrev
+                      ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
+                      : "text-slate-200 cursor-not-allowed"
+                  }`}
+                  aria-label="이전 연도"
+                  title={canGoPrev ? "이전 연도" : "최초 배당 연도입니다"}
+                >
+                  <ChevronLeft size={18} strokeWidth={2.5} />
+                </button>
+                <span className="text-[15px] font-black text-slate-800 tracking-tight min-w-[54px] text-center">
+                  {selectedYear}년
+                </span>
+                <button
+                  onClick={handleNextYear}
+                  disabled={!canGoNext}
+                  className={`p-1 transition-all ${
+                    canGoNext
+                      ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
+                      : "text-slate-200 cursor-not-allowed"
+                  }`}
+                  aria-label="다음 연도"
+                  title={canGoNext ? "다음 연도" : "현재 연도가 최대입니다"}
+                >
+                  <ChevronRight size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+
+            {/* ── 섹션 1: 상단 1년 차트 & 연간 총 배당금 요약 ── */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 relative overflow-hidden animate-fade-in">
           {/* 상단 통계 수치 바 */}
           <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
@@ -408,6 +419,8 @@ export default function MobileDividendDashboard({
             );
           })}
         </div>
+        </>
+        )}
 
       </div>
 

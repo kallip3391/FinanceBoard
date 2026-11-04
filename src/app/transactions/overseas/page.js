@@ -969,7 +969,7 @@ export default function TransactionsPage() {
         {/* 로그인 상태 확인 */}
         {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
-            로그인 후 본인의 거래내역을 관리할 수 있습니다.
+            로그인 후 보유 자산을 확인할 수 있습니다.
           </div>
         )}
 
@@ -1034,7 +1034,9 @@ export default function TransactionsPage() {
       </div>
 
       {/* Table Container */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {user && (
+        <>
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -1195,6 +1197,8 @@ export default function TransactionsPage() {
             <ChevronsRight size={20} />
           </button>
         </div>
+      )}
+      </>
       )}
       </div>
 
