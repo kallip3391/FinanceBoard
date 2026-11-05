@@ -31,7 +31,7 @@ export default function MobileTransactionList({
   onResetFilter,
   onEdit,
 }) {
-  const ITEMS_PER_PAGE = 8;
+  const ITEMS_PER_PAGE = 7;
 
   const displayTotalCount = transactions ? transactions.length : 0;
   const displayTotalPages = Math.ceil(displayTotalCount / ITEMS_PER_PAGE) || 1;
