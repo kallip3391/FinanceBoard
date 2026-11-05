@@ -48,8 +48,7 @@
 
   /* 768px 이상에서만 glass-panel 효과 적용 (모바일에서는 일반 배경) */
   .md-panel {
-    min-height: 100vh;
-    padding-bottom: 4rem; /* 하단 탭바 공간 */
+    padding-bottom: 4.5rem; /* 하단 탭바 공간 */
   }
 
   @media (min-width: 768px) {
@@ -93,6 +92,10 @@
   
   .animate-row-fade {
     animation: rowFade 0.4s ease-out forwards;
+  }
+
+  .animate-feed-lift {
+    animation: feedLift 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   
   .stagger-1 { animation-delay: 0.05s; }
@@ -158,6 +161,17 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes feedLift {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

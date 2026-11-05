@@ -112,7 +112,7 @@ export default function MobileDividendDashboard({
   };
 
   return (
-    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
+    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 pb-1">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
 
         {/* 비로그인 안내 (대시보드와 동일한 단일 박스) */}

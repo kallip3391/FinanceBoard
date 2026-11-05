@@ -95,7 +95,7 @@ export default function MobileDashboard() {
   const isLoss = (summary?.totalProfit || 0) < 0;
 
   return (
-    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 min-h-full pb-3">
+    <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 pb-1">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
         {/* 로그인 후 자산 로딩 상태 (별도 로딩 화면) */}
         {user && summary?.isLoading && (
