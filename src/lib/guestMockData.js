@@ -972,17 +972,49 @@ export const GUEST_TREND_DATA = [
   { date: '2026-11-01', buy: Math.round(calcTotalCost), value: Math.round(calcTotalEval), rate: Number(GUEST_SUMMARY.avgProfitRate.toFixed(2)) }
 ];
 
-// 8. 월별 배당 요약 (Monthly Dividend Summary)
+// 8. 월별 배당 요약 (Monthly Dividend Summary: 게스트 모드 테스트용 국내/해외 종목)
 export const GUEST_MONTHLY_DIVIDENDS = [
-  { record_month: '2026-11', total_dividend: 180000 },
-  { record_month: '2026-10', total_dividend: 1096925 },
-  { record_month: '2026-09', total_dividend: 462500 },
-  { record_month: '2026-08', total_dividend: 320000 },
-  { record_month: '2026-07', total_dividend: 410000 },
-  { record_month: '2026-06', total_dividend: 285000 },
-  { record_month: '2026-05', total_dividend: 350000 },
-  { record_month: '2026-04', total_dividend: 290000 },
-  { record_month: '2026-03', total_dividend: 380000 },
-  { record_month: '2026-02', total_dividend: 250000 },
-  { record_month: '2026-01', total_dividend: 310000 }
+  // 2026-11
+  { record_month: '2026-11', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
+
+  // 2026-10: 국내 2종목 + 해외 2종목 (Apple, Microsoft)
+  { record_month: '2026-10', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 240000 },
+  { record_month: '2026-10', security_name: 'PLUS 고배당주', security_code: '161510', currency: 'KRW', dividend_count: 1, total_dividend: 310000 },
+  { record_month: '2026-10', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 265000 },
+  { record_month: '2026-10', security_name: 'Microsoft', security_code: 'MSFT', currency: 'USD', dividend_count: 1, total_dividend: 281925 },
+
+  // 2026-09: 국내 1종목 + 해외 1종목 (SCHD)
+  { record_month: '2026-09', security_name: 'TIGER 미국배당다우존스', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 260000 },
+  { record_month: '2026-09', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 202500 },
+
+  // 2026-08: 국내 2종목
+  { record_month: '2026-08', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
+  { record_month: '2026-08', security_name: '맥쿼리인프라', security_code: '088980', currency: 'KRW', dividend_count: 1, total_dividend: 140000 },
+
+  // 2026-07: 국내 1종목 + 해외 1종목 (JEPI)
+  { record_month: '2026-07', security_name: 'KODEX 미국배당커버드콜액티브', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 220000 },
+  { record_month: '2026-07', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 190000 },
+
+  // 2026-06: 국내 1종목 + 해외 1종목 (Realty Income)
+  { record_month: '2026-06', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 160000 },
+  { record_month: '2026-06', security_name: 'Realty Income', security_code: 'O', currency: 'USD', dividend_count: 1, total_dividend: 125000 },
+
+  // 2026-05: 국내 2종목
+  { record_month: '2026-05', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
+  { record_month: '2026-05', security_name: 'PLUS 고배당주', security_code: '161510', currency: 'KRW', dividend_count: 1, total_dividend: 170000 },
+
+  // 2026-04: 국내 1종목 + 해외 1종목 (Apple)
+  { record_month: '2026-04', security_name: '맥쿼리인프라', security_code: '088980', currency: 'KRW', dividend_count: 1, total_dividend: 150000 },
+  { record_month: '2026-04', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 140000 },
+
+  // 2026-03: 국내 1종목 + 해외 1종목 (SCHD)
+  { record_month: '2026-03', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 230000 },
+  { record_month: '2026-03', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 150000 },
+
+  // 2026-02: 국내 1종목
+  { record_month: '2026-02', security_name: 'TIGER 미국배당다우존스', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 250000 },
+
+  // 2026-01: 국내 1종목 + 해외 1종목 (JEPI)
+  { record_month: '2026-01', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
+  { record_month: '2026-01', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 130000 }
 ];

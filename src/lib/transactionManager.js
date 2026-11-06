@@ -295,6 +295,53 @@ export class TransactionManager {
   static async searchStocksByName(name, currency = 'KRW') {
     const userId = await this.getCurrentUserId();
     if (!userId) return [];
+
+    // 게스트 모드 (로컬 개발 및 샘플 데이터 환경) 지원
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      const {
+        GUEST_HOLDINGS = [],
+        GUEST_DOMESTIC_TRANSACTIONS = [],
+        GUEST_OVERSEAS_TRANSACTIONS = [],
+        GUEST_DIVIDEND_TRANSACTIONS = []
+      } = await import('./guestMockData');
+
+      const map = new Map();
+      const addSec = (s) => {
+        if (!s || !s.name) return;
+        const key = `${s.name}_${s.code || ''}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            security_id: s.security_id || `guest-sec-${map.size + 1}`,
+            name: s.name,
+            code: s.code || '',
+            sector: s.sector || '기타',
+            currency: s.currency || 'KRW',
+            exchange_code: s.exchange_code || s.exchange_nm || (s.currency === 'KRW' ? 'KRX' : 'NASDAQ')
+          });
+        }
+      };
+
+      GUEST_HOLDINGS.forEach(h => addSec({ name: h.stock, code: h.stockCode, currency: h.currency, sector: h.sector, security_id: h.security_id }));
+      GUEST_DOMESTIC_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id }));
+      GUEST_OVERSEAS_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'USD', security_id: t.security_id }));
+      GUEST_DIVIDEND_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: t.currency, security_id: t.security_id }));
+
+      let list = Array.from(map.values());
+
+      if (name && name.trim()) {
+        const queryTerm = name.trim().toUpperCase();
+        list = list.filter(s => s.name?.toUpperCase().includes(queryTerm) || s.code?.toUpperCase().includes(queryTerm));
+      }
+
+      if (currency === 'OVERSEAS') {
+        list = list.filter(s => s.currency !== 'KRW');
+      } else if (currency) {
+        list = list.filter(s => s.currency === currency);
+      }
+
+      return list;
+    }
+
     let query = supabase
       .from('security')
       .select('security_id, name, code, sector, currency, exchange_code')

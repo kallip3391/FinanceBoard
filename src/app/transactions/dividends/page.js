@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 import { Edit2, Trash2, Filter, RotateCcw, Plus, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronDown, Coins, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -85,7 +86,23 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isFilterModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFilterModalOpen]);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'error', focusRef: null });
@@ -835,6 +852,67 @@ export default function TransactionsPage() {
     }
   };
 
+  const [selectedQuickPeriod, setSelectedQuickPeriod] = useState('1개월');
+  const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
+
+  const handleFilterStockEnter = async (val) => {
+    const query = val ? val.trim() : '';
+    if (!query) {
+      setIsFilterStockDropdownOpen(false);
+      return;
+    }
+
+    if (isFilterStockDropdownOpen && focusedStockIndex >= 0 && stockSearchResults[focusedStockIndex]) {
+      const selected = stockSearchResults[focusedStockIndex];
+      setTempFilters(prev => ({ 
+        ...prev, 
+        stockName: `${selected.name}(${selected.code})`,
+        stockCode: selected.code,
+        security_id: selected.security_id
+      }));
+      setIsFilterStockDropdownOpen(false);
+      return;
+    }
+
+    setIsSearchingStock(true);
+    try {
+      const results = await TransactionManager.searchStocksByName(query, null);
+      if (results && results.length > 0) {
+        const currencyOrder = (c) => c === 'KRW' ? 0 : c === 'USD' ? 1 : 2;
+        const sorted = [...results].sort((a, b) => currencyOrder(a.currency) - currencyOrder(b.currency));
+        const upperQuery = query.toUpperCase();
+        const exactMatch = sorted.find(
+          s => s.name?.toUpperCase() === upperQuery || s.code?.toUpperCase() === upperQuery
+        );
+        const target = exactMatch || (sorted.length === 1 ? sorted[0] : null);
+
+        if (target) {
+          setTempFilters(prev => ({ 
+            ...prev, 
+            stockName: `${target.name}(${target.code})`,
+            stockCode: target.code,
+            security_id: target.security_id
+          }));
+          setIsFilterStockDropdownOpen(false);
+          setStockSearchResults([]);
+        } else {
+          setStockSearchResults(sorted);
+          setFocusedStockIndex(0);
+          setIsFilterStockDropdownOpen(true);
+        }
+      } else {
+        setIsFilterStockDropdownOpen(false);
+        setStockSearchResults([]);
+      }
+    } catch (err) {
+      console.error('종목 검색 오류:', err);
+      setStockSearchResults([]);
+      setIsFilterStockDropdownOpen(false);
+    } finally {
+      setIsSearchingStock(false);
+    }
+  };
+
   const handleStockSearch = async (val) => {
     const searchTerm = (val || '').trim();
     
@@ -845,12 +923,18 @@ export default function TransactionsPage() {
       const currencyOrder = (c) => c === 'KRW' ? 0 : c === 'USD' ? 1 : 2;
       const sorted = [...results].sort((a, b) => currencyOrder(a.currency) - currencyOrder(b.currency));
       setStockSearchResults(sorted);
-      if (sorted.length > 0) setStockFocusedIndex(0);
-      else setStockFocusedIndex(-1);
+      if (sorted.length > 0) {
+        setStockFocusedIndex(0);
+        setFocusedStockIndex(0);
+      } else {
+        setStockFocusedIndex(-1);
+        setFocusedStockIndex(-1);
+      }
     } catch (err) {
       console.error('종목 검색 오류:', err);
       setStockSearchResults([]);
       setStockFocusedIndex(-1);
+      setFocusedStockIndex(-1);
     } finally {
       setIsSearchingStock(false);
     }
@@ -860,6 +944,7 @@ export default function TransactionsPage() {
     const digits = value.replace(/[^0-9]/g, '');
     if (digits.length <= 6) {
       setTempFilters(prev => ({ ...prev, [field]: digits }));
+      setSelectedQuickPeriod(null);
     }
   };
 
@@ -969,8 +1054,10 @@ export default function TransactionsPage() {
                 dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
                 dateTo: todayStr
               });
+              setSelectedQuickPeriod('1개월');
             } else {
               setTempFilters({ ...activeFilters });
+              setSelectedQuickPeriod(null);
             }
             setIsFilterModalOpen(true);
           }}
@@ -1054,8 +1141,10 @@ export default function TransactionsPage() {
                      dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
                      dateTo: todayStr
                    });
+                   setSelectedQuickPeriod('1개월');
                 } else {
                    setTempFilters({ ...activeFilters });
+                   setSelectedQuickPeriod(null);
                 }
                 setIsFilterModalOpen(true);
               }}
@@ -2016,7 +2105,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <div className="p-6 flex-1 overflow-visible">
+            <div className="p-6 flex-1 overflow-y-auto overscroll-contain">
               <div className="space-y-4">
                 <div className="flex gap-3 items-end">
                   <div className="flex-1 relative" ref={searchDropdownRef}>
@@ -2497,35 +2586,89 @@ export default function TransactionsPage() {
       )}
 
       {/* 조회 필터 모달 */}
-      {isFilterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Filter Modal (1안: 현대적 모던 바텀시트 / 배당금 상세 팝업과 동일한 효과 및 디자인) */}
+      {mounted && isFilterModalOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex flex-col justify-end md:justify-center md:items-center p-0 md:p-4 transition-opacity"
+          onClick={() => setIsFilterModalOpen(false)}
+        >
           <div 
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
-            onClick={() => setIsFilterModalOpen(false)}
-          ></div>
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[90vh] flex flex-col">
+            className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col animate-page-slide w-full max-w-lg mx-auto overflow-hidden pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            
+            {/* 모바일 상단 드래그 핸들 */}
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto my-3 shrink-0" />
+
             {/* Modal Header */}
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-2">
-                <Filter size={20} className="text-indigo-600" />
-                <h3 className="text-xl font-bold text-slate-800">조회 조건</h3>
+            <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Filter size={18} strokeWidth={2.5} />
+                </div>
+                <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">조회 조건 설정</h3>
               </div>
               <button 
-                onClick={() => setIsFilterModalOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                onClick={() => setIsFilterModalOpen(false)} 
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
               >
-                <X size={24} />
+                <X size={20} strokeWidth={2.5} />
               </button>
             </div>
 
-            {/* Filter Body */}
-            <div className="p-6 flex-1 overflow-visible">
+            <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
               <div className="space-y-4">
-                {/* 기간 선택 */}
+                {/* 1. 조회 기간 선택 */}
                 <div className="relative z-20">
-                  <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">기간</label>
-                  <div className="space-y-3 w-full">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs font-black text-slate-600 tracking-tight ml-0.5">조회 기간</label>
+                    {tempFilters.dateFrom && tempFilters.dateTo && (
+                      <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                        {tempFilters.dateFrom} ~ {tempFilters.dateTo}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2.5 w-full">
+                    {/* 상단: 퀵 기간 칩 버튼 (4개 균등 분할) */}
+                    <div className="grid grid-cols-4 gap-2 w-full">
+                      {[
+                        { label: '1개월', months: 1 },
+                        { label: '3개월', months: 3 },
+                        { label: '6개월', months: 6 },
+                        { label: '1년', months: 12 }
+                      ].map((item) => {
+                        const isSelected = selectedQuickPeriod === item.label;
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            data-quick-period="true"
+                            onClick={() => {
+                              const today = new Date();
+                              const fromDate = new Date();
+                              fromDate.setMonth(today.getMonth() - item.months);
+                              setTempFilters(prev => ({
+                                ...prev,
+                                dateFrom: fromDate.toLocaleDateString('en-CA'),
+                                dateTo: today.toLocaleDateString('en-CA')
+                              }));
+                              setSelectedQuickPeriod(item.label);
+                            }}
+                            className={`py-2.5 rounded-xl font-extrabold text-xs transition-all shadow-2xs cursor-pointer active:scale-95 text-center ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white shadow-sm border border-indigo-600'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-transparent font-bold'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* 하단: 날짜 직접 입력 행 */}
                     <div className="flex items-center gap-2 w-full">
+                      {/* 시작일 컨테이너 */}
                       <div className="relative flex-1">
                         <input 
                           ref={filterDateFromRef}
@@ -2538,15 +2681,14 @@ export default function TransactionsPage() {
                             setTimeout(() => e.target.select(), 50);
                           }}
                           onBlur={(e) => handleFilterDateBlur(e, 'dateFrom', e.target.value, filterDateFromRef)}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-2xs placeholder:text-slate-400 text-center text-xs h-11"
                         />
                         <button 
                           type="button"
                           onClick={() => setIsFilterFromCalendarOpen(!isFilterFromCalendarOpen)}
-                          className="absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center"
-                          style={{ right: '16px' }}
+                          className="absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center right-3"
                         >
-                          <Calendar size={18} />
+                          <Calendar size={16} />
                         </button>
                         {isFilterFromCalendarOpen && (
                           <div ref={filterFromCalendarRef} className="absolute left-0 top-full mt-2 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 animate-slide-up w-72">
@@ -2556,6 +2698,7 @@ export default function TransactionsPage() {
                               onSelect={(y, m, d) => {
                                 const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
                                 setTempFilters(prev => ({ ...prev, dateFrom: formatted }));
+                                setSelectedQuickPeriod(null);
                                 setIsFilterFromCalendarOpen(false);
                               }}
                             />
@@ -2563,8 +2706,9 @@ export default function TransactionsPage() {
                         )}
                       </div>
 
-                      <span className="text-slate-300 font-bold shrink-0">~</span>
+                      <span className="text-slate-300 font-bold shrink-0 text-xs">~</span>
 
+                      {/* 종료일 컨테이너 */}
                       <div className="relative flex-1">
                         <input 
                           ref={filterDateToRef}
@@ -2577,15 +2721,14 @@ export default function TransactionsPage() {
                             setTimeout(() => e.target.select(), 50);
                           }}
                           onBlur={(e) => handleFilterDateBlur(e, 'dateTo', e.target.value, filterDateToRef)}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-sm placeholder:text-slate-400 text-center"
+                          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 shadow-2xs placeholder:text-slate-400 text-center text-xs h-11"
                         />
                         <button 
                           type="button"
                           onClick={() => setIsFilterToCalendarOpen(!isFilterToCalendarOpen)}
-                          className="absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center"
-                          style={{ right: '16px' }}
+                          className="absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand transition-colors cursor-pointer flex items-center justify-center right-3"
                         >
-                          <Calendar size={18} />
+                          <Calendar size={16} />
                         </button>
                         {isFilterToCalendarOpen && (
                           <div ref={filterToCalendarRef} className="absolute right-0 top-full mt-2 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 animate-slide-up w-72">
@@ -2595,6 +2738,7 @@ export default function TransactionsPage() {
                               onSelect={(y, m, d) => {
                                 const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
                                 setTempFilters(prev => ({ ...prev, dateTo: formatted }));
+                                setSelectedQuickPeriod(null);
                                 setIsFilterToCalendarOpen(false);
                               }}
                             />
@@ -2602,89 +2746,48 @@ export default function TransactionsPage() {
                         )}
                       </div>
                     </div>
-                    
-                    <div className="flex gap-2 w-full">
-                      {[
-                        { label: '1개월', months: 1 },
-                        { label: '3개월', months: 3 },
-                        { label: '6개월', months: 6 },
-                        { label: '1년', months: 12 }
-                      ].map((item) => (
-                        <button
-                          key={item.label}
-                          type="button"
-                          data-quick-period="true"
-                          onClick={() => {
-                            const today = new Date();
-                            const fromDate = new Date();
-                            fromDate.setMonth(today.getMonth() - item.months);
-                            setTempFilters(prev => ({
-                              ...prev,
-                              dateFrom: fromDate.toLocaleDateString('en-CA'),
-                              dateTo: today.toLocaleDateString('en-CA')
-                            }));
-                          }}
-                          className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-[14px] font-bold hover:bg-brand/5 hover:text-brand transition-all border border-slate-200 cursor-pointer shadow-sm"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <div className="relative" ref={filterTypeDropdownRef} style={{ width: '74px' }}>
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">구분</label>
-                    <div className="relative">
-                      <button 
-                        type="button"
-                        onClick={() => setIsFilterTypeDropdownOpen(!isFilterTypeDropdownOpen)}
-                        className="w-full px-1 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer shadow-sm text-center flex items-center justify-center gap-1 min-h-[48px]"
-                      >
-                        <span className={`text-[14px] ${
-                          tempFilters.type === 'KRW' ? 'text-blue-500' : 
-                          tempFilters.type === 'USD' ? 'text-emerald-500' : 'text-slate-600'
-                        }`}>
-                          {tempFilters.type === '전체' ? '전체' : tempFilters.type}
-                        </span>
-                      </button>
-                      {isFilterTypeDropdownOpen && (
-                        <div className="absolute top-0 left-0 w-full bg-white border border-slate-200 shadow-2xl z-[70] overflow-hidden animate-slide-up" style={{ borderRadius: '12px' }}>
-                          {['전체', 'KRW', 'USD'].map(type => (
-                            <button
-                              key={type}
-                              type="button"
-                              onClick={() => {
-                                setTempFilters(prev => ({ ...prev, type }));
-                                setIsFilterTypeDropdownOpen(false);
-                              }}
-                              className={`w-full px-1 py-3 text-[14px] font-bold text-center hover:bg-slate-50 transition-colors cursor-pointer ${
-                                type === 'KRW' ? 'text-blue-500' : 
-                                type === 'USD' ? 'text-emerald-500' : 'text-slate-600'
-                              }`}
-                              style={{ minHeight: '48px' }}
-                            >
-                              {type === '전체' ? '전체' : type}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                {/* 2. 거래 구분 선택 (독립 한 줄 세그먼트 알약 버튼 - 등록 버튼 색상 매칭) */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5">거래 구분</label>
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/70">
+                    {[
+                      { val: '전체', label: '전체' },
+                      { val: 'KRW', label: 'KRW (국내)', dot: 'text-blue-500' },
+                      { val: 'USD', label: 'USD (해외)', dot: 'text-amber-500' }
+                    ].map(opt => {
+                      const isActive = tempFilters.type === opt.val;
+                      return (
+                        <button
+                          key={opt.val}
+                          type="button"
+                          onClick={() => setTempFilters(prev => ({ ...prev, type: opt.val }))}
+                          className={`py-2.5 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px] ${
+                            isActive
+                              ? 'bg-indigo-600 text-white shadow-xs font-black'
+                              : 'text-slate-500 hover:text-slate-700 font-bold'
+                          }`}
+                        >
+                          {opt.dot && <span className={`${isActive ? 'text-white' : opt.dot} text-[9px]`}>●</span>}
+                          <span>{opt.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
 
-                  <div className="flex-1 relative min-w-0" ref={filterStockDropdownRef}>
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목</label>
-                    <div className="relative">
-                      {tempFilters.security_id ? (
+                {/* 3. 종목 검색 (한 줄에 다 차게 w-full, 퀵 칩 제외) */}
+                <div className="space-y-1.5 relative" ref={filterStockDropdownRef}>
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5">종목 검색</label>
+                  <div className="relative w-full">
+                    {tempFilters.security_id ? (
+                      <div className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/60 font-bold text-slate-800 h-12 flex items-center justify-between shadow-xs">
                         <div 
                           onClick={() => {
-                            let nameToEdit = tempFilters.stockName.split('(')[0];
-                            if (nameToEdit.length > 43) {
-                              nameToEdit = nameToEdit.substring(0, 43);
-                            }
+                            const nameToEdit = tempFilters.stockName.split('(')[0];
                             setTempFilters(prev => ({ ...prev, security_id: '', stockName: nameToEdit }));
-                            // 입력창으로 전환 후 바로 전체 선택되도록 잠시 후 포커스
                             setTimeout(() => {
                               const input = filterStockDropdownRef.current?.querySelector('input');
                               if (input) {
@@ -2693,166 +2796,150 @@ export default function TransactionsPage() {
                               }
                             }, 50);
                           }}
-                          className="w-full px-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-700 h-12 flex overflow-hidden items-center justify-center cursor-pointer shadow-sm group hover:bg-white hover:border-brand transition-all"
+                          className="flex items-center gap-2 truncate cursor-pointer flex-1"
+                          title="클릭하여 수정"
                         >
-                          <span className="w-full break-words whitespace-normal leading-tight text-sm text-center pointer-events-none flex whitespace-pre-wrap shrink-0 h-full overflow-hidden items-center justify-center">
+                          <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></div>
+                          <span className="text-sm font-extrabold text-slate-800 truncate">
                             {tempFilters.stockName.split('(')[0]}
-                            <span className="text-[12px] text-slate-400 font-medium tracking-tight ml-1 inline-block shrink-0">({tempFilters.stockCode})</span>
+                          </span>
+                          <span className="text-xs text-indigo-600 font-semibold shrink-0">
+                            ({tempFilters.stockCode})
                           </span>
                         </div>
-                      ) : (
-                        <>
-                          <input 
-                            type="text" 
-                            placeholder="종목명 입력 (엔터로 검색)"
-                            value={tempFilters.stockName || ''}
-                            onChange={(e) => {
-                              const val = e.target.value.toUpperCase();
-                              setTempFilters(prev => ({ ...prev, stockName: val, security_id: '', stockCode: '' }));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.nativeEvent.isComposing) return;
-                              if (e.key === 'ArrowUp') {
-                                e.preventDefault();
-                                if (!isFilterStockDropdownOpen) {
-                                  handleStockSearch(tempFilters.stockName);
-                                } else {
-                                  setStockFocusedIndex(prev => Math.min(prev + 1, stockSearchResults.length - 1));
-                                }
-                              } else if (e.key === 'ArrowDown') {
-                                e.preventDefault();
-                                if (!isFilterStockDropdownOpen) {
-                                  handleStockSearch(tempFilters.stockName);
-                                } else {
-                                  setStockFocusedIndex(prev => Math.max(prev - 1, 0));
-                                }
-                              } else if (e.key === 'Enter') {
-                                e.preventDefault();
-                                if (isFilterStockDropdownOpen && stockFocusedIndex >= 0 && stockSearchResults[stockFocusedIndex]) {
-                                  const selected = stockSearchResults[stockFocusedIndex];
-                                  setTempFilters(prev => ({ 
-                                    ...prev, 
-                                    stockName: `${selected.name}(${selected.code})`,
-                                    stockCode: selected.code,
-                                    security_id: selected.security_id
-                                  }));
-                                  setIsFilterStockDropdownOpen(false);
-                                } else {
-                                  handleStockSearch(tempFilters.stockName);
-                                }
-                              } else if (e.key === 'Tab') {
-                                if (isFilterStockDropdownOpen) {
-                                  setIsFilterStockDropdownOpen(false);
-                                }
-                              } else if (e.key === 'Escape') {
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTempFilters(prev => ({ ...prev, security_id: '', stockName: '', stockCode: '' }));
+                            setStockSearchResults([]);
+                            setIsFilterStockDropdownOpen(false);
+                          }}
+                          className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer shrink-0 ml-2"
+                          title="종목 선택 해제"
+                        >
+                          <X size={16} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative w-full">
+                        <input 
+                          type="text" 
+                          placeholder="종목명 입력 (엔터로 검색)"
+                          value={tempFilters.stockName || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            setTempFilters(prev => ({ ...prev, stockName: val, security_id: '', stockCode: '' }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              if (!isFilterStockDropdownOpen) {
+                                handleStockSearch(tempFilters.stockName);
+                              } else {
+                                setFocusedStockIndex(prev => Math.min(prev + 1, stockSearchResults.length - 1));
+                              }
+                            } else if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              if (!isFilterStockDropdownOpen) {
+                                handleStockSearch(tempFilters.stockName);
+                              } else {
+                                setFocusedStockIndex(prev => Math.max(prev - 1, 0));
+                              }
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (e.nativeEvent?.isComposing) return;
+                              handleFilterStockEnter(tempFilters.stockName);
+                            } else if (e.key === 'Tab') {
+                              if (isFilterStockDropdownOpen) {
                                 setIsFilterStockDropdownOpen(false);
                               }
-                            }}
-                            className="w-full pl-2 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-brand transition-all font-bold text-[14px] text-slate-700 bg-slate-50 shadow-sm text-center h-[48px] placeholder:text-slate-400"
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => handleStockSearch(tempFilters.stockName)}
-                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-brand transition-colors cursor-pointer"
+                            } else if (e.key === 'Escape') {
+                              setIsFilterStockDropdownOpen(false);
+                            }
+                          }}
+                          className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-sm text-slate-700 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => handleStockSearch(tempFilters.stockName)}
+                          className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                          title="종목 검색"
+                        >
+                          <Search size={18} />
+                        </button>
+                      </div>
+                    )}
+                    
+                    {isFilterModalOpen && isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
+                      <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
+                        <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
+                          <div 
+                            ref={filterStockListRef}
+                            className="overflow-y-auto overflow-x-hidden py-1 block max-h-[220px]"
                           >
-                            <Search size={18} />
-                          </button>
-                        </>
-                      )}
-                      
-                      {isFilterModalOpen && isFilterStockDropdownOpen && (isSearchingStock || stockSearchResults.length > 0) && (
-                        <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
-                          <div className="bg-white border border-slate-200 shadow-2xl animate-slide-up flex flex-col pointer-events-auto" style={{ borderRadius: '14px', overflow: 'hidden' }}>
-                            <div ref={filterStockListRef} className="overflow-y-auto overflow-x-hidden py-1 block" style={{ maxHeight: '240px' }}>
-                              {isSearchingStock ? (
-                                <div className="p-4 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
-                                  <div className="w-4 h-4 border-2 border-slate-200 border-t-brand rounded-full animate-spin"></div>
-                                  <span>검색 중...</span>
-                                </div>
-                              ) : (
-                                [...stockSearchResults].reverse().map((stock, i) => {
-                                  const originalIndex = stockSearchResults.length - 1 - i;
-                                  return (
-                                    <button
-                                      key={stock.security_id || originalIndex}
-                                      type="button"
-                                      onClick={() => {
-                                        setTempFilters(prev => ({ 
-                                          ...prev, 
-                                          stockName: `${stock.name}(${stock.code})`,
-                                          stockCode: stock.code,
-                                          security_id: stock.security_id 
-                                        }));
-                                        setIsFilterStockDropdownOpen(false);
-                                      }}
-                                      onMouseEnter={() => setStockFocusedIndex(originalIndex)}
-                                      className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer ${
-                                        originalIndex === stockFocusedIndex ? 'bg-amber-50' : ''
-                                      }`}
-                                    >
-                                      <div className="flex flex-col">
-                                        <span className={`text-[13px] font-bold leading-tight ${originalIndex === stockFocusedIndex ? 'text-amber-600' : 'text-slate-700'}`}>
-                                          <span className="text-[10px] mr-1 text-indigo-500">{stock.currency === 'KRW' ? '[국내]' : '[해외]'}</span>
-                                          {stock.name}
-                                          <span className={`text-[12px] font-medium ml-1.5 ${originalIndex === stockFocusedIndex ? 'text-amber-600 opacity-60' : 'text-slate-400'}`}>
-                                            ({stock.code})
-                                          </span>
-                                        </span>
-                                      </div>
-                                      <span className={`text-[9px] px-1.5 py-0.5 rounded-lg ${originalIndex === stockFocusedIndex ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
-                                        {stock.exchange_nm}
+                            {[...stockSearchResults].reverse().map((stock, i) => {
+                              const originalIndex = stockSearchResults.length - 1 - i;
+                              return (
+                                <button
+                                  key={stock.security_id || originalIndex}
+                                  type="button"
+                                  onClick={() => {
+                                    setTempFilters(prev => ({ 
+                                      ...prev, 
+                                      stockName: `${stock.name}(${stock.code})`,
+                                      stockCode: stock.code,
+                                      security_id: stock.security_id 
+                                    }));
+                                    setIsFilterStockDropdownOpen(false);
+                                  }}
+                                  onMouseEnter={() => setFocusedStockIndex(originalIndex)}
+                                  className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer ${
+                                    originalIndex === focusedStockIndex ? 'bg-indigo-50/70 text-indigo-700' : ''
+                                  }`}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className={`text-[13px] font-bold leading-tight ${originalIndex === focusedStockIndex ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                      {stock.name}
+                                      <span className={`text-[12px] font-medium ml-1.5 ${originalIndex === focusedStockIndex ? 'text-indigo-600 opacity-60' : 'text-slate-400'}`}>
+                                        ({stock.code})
                                       </span>
-                                    </button>
-                                  );
-                                })
-                            )}
+                                    </span>
+                                  </div>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-lg ${originalIndex === focusedStockIndex ? 'bg-indigo-100 text-indigo-700 font-bold' : 'bg-slate-50 text-slate-400'}`}>
+                                    {stock.currency || 'KRW'}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
                     )}
-                    </div>
                   </div>
                 </div>
 
-                <div className="mt-6 flex gap-3">
-                  <button
-                    onClick={() => {
-                      const todayStr = new Date().toLocaleDateString('en-CA');
-                      const oneMonthAgo = new Date();
-                      oneMonthAgo.setMonth(new Date().getMonth() - 1);
-                      const initial = {
-                        dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
-                        dateTo: todayStr,
-                        type: '전체',
-                        stockName: '',
-                        stockCode: '',
-                        security_id: ''
-                      };
-                      setTempFilters(initial);
-                      setStockSearchResults([]);
-                      setIsFilterStockDropdownOpen(false);
-                      showAlert("조건 초기화", "팝업의 조회 조건이 초기화 되었습니다.", "success");
-                    }}
-                    className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-sm"
-                  >
-                    초기화
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveFilters({ ...tempFilters });
-                      setIsFilterModalOpen(false);
-                      setCurrentPage(1);
-                      showAlert("필터 적용", "설정한 필터가 적용되었습니다.", "success");
-                    }}
-                    className="flex-1 py-4 rounded-xl bg-brand text-white font-bold hover:bg-brand-dark transition-all shadow-sm cursor-pointer"
-                  >
-                    적용
-                  </button>
-                </div>
               </div>
             </div>
+
+            {/* 4. 하단 액션 버튼 바 (모바일 하단 항상 고정 노출) */}
+            <div className="flex-shrink-0 p-4 bg-white border-t border-slate-100 flex items-center z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveFilters({ ...tempFilters });
+                  setIsFilterModalOpen(false);
+                  setCurrentPage(1);
+                  showAlert("필터 적용", "설정한 필터가 적용되었습니다.", "success");
+                }}
+                className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-black text-sm flex items-center justify-center gap-1 shadow-md shadow-amber-200/50 active:scale-95 transition-all cursor-pointer"
+              >
+                <span>적용하기</span>
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

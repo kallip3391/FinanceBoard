@@ -204,9 +204,9 @@ export default function MobileTransactionList({
 
             {/* ── 2. 서브 바: 건수 표시 및 [초기화] [필터] [등록] 버튼 ── */}
             <div className="flex items-center justify-between px-1 pt-1 pb-1">
-              <div className="flex items-center gap-1.5">
+              <div className="h-8 flex items-center gap-2">
                 <div
-                  className={`w-1.5 h-3.5 rounded-full ${
+                  className={`w-1.5 h-4.5 rounded-full ${
                     type === "trading"
                       ? "bg-blue-600"
                       : type === "overseas"
@@ -214,14 +214,14 @@ export default function MobileTransactionList({
                       : "bg-indigo-600"
                   }`}
                 />
-                <span className="text-xs font-black text-slate-800">
+                <span className="text-[15px] font-black text-slate-800 leading-none tracking-tight">
                   {type === "trading"
                     ? "국내 거래내역"
                     : type === "overseas"
                     ? "해외 거래내역"
                     : "배당금 입금내역"}
                 </span>
-                <span className="text-[11px] font-bold text-slate-400">
+                <span className="text-[13px] font-bold text-slate-400 leading-none">
                   총 <span className="font-extrabold text-slate-700">{displayTotalCount}</span>건
                 </span>
               </div>
@@ -242,7 +242,7 @@ export default function MobileTransactionList({
                   onClick={onOpenFilter}
                   className={`h-8 px-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer ${
                     isFilterActive
-                      ? "bg-indigo-600 text-white border border-indigo-600 shadow-sm"
+                      ? "bg-amber-400 hover:bg-amber-500 text-white border border-amber-300 shadow-sm"
                       : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
                   }`}
                 >
