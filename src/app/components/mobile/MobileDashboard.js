@@ -196,23 +196,6 @@ export default function MobileDashboard() {
     <div style={{ maxWidth: "100vw", overflowX: "hidden" }} className="flex flex-col gap-0 bg-slate-50 pb-1">
       <div className="flex flex-col gap-3 px-3 pt-3 pb-1" style={{ maxWidth: "100%" }}>
 
-        {/* ── 1. 최상단 헤더 카드 (다른 탭들과 일체화된 룩) ── */}
-        <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/60 shadow-xs">
-              <LayoutDashboard size={18} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight">
-                대시보드
-              </h1>
-              <span className="text-[11px] font-semibold text-slate-400">
-                자산 구성 및 보유 현황
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* 비로그인 안내 */}
         {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-5 rounded-2xl text-sm text-center font-medium mt-2">
@@ -220,18 +203,42 @@ export default function MobileDashboard() {
           </div>
         )}
 
+        {/* ── 1. 최상단 헤더 카드 (로그인 시에만 표시) ── */}
+        {user && (
+          <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/60 shadow-xs">
+                <LayoutDashboard size={18} strokeWidth={2.5} />
+              </div>
+              <div>
+                <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight">
+                  대시보드
+                </h1>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  자산 구성 및 보유 현황
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 로그인 후 자산 로딩 상태 */}
         {user && summary?.isLoading && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 flex flex-col items-center justify-center gap-3">
-            <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            <span className="font-bold text-slate-700 text-sm">자산을 불러오고 있습니다...</span>
-            <span className="text-xs text-slate-400">잠시만 기다려주세요</span>
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 flex flex-col items-center justify-center gap-3 animate-fade-in">
+            <div className="relative flex items-center justify-center">
+              <div className="w-10 h-10 border-3 border-emerald-500/20 rounded-full" />
+              <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin absolute" />
+            </div>
+            <div className="text-center">
+              <span className="font-bold text-slate-800 text-sm block">자산 데이터를 분석하고 있습니다</span>
+              <span className="text-xs text-slate-400 mt-1 block">실시간 시세 및 보유 내역 동기화 중...</span>
+            </div>
           </div>
         )}
 
         {/* ── 2. 포트폴리오 비중 차트 카드 ── */}
         {user && !summary?.isLoading && (holdings?.length || 0) > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2 opacity-0 animate-page-slide stagger-1">
             {/* 섹션 서브헤더 */}
             <div className="flex items-center gap-2 pb-1">
               <div className="w-1.5 h-4.5 rounded-full bg-emerald-600" />
@@ -257,6 +264,9 @@ export default function MobileDashboard() {
                         stroke="none"
                         startAngle={90}
                         endAngle={-270}
+                        isAnimationActive={true}
+                        animationDuration={900}
+                        animationEasing="ease-out"
                       >
                         {stockData.map((_, i) => (
                           <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -298,13 +308,13 @@ export default function MobileDashboard() {
           </div>
         )}
 
-        {/* ── 3. 하단 2x2 그리드 영역 (한 행에 2개씩 총 4개 카드) ── */}
+        {/* ── 3. 하단 2x2 그리드 영역 (한 행에 2개씩 총 4개 카드 - 캐스케이드 애니메이션) ── */}
         {user && !summary?.isLoading && (
           <div className="grid grid-cols-2 gap-2.5 pt-1">
             {/* [1번째 칸] 보유종목 (활성화 카드 -> 탭 시 바텀시트 모달) */}
             <div
               onClick={handleOpenHoldingsModal}
-              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all cursor-pointer flex flex-col justify-between"
+              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all cursor-pointer flex flex-col justify-between opacity-0 animate-page-slide stagger-2"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -344,7 +354,7 @@ export default function MobileDashboard() {
             </div>
 
             {/* [2번째 칸] 계좌별 현황 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80">
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-3">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100/80 shadow-2xs">
@@ -364,7 +374,7 @@ export default function MobileDashboard() {
             </div>
 
             {/* [3번째 칸] 섹터 분석 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80">
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shadow-2xs">
@@ -384,7 +394,7 @@ export default function MobileDashboard() {
             </div>
 
             {/* [4번째 칸] 배당 요약 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80">
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-5">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100/80 shadow-2xs">
@@ -410,7 +420,7 @@ export default function MobileDashboard() {
       {/* ── 4. 보유종목 바텀시트 모달 (아코디언 11개 항목 + 상단바 탭/드래그 닫기) ── */}
       {isHoldingsModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
+          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
           onClick={handleCloseHoldingsModal}
         >
           <div
@@ -497,8 +507,8 @@ export default function MobileDashboard() {
               </div>
             </div>
 
-            {/* 종목별 아코디언 카드 리스트 (스크롤 가능) */}
-            <div className="overflow-y-auto space-y-2.5 pr-1 flex-1">
+            {/* 종목별 아코디언 카드 리스트 (스크롤 가능 - 하단 여백 추가로 마지막 종목 잘림 방지) */}
+            <div className="overflow-y-auto space-y-2.5 pr-1 pb-10 flex-1">
               {holdings.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs font-medium">
                   보유 중인 종목이 없습니다.
@@ -528,7 +538,7 @@ export default function MobileDashboard() {
                   return (
                     <div
                       key={itemKey}
-                      className="p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors shadow-2xs"
+                      className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors shadow-2xs opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                     >
                       {/* 카드 1행 (클릭 시 아코디언 펼치기/접기) */}
                       <div

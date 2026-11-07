@@ -475,15 +475,21 @@ export default function MobileDividendDashboard({
       {/* ── 종목별 상세 바텀시트 모달 ── */}
       {selectedMonthModal && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
+          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
           onClick={() => setSelectedMonthModal(null)}
         >
           <div
             className="bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-100 max-h-[75vh] flex flex-col animate-page-slide"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 상단 드래그 핸들 */}
-            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-3 shrink-0" />
+            {/* 상단 드래그 핸들 (탭하여 닫기) */}
+            <div
+              onClick={() => setSelectedMonthModal(null)}
+              className="w-full py-1.5 flex items-center justify-center cursor-pointer active:opacity-60 transition-opacity mb-2 shrink-0"
+              title="상단바를 누르면 닫힙니다"
+            >
+              <div className="w-12 h-1.5 bg-slate-300 rounded-full hover:bg-slate-400 transition-colors" />
+            </div>
 
             {/* 바텀시트 헤더 */}
             <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-100 shrink-0">
@@ -518,8 +524,8 @@ export default function MobileDividendDashboard({
               </div>
             </div>
 
-            {/* 종목별 리스트 (스크롤 가능) */}
-            <div className="overflow-y-auto space-y-2.5 pr-1 flex-1">
+            {/* 종목별 리스트 (스크롤 가능 - 하단 여백 추가로 마지막 종목 잘림 방지) */}
+            <div className="overflow-y-auto space-y-2.5 pr-1 pb-10 flex-1">
               {selectedMonthModal.items.map((st, idx) => {
                 const isKRW = st.currency === 'KRW';
                 return (
@@ -556,16 +562,6 @@ export default function MobileDividendDashboard({
                   </div>
                 );
               })}
-            </div>
-
-            {/* 하단 닫기 버튼 */}
-            <div className="pt-3 mt-2 border-t border-slate-100 shrink-0">
-              <button
-                onClick={() => setSelectedMonthModal(null)}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
-              >
-                닫기
-              </button>
             </div>
           </div>
         </div>
