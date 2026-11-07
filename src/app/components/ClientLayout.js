@@ -43,6 +43,44 @@ export default function ClientLayout({ children }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [pathname]);
 
+  // 모바일 가상 키보드 닫힘 시 뷰포트 스크롤 복원 (바닥 화면 밀림/처짐 방지)
+  useEffect(() => {
+    const handleFocusOut = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
+        setTimeout(() => {
+          const hasOpenModal = document.querySelector('.fixed.inset-0');
+          if (hasOpenModal || document.body.style.position === 'fixed') {
+            window.scrollTo(0, 0);
+          } else {
+            window.scrollTo(window.scrollX, window.scrollY);
+          }
+        }, 100);
+      }
+    };
+
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        if (Math.abs(window.visualViewport.height - window.innerHeight) < 40) {
+          const hasOpenModal = document.querySelector('.fixed.inset-0');
+          if (hasOpenModal || document.body.style.position === 'fixed') {
+            window.scrollTo(0, 0);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('focusout', handleFocusOut);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
+    }
+    return () => {
+      document.removeEventListener('focusout', handleFocusOut);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
+      }
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <AssetProvider>

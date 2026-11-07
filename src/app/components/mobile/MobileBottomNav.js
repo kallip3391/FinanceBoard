@@ -7,7 +7,7 @@ import { LayoutDashboard, List, Sprout } from "lucide-react";
 const tabs = [
   { name: "대시보드", href: "/holdings", icon: LayoutDashboard },
   { name: "거래 내역", href: "/transactions/trading", icon: List },
-  { name: "배당금 현황", href: "/dividends", icon: Sprout },
+  { name: "수익결산", href: "/dividends", icon: Sprout },
 ];
 
 export default function MobileBottomNav() {

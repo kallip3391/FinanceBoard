@@ -6,18 +6,45 @@ import {
 } from 'recharts';
 import { ChevronLeft, ChevronRight, Sprout, Calendar, X } from "lucide-react";
 
-const getCurrencyBadgeStyles = (currency) => {
-  const styles = {
-    'KRW': 'bg-blue-50 text-blue-600 border-blue-200',
-    'USD': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-    'JPY': 'bg-rose-50 text-rose-600 border-rose-200',
-    'EUR': 'bg-indigo-50 text-indigo-600 border-indigo-200',
-    'HKD': 'bg-amber-50 text-amber-600 border-amber-200',
-    'CNY': 'bg-red-50 text-red-600 border-red-200',
-    'GBP': 'bg-violet-50 text-violet-600 border-violet-200'
-  };
-  return styles[currency] || 'bg-slate-50 text-slate-500 border-slate-200';
-};
+function StockLogo({ code, name, isKRW }) {
+  const [hasError, setHasError] = useState(false);
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+
+  // ETF 여부 판별 (종목명에 ETF 또는 주요 ETF 브랜드가 포함된 경우)
+  const isETF = (name || '').toUpperCase().includes('ETF') ||
+                /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
+
+  if (!logoUrl || hasError) {
+    const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
+
+    return (
+      <div
+        className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold shrink-0 ${
+          isETF
+            ? 'bg-purple-100 text-purple-700 text-[10px]'
+            : isKRW
+              ? 'bg-blue-100/80 text-blue-600 text-xs'
+              : 'bg-amber-100/80 text-amber-700 text-xs'
+        }`}
+      >
+        {displayText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-slate-100/60">
+      <img
+        src={logoUrl}
+        alt={name || cleanCode}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-lg"
+        loading="lazy"
+      />
+    </div>
+  );
+}
 
 export default function MobileDividendDashboard({
   user,
@@ -501,26 +528,22 @@ export default function MobileDividendDashboard({
                     className="flex justify-between items-center p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span
-                        className={`text-[10px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
-                          isKRW
-                            ? 'bg-blue-50 text-blue-600 border-blue-200'
-                            : 'bg-amber-50 text-amber-600 border-amber-200'
-                        }`}
-                      >
-                        {isKRW ? '국내' : '해외'}
-                      </span>
+                      <StockLogo code={st.code} name={st.name} isKRW={isKRW} />
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-800 truncate leading-tight">
                           {st.name}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-400 font-medium">
-                          {st.code && <span>{st.code}</span>}
-                          {st.currency && (
-                            <span className={`px-1 py-0.2 rounded text-[9px] font-bold border ${getCurrencyBadgeStyles(st.currency)}`}>
-                              {st.currency}
-                            </span>
-                          )}
+                          {st.code && <span className="font-mono">{st.code}</span>}
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
+                              isKRW
+                                ? 'bg-blue-50 text-blue-600 border-blue-200'
+                                : 'bg-amber-50 text-amber-600 border-amber-200'
+                            }`}
+                          >
+                            {isKRW ? '국내' : '해외'}
+                          </span>
                         </div>
                       </div>
                     </div>
