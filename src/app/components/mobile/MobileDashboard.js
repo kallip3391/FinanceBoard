@@ -521,19 +521,23 @@ export default function MobileDashboard() {
 
                   const profitPos = (h.profitAmountKRW || 0) > 0;
                   const profitNeg = (h.profitAmountKRW || 0) < 0;
-                  const ratePos = parseFloat(h.returnRate) > 0;
+                  const returnRateVal = parseFloat(h.returnRate);
+                  const formattedReturnRate = !isNaN(returnRateVal) ? returnRateVal.toFixed(2) : "0.00";
+                  const ratePos = returnRateVal > 0;
 
                   const totalProfitKRW = (h.profitAmountKRW || 0) + (h.dividend || 0);
                   const totalProfitPos = totalProfitKRW > 0;
                   const totalProfitNeg = totalProfitKRW < 0;
 
-                  const rawTotalRate = h.totalReturnRate !== undefined
+                  const totalRateRaw = h.totalReturnRate !== undefined
                     ? h.totalReturnRate
                     : (h.totalCostKRW > 0
-                      ? (((totalProfitKRW) / h.totalCostKRW) * 100).toFixed(2)
-                      : h.returnRate);
-                  const totalRatePos = parseFloat(rawTotalRate) > 0;
-                  const totalRateNeg = parseFloat(rawTotalRate) < 0;
+                      ? (((totalProfitKRW) / h.totalCostKRW) * 100)
+                      : returnRateVal);
+                  const totalRateNum = parseFloat(totalRateRaw);
+                  const formattedTotalRate = !isNaN(totalRateNum) ? totalRateNum.toFixed(2) : "0.00";
+                  const totalRatePos = totalRateNum > 0;
+                  const totalRateNeg = totalRateNum < 0;
 
                   return (
                     <div
@@ -567,7 +571,7 @@ export default function MobileDashboard() {
                               {formatCurrency(h.evaluationAmountKRW, 'KRW')}원
                             </span>
                             <span className={`text-[11px] font-bold tabular-nums block mt-0.5 leading-tight ${profitPos ? 'text-red-600' : profitNeg ? 'text-blue-600' : 'text-slate-500'}`}>
-                              {profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}원 ({ratePos ? '+' : ''}{h.returnRate}%)
+                              {profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}원 ({ratePos ? '+' : ''}{formattedReturnRate}%)
                             </span>
                           </div>
                           <div className="p-0.5 text-slate-400">
@@ -616,7 +620,7 @@ export default function MobileDashboard() {
                                   {totalProfitPos ? '+' : ''}{formatCurrency(totalProfitKRW, 'KRW')}원
                                 </span>
                                 <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${totalRatePos ? 'text-red-600' : totalRateNeg ? 'text-blue-600' : 'text-slate-700'}`}>
-                                  ({totalRatePos ? '+' : ''}{rawTotalRate}%)
+                                  ({totalRatePos ? '+' : ''}{formattedTotalRate}%)
                                 </span>
                               </div>
                             </div>

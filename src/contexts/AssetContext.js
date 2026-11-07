@@ -157,8 +157,8 @@ export function AssetProvider({ children }) {
           
           const currentRate = exchangeRates[prev.currency.toUpperCase()] || 1;
           prev.purchasePrice = prev.totalCostKRW / (prev.totalQuantity * currentRate);
-          prev.returnRate = prev.purchasePrice > 0 ? ((prev.currentPrice / prev.purchasePrice) - 1) * 100 : 0;
-          prev.totalReturnRate = prev.totalCostKRW > 0 ? ((prev.profitAmountKRW + prev.dividend) / prev.totalCostKRW) * 100 : 0;
+          prev.returnRate = prev.purchasePrice > 0 ? (((prev.currentPrice / prev.purchasePrice) - 1) * 100).toFixed(2) : "0.00";
+          prev.totalReturnRate = prev.totalCostKRW > 0 ? (((prev.profitAmountKRW + prev.dividend) / prev.totalCostKRW) * 100).toFixed(2) : "0.00";
         }
 
         // 2. 계좌별 그룹화 (holdingsByAccount)
