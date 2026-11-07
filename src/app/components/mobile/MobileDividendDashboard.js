@@ -226,10 +226,11 @@ export default function MobileDividendDashboard({
             </div>
           </div>
 
-          {/* 12개월 스택 바 차트 */}
-          <div className="h-[180px] w-full min-w-0 pt-1">
+          {/* 12개월 스택 바 차트 (연도 변경 시 처음 진입한 것처럼 바닥에서 솟아오르도록 key 지정) */}
+          <div key={`chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1">
             <ResponsiveContainer width="100%" height={180} minWidth={0}>
               <BarChart
+                key={`barchart-${selectedYear}`}
                 data={monthly12Data.months}
                 barCategoryGap="18%"
                 margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
@@ -306,8 +307,28 @@ export default function MobileDividendDashboard({
                     return null;
                   }}
                 />
-                <Bar dataKey="KRW" name="국내" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="OVERSEAS" name="해외" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                <Bar 
+                  key={`bar-krw-${selectedYear}`}
+                  dataKey="KRW" 
+                  name="국내" 
+                  stackId="a" 
+                  fill="#3b82f6" 
+                  radius={[0, 0, 0, 0]} 
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
+                <Bar 
+                  key={`bar-overseas-${selectedYear}`}
+                  dataKey="OVERSEAS" 
+                  name="해외" 
+                  stackId="a" 
+                  fill="#f59e0b" 
+                  radius={[3, 3, 0, 0]} 
+                  isAnimationActive={true}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

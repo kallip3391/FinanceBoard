@@ -86,6 +86,8 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -94,7 +96,7 @@ export default function TransactionsPage() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   useEffect(() => {
-    if (isFilterModalOpen) {
+    if (isFilterModalOpen || isModalOpen || isStockModalOpen || isAccountModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -102,7 +104,7 @@ export default function TransactionsPage() {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isFilterModalOpen]);
+  }, [isFilterModalOpen, isModalOpen, isStockModalOpen, isAccountModalOpen]);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'error', focusRef: null });
@@ -110,7 +112,6 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
-  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
   const [searchedStocks, setSearchedStocks] = useState([]);
   const [isSearchingStock, setIsSearchingStock] = useState(false);
@@ -125,7 +126,6 @@ export default function TransactionsPage() {
 
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState(null);
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isAccountTypeDropdownOpen, setIsAccountTypeDropdownOpen] = useState(false);
   const [accountForm, setAccountForm] = useState({ institution: '', type: '' });
   const [accountDeleteConfirm, setAccountDeleteConfirm] = useState({ isOpen: false, name: '' });
@@ -171,7 +171,7 @@ export default function TransactionsPage() {
   const monthRef = useRef(null);
   const dayRef = useRef(null);
 
-  const [accountFocusedIndex, setAccountFocusedIndex] = useState(-1);
+  const [focusedAccountIndex, setFocusedAccountIndex] = useState(-1);
   const [stockFocusedIndex, setStockFocusedIndex] = useState(-1);
 
   const [formData, setFormData] = useState({
@@ -317,14 +317,14 @@ export default function TransactionsPage() {
 
   // 드롭다운 스크롤 자동 이동 (계좌)
   useEffect(() => {
-    if (isAccountDropdownOpen && accountFocusedIndex >= 0 && accountListRef.current) {
+    if (isAccountDropdownOpen && focusedAccountIndex >= 0 && accountListRef.current) {
       const container = accountListRef.current;
-      const focusedItem = container.children[accountFocusedIndex];
+      const focusedItem = container.children[focusedAccountIndex];
       if (focusedItem) {
         focusedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     }
-  }, [accountFocusedIndex, isAccountDropdownOpen]);
+  }, [focusedAccountIndex, isAccountDropdownOpen]);
 
   useEffect(() => {
     if (isStockDropdownOpen && stockFocusedIndex >= 0 && stockListRef.current) {
@@ -1335,20 +1335,21 @@ export default function TransactionsPage() {
       </div>
 
       {/* Add Transaction Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 1000 }}>
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={toggleModal}></div>
+      {isModalOpen && mounted && createPortal(
+        <div className="fixed inset-0 z-[9990] bg-black/60 backdrop-blur-xs flex items-end md:items-center justify-center p-0 md:p-4 transition-opacity animate-fade-in" onClick={toggleModal}>
+          <div className="relative bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 overflow-hidden animate-page-slide max-h-[92vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Mobile handle */}
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-2.5 mb-0.5 shrink-0 md:hidden" />
 
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-xl font-bold text-slate-800">{editingId ? '수정' : '등록'}</h3>
-              <button onClick={toggleModal} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
-                <X size={24} />
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800">{editingId ? '수정' : '등록'}</h3>
+              <button onClick={toggleModal} className="p-2 -mr-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all cursor-pointer">
+                <X size={22} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-2 gap-4 overflow-y-auto">
-              <div className="col-span-2">
+            <form onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+              <div>
                 <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">배당일</label>
                 <div className="flex items-center gap-2 w-full">
                   <input
@@ -1414,7 +1415,7 @@ export default function TransactionsPage() {
                         fetchRate();
                       }
                     }}
-                    className="w-[160px] px-3 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all text-center font-bold bg-slate-50 shadow-sm"
+                    className="flex-1 min-w-0 px-3 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all text-center font-bold text-slate-800 bg-slate-50 shadow-xs"
                   />
                   <span className="text-slate-300 font-bold">/</span>
                   <input
@@ -1442,7 +1443,6 @@ export default function TransactionsPage() {
                         const padded = formData.month.padStart(2, '0');
                         setFormData(prev => ({ ...prev, month: padded }));
 
-                        // 날짜 유효성 체크 및 자동 조정 (예: 3/31 -> 4/30)
                         if (formData.year && formData.day) {
                           const lastDay = new Date(parseInt(formData.year), parseInt(padded), 0).getDate();
                           if (parseInt(formData.day) > lastDay) {
@@ -1454,7 +1454,6 @@ export default function TransactionsPage() {
                         }
                         fetchRate({ month: padded });
                       } else if (formData.month) {
-                        // 날짜 유효성 체크 및 자동 조정
                         if (formData.year && formData.day) {
                           const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
                           if (parseInt(formData.day) > lastDay) {
@@ -1482,7 +1481,7 @@ export default function TransactionsPage() {
                         fetchRate();
                       }
                     }}
-                    className="w-[100px] px-3 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all text-center font-bold bg-slate-50 shadow-sm"
+                    className="w-20 px-3 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all text-center font-bold text-slate-800 bg-slate-50 shadow-xs"
                   />
                   <span className="text-slate-300 font-bold">/</span>
                   <input
@@ -1490,57 +1489,15 @@ export default function TransactionsPage() {
                     type="text" maxLength={2} placeholder="DD"
                     value={formData.day}
                     onChange={(e) => setFormData(prev => ({ ...prev, day: e.target.value.replace(/[^0-9]/g, '') }))}
-                    onBlur={() => {
-                      const today = new Date();
-                      const inputYear = parseInt(formData.year);
-                      const inputMonth = parseInt(formData.month);
-                      const inputDay = parseInt(formData.day);
-
-                      if (inputYear === today.getFullYear() && inputMonth === (today.getMonth() + 1) && inputDay > today.getDate()) {
-                        showAlert("입력 오류", "미래 일자는 입력할 수 없습니다.", 'error', dayRef);
-                        setFormData(prev => ({ ...prev, day: today.getDate().toString().padStart(2, '0') }));
-                        return;
-                      }
-
-                      if (formData.day && formData.day.length === 1) {
-                        const padded = formData.day.padStart(2, '0');
-
-                        // 날짜 유효성 체크 (해당 월의 마지막 날짜보다 큰 경우 조정)
-                        if (formData.year && formData.month) {
-                          const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
-                          if (parseInt(padded) > lastDay) {
-                            const adjusted = lastDay.toString().padStart(2, '0');
-                            setFormData(prev => ({ ...prev, day: adjusted }));
-                            fetchRate({ day: adjusted });
-                            return;
-                          }
-                        }
-
-                        setFormData(prev => ({ ...prev, day: padded }));
-                        fetchRate({ day: padded });
-                      } else if (formData.day) {
-                        // 날짜 유효성 체크
-                        if (formData.year && formData.month) {
-                          const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
-                          if (parseInt(formData.day) > lastDay) {
-                            const adjusted = lastDay.toString().padStart(2, '0');
-                            setFormData(prev => ({ ...prev, day: adjusted }));
-                            fetchRate({ day: adjusted });
-                            return;
-                          }
-                        }
-                        fetchRate();
-                      }
-                    }}
                     onKeyDown={async (e) => {
                       if (e.key === 'Tab' && !e.shiftKey) {
                         e.preventDefault();
-                        setIsAccountDropdownOpen(true);
-                        setAccountFocusedIndex(0);
+                        const next = true;
+                        setIsAccountDropdownOpen(next);
+                        if (next) await refreshAccounts();
+                        setFocusedAccountIndex(0);
                         setTimeout(() => accountRef.current?.focus(), 50);
-                        return;
-                      }
-                      if (e.key === 'Enter') {
+                      } else if (e.key === 'Enter') {
                         e.preventDefault();
                         if (formData.year && formData.month && formData.day) {
                           const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
@@ -1555,17 +1512,53 @@ export default function TransactionsPage() {
                         accountRef.current?.focus();
                       }
                     }}
-                    className="w-[100px] px-3 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all text-center font-bold bg-slate-50 shadow-sm"
-                  />
+                    onBlur={() => {
+                      const today = new Date();
+                      const inputYear = parseInt(formData.year);
+                      const inputMonth = parseInt(formData.month);
+                      const inputDay = parseInt(formData.day);
 
-                  <div className="flex-1"></div>
+                      if (inputYear === today.getFullYear() && inputMonth === (today.getMonth() + 1) && inputDay > today.getDate()) {
+                        showAlert("입력 오류", "미래 일자는 입력할 수 없습니다.", 'error', dayRef);
+                        setFormData(prev => ({ ...prev, day: today.getDate().toString().padStart(2, '0') }));
+                        return;
+                      }
+
+                      if (formData.day && formData.day.length === 1) {
+                        const padded = formData.day.padStart(2, '0');
+                        if (formData.year && formData.month) {
+                          const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
+                          if (parseInt(padded) > lastDay) {
+                            const adjusted = lastDay.toString().padStart(2, '0');
+                            setFormData(prev => ({ ...prev, day: adjusted }));
+                            fetchRate({ day: adjusted });
+                            return;
+                          }
+                        }
+                        setFormData(prev => ({ ...prev, day: padded }));
+                        fetchRate({ day: padded });
+                      } else if (formData.day) {
+                        if (formData.year && formData.month) {
+                          const lastDay = new Date(parseInt(formData.year), parseInt(formData.month), 0).getDate();
+                          if (parseInt(formData.day) > lastDay) {
+                            const adjusted = lastDay.toString().padStart(2, '0');
+                            setFormData(prev => ({ ...prev, day: adjusted }));
+                            fetchRate({ day: adjusted });
+                            return;
+                          }
+                        }
+                        fetchRate();
+                      }
+                    }}
+                    className="w-20 px-3 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all text-center font-bold text-slate-800 bg-slate-50 shadow-xs"
+                  />
 
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer shadow-sm ${isCalendarOpen
-                        ? 'bg-brand text-white border-brand shadow-lg shadow-brand/20'
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer shadow-xs ${isCalendarOpen
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
                         : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                         }`}
                     >
@@ -1589,91 +1582,105 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">계좌</label>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <div className="relative flex-1" ref={accountDropdownRef}>
-                    <div className="flex items-center">
-                      <input
-                        ref={accountRef}
-                        type="text"
-                        readOnly
-                        placeholder="계좌 선택"
-                        value={formData.account}
-                        className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer text-center h-12 box-border shadow-sm hover:border-brand/30 hover:bg-white"
-                        onClick={() => {
-                          const next = !isAccountDropdownOpen;
-                          setIsAccountDropdownOpen(next);
-                          if (next) setAccountFocusedIndex(-1);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            if (!isAccountDropdownOpen) {
-                              setIsAccountDropdownOpen(true);
-                              setAccountFocusedIndex(0);
-                            } else {
-                              setAccountFocusedIndex(prev => Math.min(prev + 1, accounts.length - 1));
-                            }
-                          } else if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            if (isAccountDropdownOpen) {
-                              setAccountFocusedIndex(prev => Math.max(prev - 1, 0));
-                            }
-                          } else if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (isAccountDropdownOpen && accountFocusedIndex >= 0 && accounts[accountFocusedIndex]) {
-                              const acc = accounts[accountFocusedIndex];
-                              setFormData(prev => ({ ...prev, account: acc.account_nm, account_id: acc.account_id }));
-                              setIsAccountDropdownOpen(false);
-                              setAccountFocusedIndex(-1);
-                              setTimeout(() => stockRef.current?.focus(), 50);
-                            } else {
-                              setIsAccountDropdownOpen(!isAccountDropdownOpen);
-                            }
-                          } else if (e.key === 'Escape') {
+                    <input
+                      ref={accountRef}
+                      type="text"
+                      readOnly
+                      placeholder="계좌선택"
+                      value={formData.account}
+                      className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer text-center h-12 shadow-xs hover:border-blue-300 hover:bg-white"
+                      onClick={async () => {
+                        const next = !isAccountDropdownOpen;
+                        setIsAccountDropdownOpen(next);
+                        if (next) await refreshAccounts();
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (isAccountDropdownOpen && focusedAccountIndex >= 0 && accounts[focusedAccountIndex]) {
+                            const acc = accounts[focusedAccountIndex];
+                            setFormData(prev => ({ ...prev, account: acc.account_nm }));
+                            setSelectedAccountId(acc.account_id);
                             setIsAccountDropdownOpen(false);
-                            setAccountFocusedIndex(-1);
-                          } else if (e.key === 'Tab' && !e.shiftKey) {
-                            if (isAccountDropdownOpen) {
-                              setIsAccountDropdownOpen(false);
-                              setAccountFocusedIndex(-1);
+                            setFocusedAccountIndex(-1);
+                            setTimeout(() => stockRef.current?.focus(), 50);
+                          } else {
+                            const next = !isAccountDropdownOpen;
+                            setIsAccountDropdownOpen(next);
+                            if (next) {
+                              await refreshAccounts();
+                              setFocusedAccountIndex(0);
                             }
+                          }
+                        } else if (e.key === 'Tab') {
+                          if (isAccountDropdownOpen) {
+                            setIsAccountDropdownOpen(false);
+                            setFocusedAccountIndex(-1);
+                          }
+                          if (!e.shiftKey) {
                             e.preventDefault();
                             stockRef.current?.focus();
                           }
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none"
-                      >
-                        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${isAccountDropdownOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                    </div>
-
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          if (!isAccountDropdownOpen) {
+                            setIsAccountDropdownOpen(true);
+                            await refreshAccounts();
+                            setFocusedAccountIndex(0);
+                          } else {
+                            setFocusedAccountIndex(prev => Math.min(prev + 1, accounts.length - 1));
+                          }
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          if (isAccountDropdownOpen) {
+                            setFocusedAccountIndex(prev => Math.max(prev - 1, 0));
+                          }
+                        } else if (e.key === 'Escape') {
+                          setIsAccountDropdownOpen(false);
+                          setFocusedAccountIndex(-1);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
+                      onClick={async () => {
+                        const next = !isAccountDropdownOpen;
+                        setIsAccountDropdownOpen(next);
+                        if (next) await refreshAccounts();
+                      }}
+                    >
+                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
                     {isAccountDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20">
                         <div ref={accountListRef} className="py-2 max-h-[286px] overflow-y-auto block overflow-x-hidden">
                           {isAccountsLoading ? (
                             <div className="px-4 py-2 text-sm text-slate-400 text-center">불러오는 중...</div>
                           ) : accounts.length === 0 ? (
                             <div className="px-4 py-2 text-sm text-slate-400 text-center">등록된 계좌가 없습니다</div>
                           ) : (
-                            accounts.map((acc) => (
+                            accounts.map((acc, index) => (
                               <button
                                 key={acc.account_id}
                                 type="button"
-                                className={`w-full px-4 py-3 text-left transition-colors flex items-center ${accountFocusedIndex === accounts.indexOf(acc) ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-50'
-                                  }`}
+                                className={`w-full px-4 py-3 text-left transition-colors flex items-center cursor-pointer ${
+                                  focusedAccountIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
+                                }`}
                                 onClick={() => {
-                                  setFormData(prev => ({ ...prev, account: acc.account_nm, account_id: acc.account_id }));
+                                  setFormData(prev => ({ ...prev, account: acc.account_nm }));
+                                  setSelectedAccountId(acc.account_id);
                                   setIsAccountDropdownOpen(false);
-                                  setAccountFocusedIndex(-1);
                                   setTimeout(() => stockRef.current?.focus(), 50);
                                 }}
                               >
-                                <span className={`font-bold text-sm ${accountFocusedIndex === accounts.indexOf(acc) ? 'text-amber-600' : 'text-slate-700'}`}>{acc.account_nm}</span>
+                                <span className="font-bold text-sm text-slate-700">{acc.account_nm}</span>
                               </button>
                             ))
                           )}
@@ -1682,50 +1689,49 @@ export default function TransactionsPage() {
                     )}
                   </div>
 
-                  <div className="flex items-end">
-                    <div className="flex gap-2 w-[80px] flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAccountForm({ institution: '', type: '' });
-                          setIsAccountTypeDropdownOpen(false);
-                          setIsAccountModalOpen(true);
-                          setIsAccountDropdownOpen(false);
-                        }}
-                        className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                        title="계좌 추가"
-                      >
-                        <Plus size={20} />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!formData.account}
-                        onClick={() => {
-                          if (formData.account) {
-                            setAccountDeleteConfirm({ isOpen: true, name: formData.account });
-                          }
-                        }}
-                        className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${formData.account
-                            ? 'text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer'
-                            : 'text-slate-200 cursor-not-allowed'
-                          }`}
-                        title="계좌 삭제"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountForm({ institution: '', type: '' });
+                        setIsAccountTypeDropdownOpen(false);
+                        setIsAccountModalOpen(true);
+                        setIsAccountDropdownOpen(false);
+                      }}
+                      className="p-2.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
+                      title="계좌 추가"
+                    >
+                      <Plus size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!formData.account}
+                      onClick={() => {
+                        if (formData.account) {
+                          setAccountDeleteConfirm({ isOpen: true, name: formData.account });
+                        }
+                      }}
+                      className={`p-2.5 transition-all inline-flex items-center justify-center rounded-xl ${
+                        formData.account 
+                          ? 'text-slate-400 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
+                          : 'text-slate-200 cursor-not-allowed'
+                      }`}
+                      title="계좌 삭제"
+                    >
+                      <Trash2 size={22} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목</label>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <div className="relative flex-1" ref={stockDropdownRef}>
                     {formData.security_id ? (
                       <div
                         onClick={() => {
-                          setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' }));
+                          setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock.replace(`[${prev.stockCode}] `, '') }));
                           setTimeout(() => {
                             stockRef.current?.focus();
                             stockRef.current?.select();
@@ -1747,7 +1753,7 @@ export default function TransactionsPage() {
                             priceRef.current?.focus();
                           }
                         }}
-                        className="w-full pl-4 pr-10 py-1 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-700 text-center flex items-center justify-center cursor-pointer transition-all hover:border-brand min-h-[48px] py-1.5 box-border shadow-sm hover:bg-white"
+                        className="w-full px-4 py-2 rounded-2xl border border-slate-200 bg-slate-50 font-bold text-slate-700 text-center flex items-center justify-center cursor-pointer transition-all hover:border-blue-400 min-h-[48px] shadow-xs hover:bg-white"
                       >
                         <span className="w-full break-all leading-tight text-sm block">
                           {formData.stock.replace(`[${formData.stockCode}] `, '')}
@@ -1755,33 +1761,91 @@ export default function TransactionsPage() {
                         </span>
                       </div>
                     ) : (
-                      <input
-                        ref={stockRef}
-                        type="text" placeholder="종목명 입력 (엔터로 검색)"
-                        value={formData.stock}
-                        onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value.toUpperCase(), security_id: '' }))}
-                        onKeyDown={async (e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (isStockDropdownOpen && stockFocusedIndex >= 0 && searchedStocks[stockFocusedIndex]) {
-                              const stock = searchedStocks[stockFocusedIndex];
-                              setFormData(prev => ({
-                                ...prev,
-                                security_id: stock.security_id,
-                                stock: `[${stock.code}] ${stock.name}`,
-                                stockCode: stock.code,
-                                currency: stock.currency || prev.currency,
-                                dividendAmount: ''
-                              }));
+                      <div className="relative w-full">
+                        <input
+                          ref={stockRef}
+                          type="text" placeholder="종목명 입력 (엔터로 검색)"
+                          value={formData.stock}
+                          onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value.toUpperCase(), security_id: '' }))}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (isStockDropdownOpen && focusedStockIndex >= 0 && searchedStocks[focusedStockIndex]) {
+                                const stock = searchedStocks[focusedStockIndex];
+                                setFormData(prev => ({
+                                  ...prev,
+                                  security_id: stock.security_id,
+                                  stock: `[${stock.code}] ${stock.name}`,
+                                  stockCode: stock.code,
+                                  exchange_code: stock.exchange_code || '',
+                                  currency: stock.currency || prev.currency
+                                }));
+                                setIsStockDropdownOpen(false);
+                                setFocusedStockIndex(-1);
+                                setTimeout(() => priceRef.current?.focus(), 50);
+                              } else {
+                                setIsSearchingStock(true);
+                                setIsStockDropdownOpen(true);
+                                setFocusedStockIndex(-1);
+                                try {
+                                  let searchTerm = formData.stock.trim();
+                                  const match = searchTerm.match(/\[(.*?)\]/);
+                                  if (match && match[1]) {
+                                    searchTerm = match[1];
+                                  } else {
+                                    const parts = searchTerm.split('] ');
+                                    if (parts.length > 1) searchTerm = parts[1];
+                                  }
+
+                                  const results = await TransactionManager.searchStocksByName(searchTerm);
+                                  setSearchedStocks(results);
+                                  if (results.length > 0) setFocusedStockIndex(0);
+                                } catch (err) {
+                                  console.error(err);
+                                  setSearchedStocks([]);
+                                } finally {
+                                  setIsSearchingStock(false);
+                                }
+                              }
+                            } else if (e.key === 'Tab') {
+                              if (isStockDropdownOpen) {
+                                setIsStockDropdownOpen(false);
+                                setFocusedStockIndex(-1);
+                              }
+                              if (!e.shiftKey) {
+                                e.preventDefault();
+                                priceRef.current?.focus();
+                              }
+                            } else if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              if (!isStockDropdownOpen) {
+                                setIsStockDropdownOpen(true);
+                                setFocusedStockIndex(0);
+                              } else {
+                                setFocusedStockIndex(prev => Math.min(prev + 1, searchedStocks.length - 1));
+                              }
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              if (isStockDropdownOpen) {
+                                setFocusedStockIndex(prev => Math.max(prev - 1, 0));
+                              }
+                            } else if (e.key === 'Escape') {
                               setIsStockDropdownOpen(false);
-                              setStockFocusedIndex(-1);
-                              setTimeout(() => priceRef.current?.focus(), 50);
-                            } else {
+                              setFocusedStockIndex(-1);
+                            }
+                          }}
+                          className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 text-center h-12 bg-slate-50 shadow-xs"
+                        />
+                        <button
+                          type="button"
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer text-slate-400 hover:text-slate-600"
+                          onClick={async () => {
+                            const next = !isStockDropdownOpen;
+                            if (next) {
                               setIsSearchingStock(true);
                               setIsStockDropdownOpen(true);
-                              setStockFocusedIndex(-1);
                               try {
-                                let searchTerm = formData.stock.trim();
+                                let searchTerm = formData.stock ? formData.stock.trim() : '';
                                 const match = searchTerm.match(/\[(.*?)\]/);
                                 if (match && match[1]) {
                                   searchTerm = match[1];
@@ -1789,107 +1853,54 @@ export default function TransactionsPage() {
                                   const parts = searchTerm.split('] ');
                                   if (parts.length > 1) searchTerm = parts[1];
                                 }
-                                const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                                const currencyOrder = (c) => c === 'KRW' ? 0 : c === 'USD' ? 1 : 2;
-                                const sorted = [...results].sort((a, b) => currencyOrder(a.currency) - currencyOrder(b.currency));
-                                setSearchedStocks(sorted);
-                                if (sorted.length > 0) setStockFocusedIndex(0);
+
+                                const results = await TransactionManager.searchStocksByName(searchTerm);
+                                setSearchedStocks(results);
                               } catch (err) {
                                 console.error(err);
                                 setSearchedStocks([]);
                               } finally {
                                 setIsSearchingStock(false);
                               }
-                            }
-                          } else if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            if (!isStockDropdownOpen) {
-                              setIsStockDropdownOpen(true);
-                              setStockFocusedIndex(0);
                             } else {
-                              setStockFocusedIndex(prev => Math.min(prev + 1, searchedStocks.length - 1));
+                              setIsStockDropdownOpen(false);
                             }
-                          } else if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            if (isStockDropdownOpen) {
-                              setStockFocusedIndex(prev => Math.max(prev - 1, 0));
-                            }
-                          } else if (e.key === 'Escape') {
-                            setIsStockDropdownOpen(false);
-                            setStockFocusedIndex(-1);
-                          }
-                        }}
-                        className="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 text-center h-12 box-border bg-slate-50 shadow-sm"
-                      />
+                          }}
+                        >
+                          <Search size={20} />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
-                      onClick={async () => {
-                        const next = !isStockDropdownOpen;
-                        if (next) {
-                          setIsSearchingStock(true);
-                          setIsStockDropdownOpen(true);
-                          try {
-                            let searchTerm = formData.stock ? formData.stock.trim() : '';
-                            // [코드] 명 양식인 경우 파싱하여 검색
-                            const match = searchTerm.match(/\[(.*?)\]/);
-                            if (match && match[1]) {
-                              searchTerm = match[1];
-                            } else {
-                              const parts = searchTerm.split('] ');
-                              if (parts.length > 1) searchTerm = parts[1];
-                            }
-                            // 배당 페이지는 국내/해외 모든 종목을 조회할 수 있도록 null 전달
-                            const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                            const currencyOrder = (c) => c === 'KRW' ? 0 : c === 'USD' ? 1 : 2;
-                            const sorted = [...results].sort((a, b) => currencyOrder(a.currency) - currencyOrder(b.currency));
-                            setSearchedStocks(sorted);
-                          } catch {
-                            setSearchedStocks([]);
-                          } finally {
-                            setIsSearchingStock(false);
-                          }
-                        } else {
-                          setIsStockDropdownOpen(false);
-                        }
-                      }}
-                    >
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </button>
                     {isStockDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 w-full bg-white border border-slate-100 rounded-xl shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-20">
                         <div ref={stockListRef} className="py-2 max-h-[286px] overflow-y-auto block overflow-x-hidden">
                           {isSearchingStock ? (
-                            <div className="px-4 py-3 text-sm text-slate-400 text-center">검색 중...</div>
+                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 중...</div>
                           ) : searchedStocks.length === 0 ? (
-                            <div className="px-4 py-3 text-sm text-slate-400 text-center">검색 결과가 없습니다</div>
+                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 결과가 없습니다</div>
                           ) : (
-                            searchedStocks.map((stock) => (
+                            searchedStocks.map((stock, index) => (
                               <button
                                 key={stock.security_id || stock.code}
                                 type="button"
-                                className={`w-full px-4 py-3 text-left transition-colors flex items-center cursor-pointer ${stockFocusedIndex === searchedStocks.indexOf(stock) ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-50'
-                                  }`}
-                                onMouseEnter={() => setStockFocusedIndex(searchedStocks.indexOf(stock))}
+                                className={`w-full px-4 py-3 text-left transition-colors flex items-center cursor-pointer ${
+                                  focusedStockIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
+                                }`}
+                                onMouseEnter={() => setFocusedStockIndex(index)}
                                 onClick={() => {
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    security_id: stock.security_id,
-                                    stock: `[${stock.code}] ${stock.name}`,
-                                    stockCode: stock.code,
-                                    currency: stock.currency || prev.currency,
-                                    dividendAmount: ''
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    stock: `[${stock.code}] ${stock.name}`, 
+                                    stockCode: stock.code, 
+                                    security_id: stock.security_id, 
+                                    currency: stock.currency || prev.currency 
                                   }));
                                   setIsStockDropdownOpen(false);
-                                  setStockFocusedIndex(-1);
                                   setTimeout(() => priceRef.current?.focus(), 50);
                                 }}
                               >
-                                <span className={`font-semibold text-sm leading-tight break-words ${stockFocusedIndex === searchedStocks.indexOf(stock) ? 'text-amber-600' : 'text-slate-700'}`}>
-                                  {stock.name} <span className={`text-[13px] font-medium tracking-tight ${stockFocusedIndex === searchedStocks.indexOf(stock) ? 'text-amber-400' : 'text-slate-400'}`}>({stock.code})</span>
+                                <span className={`font-semibold text-sm leading-tight break-words ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
+                                  {stock.name} <span className={`text-[13px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
                                 </span>
                               </button>
                             ))
@@ -1898,141 +1909,531 @@ export default function TransactionsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-end">
-                    <div className="flex gap-2 w-[80px] flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStockForm({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
-                          setIsSectorDropdownOpen(false);
-                          setIsStockModalOpen(true);
-                        }}
-                        className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                        title="종목 추가"
-                      >
-                        <Plus size={20} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.security_id) {
-                            setStockDeleteConfirm({
-                              isOpen: true,
-                              id: formData.security_id,
-                              name: formData.stock.replace(`[${formData.stockCode}] `, '')
-                            });
-                          }
-                        }}
-                        className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${formData.security_id
-                          ? 'text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer pointer-events-auto'
-                          : 'text-slate-200 cursor-not-allowed opacity-50'
-                          }`}
-                        title="종목 삭제"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStockForm({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
+                        setIsSectorDropdownOpen(false);
+                        setIsStockModalOpen(true);
+                      }}
+                      className="p-2.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
+                      title="종목 추가"
+                    >
+                      <Plus size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!formData.security_id}
+                      onClick={() => {
+                        if (formData.security_id) {
+                          setStockDeleteConfirm({ isOpen: true, id: formData.security_id, name: formData.stock.replace(`[${formData.stockCode}] `, '') });
+                        }
+                      }}
+                      className={`p-2.5 transition-all inline-flex items-center justify-center rounded-xl ${
+                        formData.security_id 
+                          ? 'text-slate-400 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
+                          : 'text-slate-200 cursor-not-allowed'
+                      }`}
+                      title="종목 삭제"
+                    >
+                      <Trash2 size={22} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="col-span-2">
+              {/* 배당금(분배금) */}
+              <div>
+                <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">배당금(분배금)</label>
                 <div className="flex gap-2">
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">배당금(분배금)</label>
-                    <div className="relative">
-                      <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold transition-colors ${formData.currency ? getCurrencyBadgeStyles(formData.currency).split(' ')[1] : 'text-slate-400'}`}>
-                        {CURRENCIES[formData.currency]?.symbol || '$'}
-                      </span>
-                      <input
-                        ref={priceRef}
-                        type="text" placeholder="0"
-                        value={formData.dividendAmount}
-                        onChange={(e) => handleNumberInput(e, 'dividendAmount')}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Tab' && e.shiftKey) {
-                            e.preventDefault();
-                            // 종목 클릭 시와 동일하게 수정 가능 모드로 전환
-                            setIsStockDropdownOpen(false);
-                            setFormData(prev => ({
-                              ...prev,
-                              security_id: '',
-                              stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : ''
-                            }));
-                            setTimeout(() => {
-                              stockRef.current?.focus();
-                              stockRef.current?.select();
-                            }, 50);
-                          }
-                        }}
-                        onBlur={(e) => {
-                          const val = e.target.value.replace(/,/g, '');
-                          if (val && !isNaN(parseFloat(val)) && formData.currency !== 'KRW') {
-                            const formatted = parseFloat(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            setFormData(prev => ({ ...prev, dividendAmount: formatted }));
-                          }
-                        }}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 text-right bg-slate-50 shadow-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-shrink-0 w-[80px] flex items-end">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-blue-600 text-base">
+                      {CURRENCIES[formData.currency]?.symbol || (formData.currency === 'KRW' ? '₩' : '$')}
+                    </span>
                     <input
-                      type="text"
-                      disabled
-                      value={formData.currency || 'USD'}
-                      className={`w-full px-2 py-3 rounded-xl border font-bold text-center cursor-default transition-all shadow-sm ${getCurrencyBadgeStyles(formData.currency || 'USD')}`}
+                      ref={priceRef}
+                      type="text" placeholder="0"
+                      value={formData.dividendAmount}
+                      onChange={(e) => handleNumberInput(e, 'dividendAmount')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Tab' && e.shiftKey) {
+                          e.preventDefault();
+                          setIsStockDropdownOpen(false);
+                          setFormData(prev => ({
+                            ...prev,
+                            security_id: '',
+                            stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : ''
+                          }));
+                          setTimeout(() => {
+                            stockRef.current?.focus();
+                            stockRef.current?.select();
+                          }, 50);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value.replace(/,/g, '');
+                        if (val && !isNaN(parseFloat(val)) && formData.currency !== 'KRW') {
+                          const formatted = parseFloat(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          setFormData(prev => ({ ...prev, dividendAmount: formatted }));
+                        }
+                      }}
+                      className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-800 text-right bg-slate-50 shadow-xs"
                     />
                   </div>
-                </div>
-              </div>
 
-              <div className="col-span-2 mt-4 space-y-4">
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3 shadow-sm">
-                  {formData.currency !== 'KRW' && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-slate-500">환율</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          disabled
-                          value={formData.exchangeRate}
-                          className="w-32 px-3 py-2 rounded-xl border-none bg-slate-50 text-right font-bold text-slate-700 cursor-default focus:outline-none"
-                        />
-                        <span className="text-xs font-bold text-slate-400">{formData.currency} / KRW</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={`flex justify-end items-center ${formData.currency !== 'KRW' ? 'pt-3 border-t border-slate-100' : ''}`}>
-                    <span className="hidden">배당금(원)</span>
-                    <div className="text-right flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black text-brand tabular-nums">{formData.totalDividend}</span>
-                      <span className="text-lg font-bold text-slate-400">원</span>
-                    </div>
+                  <div className="flex-shrink-0 w-24 flex items-center">
+                    <span className="w-full py-3 rounded-2xl border font-bold text-center text-sm shadow-xs border-blue-200 bg-blue-50 text-blue-600">
+                      {formData.currency || 'KRW'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="col-span-2 mt-6 flex gap-3">
+              {/* 하단 금액 카드 */}
+              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3 shadow-xs">
+                {formData.currency !== 'KRW' && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-slate-500">환율</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-600 text-base tabular-nums">
+                        {formData.exchangeRate || '-'}
+                      </span>
+                      <span className="text-xs font-bold text-slate-400">{formData.currency} / KRW</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className={`flex justify-between items-center ${formData.currency !== 'KRW' ? 'pt-3 border-t border-slate-200/60' : ''}`}>
+                  <span className="text-sm font-bold text-slate-500">총 배당금</span>
+                  <div className="text-right flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black text-blue-600 tabular-nums">{formData.totalDividend || '0'}</span>
+                    <span className="text-base font-bold text-slate-400">원</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
                 <button
                   type="button" onClick={toggleModal}
-                  className="flex-1 py-4 rounded-xl bg-slate-50 text-slate-600 font-bold hover:bg-slate-100 border border-slate-100 transition-all cursor-pointer shadow-sm"
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold border border-slate-200/60 transition-all cursor-pointer"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className={`flex-1 py-4 rounded-xl font-bold transition-all ${loading ? 'bg-slate-300 text-white cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-dark shadow-lg shadow-brand/30 cursor-pointer'} focus:outline-none`}
+                  className={`flex-1 py-3.5 rounded-2xl font-bold transition-all shadow-md ${loading ? 'bg-slate-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25 cursor-pointer'} focus:outline-none`}
                 >
                   {loading ? '처리 중...' : (editingId ? '수정 완료' : '등록 완료')}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {isStockModalOpen && mounted && createPortal(
+        <div className="fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity animate-fade-in" onClick={() => setIsStockModalOpen(false)}>
+          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-page-slide max-h-[90vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800">종목 추가</h3>
+              <button onClick={() => setIsStockModalOpen(false)} className="p-2 -mr-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all cursor-pointer">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-y-auto overscroll-contain">
+              <div className="space-y-4">
+                <div className="flex gap-3 items-end">
+                  <div className="flex-1 relative" ref={searchDropdownRef}>
+                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목명</label>
+                    <input
+                      type="text"
+                      placeholder="우측에서 검색해주세요"
+                      value={stockForm.name}
+                      readOnly={!stockForm.name || stockForm.name === '검색 중...'}
+                      onChange={(e) => setStockForm(prev => ({ ...prev, name: e.target.value }))}
+                      onFocus={() => setIsNameFocused(true)}
+                      onBlur={() => setIsNameFocused(false)}
+                      ref={stockModalNameRef}
+                      className={`w-full px-4 py-3 rounded-2xl border focus:outline-none transition-all font-bold text-center box-border shadow-xs ${
+                        !stockForm.name || stockForm.name === '검색 중...' 
+                          ? 'bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed' 
+                          : `bg-slate-50 border-slate-200 text-slate-700 hover:border-blue-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 ${isNameFocused ? 'cursor-text' : 'cursor-pointer'}`
+                      }`}
+                    />
+                    {isSearchDropdownOpen && stockSearchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-[60] py-2 max-h-[140px] overflow-y-auto">
+                        {stockSearchResults.map((res, i) => (
+                          <button
+                            key={`${res.code}-${i}`}
+                            type="button"
+                            className="w-full px-4 py-2.5 hover:bg-slate-50 text-left transition-colors flex justify-between items-center group cursor-pointer"
+                            onClick={() => {
+                              setStockForm({
+                                ...stockForm,
+                                name: res.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
+                                code: res.code,
+                                exchange_code: res.exchange_code || ''
+                              });
+                              setIsSearchDropdownOpen(false);
+                              setStockSearchResults([]);
+                            }}
+                          >
+                            <span className="font-bold text-slate-700 group-hover:text-blue-600 text-sm">{res.name}</span>
+                            <span className="text-xs font-bold text-slate-400">[{res.code}]{['KOSPI', 'KOSDAQ', 'KONEX'].includes(res.market) ? '' : ` ${res.market}`}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-[140px] shrink-0">
+                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목코드</label>
+                    <input
+                      type="text"
+                      placeholder="입력(엔터)"
+                      value={stockForm.code}
+                      onChange={(e) => {
+                        const transliterated = transliterateKOtoEN(e.target.value);
+                        if (transliterated.length <= 10) {
+                          setStockForm(prev => ({ ...prev, code: transliterated }));
+                        }
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && stockForm.code) {
+                          e.preventDefault();
+                          try {
+                            setIsSearchDropdownOpen(false);
+                            setStockForm(prev => ({ ...prev, name: '검색 중...' }));
+                            
+                            const res = await fetch(`/api/stock-info?code=${stockForm.code}`);
+                            const data = await res.json();
+                            
+                            if (res.ok && data.results && data.results.length > 0) {
+                              const uniqueResults = data.results.reduce((acc, current) => {
+                                const exists = acc.find(item => item.code === current.code);
+                                if (!exists) {
+                                  acc.push(current);
+                                }
+                                return acc;
+                              }, []);
+
+                              if (uniqueResults.length === 1) {
+                                const item = uniqueResults[0];
+                                setStockForm({
+                                  ...stockForm,
+                                  name: item.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
+                                  code: item.code,
+                                  exchange_code: item.exchange_code || ''
+                                });
+                              } else {
+                                setStockSearchResults(uniqueResults);
+                                setIsSearchDropdownOpen(true);
+                                setStockForm(prev => ({ ...prev, name: '' }));
+                              }
+                            } else {
+                              setStockForm(prev => ({ ...prev, name: '' }));
+                              showAlert("조회불가", <span><strong className="font-bold text-slate-800">&quot;{stockForm.code}&quot;</strong> 종목을 찾을 수 없습니다.</span>, "error", stockModalCodeRef);
+                            }
+                          } catch (err) {
+                            console.error('Fetch error:', err);
+                            setStockForm(prev => ({ ...prev, name: '' }));
+                            showAlert("검색 오류", "정보를 가져오는 중 일시적인 오류가 발생했습니다.", "error", stockModalCodeRef);
+                          }
+                        }
+                      }}
+                      ref={stockModalCodeRef}
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 text-center bg-white shadow-xs uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">섹터</label>
+                    <div className="relative" ref={sectorRef}>
+                      <input 
+                        type="text" 
+                        readOnly
+                        placeholder="섹터 선택"
+                        value={stockForm.sector}
+                        className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer text-center shadow-xs"
+                        onClick={() => setIsSectorDropdownOpen(!isSectorDropdownOpen)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
+                        onClick={() => setIsSectorDropdownOpen(!isSectorDropdownOpen)}
+                      >
+                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {isSectorDropdownOpen && (
+                        <div className="absolute bottom-full left-0 right-0 mb-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 overflow-hidden">
+                          <div className="py-1 max-h-[125px] overflow-y-auto">
+                            {sectorOptions.map((sector) => (
+                              <button
+                                key={sector}
+                                type="button"
+                                className="w-full px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors text-center font-bold text-slate-700 cursor-pointer"
+                                onClick={() => {
+                                  setStockForm(prev => ({ ...prev, sector }));
+                                  setIsSectorDropdownOpen(false);
+                                }}
+                              >
+                                {sector}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">통화</label>
+                    <div className="relative" ref={currencyRef}>
+                      <input
+                        type="text"
+                        readOnly
+                        placeholder="통화 선택"
+                        value={stockForm.currency}
+                        className="w-full px-4 py-3 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer text-center shadow-xs"
+                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
+                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                      >
+                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {isCurrencyDropdownOpen && (
+                        <div className="absolute bottom-full left-0 right-0 mb-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 overflow-hidden">
+                          <div className="py-1 max-h-[110px] overflow-y-auto">
+                            {['KRW', 'USD'].map((curr) => (
+                              <button
+                                key={curr}
+                                type="button"
+                                className="w-full px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors text-center font-bold text-slate-700 cursor-pointer"
+                                onClick={() => {
+                                  setStockForm(prev => ({ ...prev, currency: curr }));
+                                  setIsCurrencyDropdownOpen(false);
+                                }}
+                              >
+                                {curr}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsStockModalOpen(false)}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-xs border border-slate-200/60"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!stockForm.name.trim()) {
+                      showAlert("입력 오류", "종목명을 입력해 주세요.", "error", stockModalNameRef);
+                      return;
+                    }
+                    if (!stockForm.code.trim()) {
+                      showAlert("입력 오류", "종목코드를 입력해 주세요.", "error", stockModalCodeRef);
+                      return;
+                    }
+                    if (!stockForm.sector.trim()) {
+                      showAlert("입력 오류", "섹터를 선택해 주세요.", "error");
+                      return;
+                    }
+
+                    try {
+                      const isDuplicate = await TransactionManager.checkStockDuplicate(
+                        stockForm.name.trim(),
+                        stockForm.code.trim()
+                      );
+                      if (isDuplicate) {
+                        showAlert("등록 오류", "이미 등록된 종목명 또는 종목코드입니다.", "error");
+                        return;
+                      }
+                    } catch (err) {
+                      console.error('중복 체크 오류:', err);
+                    }
+                    try {
+                      const newStock = await TransactionManager.addStock({
+                        name: stockForm.name.trim(),
+                        code: stockForm.code.trim(),
+                        sector: stockForm.sector.trim(),
+                        currency: stockForm.currency.trim() || 'KRW',
+                        exchange_code: stockForm.exchange_code || ''
+                      });
+
+                      if (newStock) {
+                        setFormData(prev => ({
+                          ...prev,
+                          security_id: newStock.security_id || newStock.id,
+                          stock: `[${newStock.code}] ${newStock.name}`,
+                          stockCode: newStock.code,
+                          currency: newStock.currency || prev.currency
+                        }));
+                      }
+
+                      setStockForm({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
+                      setIsStockModalOpen(false);
+                      showAlert("등록 완료", "종목이 성공적으로 등록되었습니다.", "success");
+                    } catch (error) {
+                      console.error('종목 등록 오류:', error);
+                      showAlert("등록 오류", "종목 등록 중 오류가 발생했습니다.", "error");
+                    }
+                  }}
+                  className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                >
+                  등록
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+            {/* Account Registration Modal */}
+      {isAccountModalOpen && mounted && createPortal(
+        <div className="fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity animate-fade-in" onClick={() => setIsAccountModalOpen(false)}>
+          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 overflow-visible animate-page-slide max-h-[90vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800">등록</h3>
+              <button onClick={() => setIsAccountModalOpen(false)} className="p-2 -mr-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all cursor-pointer">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-visible">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">금융기관</label>
+                  <input
+                    type="text"
+                    placeholder="금융기관 입력"
+                    value={accountForm.institution}
+                    onChange={(e) => setAccountForm(prev => ({ ...prev, institution: e.target.value }))}
+                    ref={institutionRef}
+                    className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 bg-white shadow-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">계좌구분</label>
+                  <div className="relative" ref={accountTypeRef}>
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="구분 선택"
+                      value={accountForm.type}
+                      onChange={(e) => setAccountForm(prev => ({ ...prev, type: e.target.value.toUpperCase() }))}
+                      ref={accountTypeInputRef}
+                      className="w-full px-4 py-3.5 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 transition-all font-bold text-slate-700 bg-slate-50 cursor-pointer text-center shadow-xs"
+                      onClick={() => setIsAccountTypeDropdownOpen(!isAccountTypeDropdownOpen)}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
+                      onClick={() => setIsAccountTypeDropdownOpen(!isAccountTypeDropdownOpen)}
+                    >
+                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                    {isAccountTypeDropdownOpen && (
+                      <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20">
+                        <div className="py-2 max-h-52 overflow-y-auto block overflow-x-hidden">
+                          {['일반', 'ISA', 'IRP', 'DC', '연금저축', '기타'].map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              className="w-full px-5 py-2.5 text-center hover:bg-slate-50 transition-colors font-bold text-slate-700 text-sm cursor-pointer"
+                              onClick={() => {
+                                setAccountForm(prev => ({ ...prev, type }));
+                                setIsAccountTypeDropdownOpen(false);
+                              }}
+                            >
+                              {type}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountModalOpen(false)}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-xs border border-slate-200/60"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!accountForm.institution.trim()) {
+                      setIsAccountTypeDropdownOpen(false);
+                      showAlert("입력 오류", "금융기관을 입력해 주세요.", "error", institutionRef);
+                      return;
+                    }
+                    if (!accountForm.type.trim()) {
+                      showAlert("입력 오류", "계좌구분을 입력 또는 선택해 주세요.", "error", accountTypeInputRef);
+                      return;
+                    }
+                    const combined = `${accountForm.institution.trim()} (${accountForm.type.trim()})`;
+                    const exists = await TransactionManager.isAccountNameExists(combined);
+                    if (exists) {
+                      showAlert("입력 오류", "이미 등록된 계좌명입니다.", "error", accountTypeInputRef);
+                      return;
+                    }
+                    try {
+                      await TransactionManager.addAccount({
+                        financial_institution: accountForm.institution.trim(),
+                        type: accountForm.type.trim(),
+                        account_nm: combined
+                      });
+                      await refreshAccounts();
+                      setFormData(prev => ({ ...prev, account: combined }));
+                      setIsAccountModalOpen(false);
+                      setAccountForm({ institution: '', type: '' });
+                      showAlert("등록 완료", "계좌가 성공적으로 등록되었습니다.", "success");
+                    } catch (error) {
+                      console.error('계좌 등록 오류:', error);
+                      showAlert("등록 오류", "계좌 등록 중 오류가 발생했습니다.", "error");
+                    }
+                  }}
+                  className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                >
+                  등록
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Alert Modal (Custom UI replacement for browser alert) */}
@@ -2084,498 +2485,6 @@ export default function TransactionsPage() {
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 py-4 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-200 transition-all"
-              >
-                예
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isStockModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 1100 }}>
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsStockModalOpen(false)}></div>
-
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-xl font-bold text-slate-800">종목 추가</h3>
-              <button onClick={() => setIsStockModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-6 flex-1 overflow-y-auto overscroll-contain">
-              <div className="space-y-4">
-                <div className="flex gap-3 items-end">
-                  <div className="flex-1 relative" ref={searchDropdownRef}>
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목명</label>
-                    <input
-                      type="text"
-                      placeholder="우측에서 검색해주세요"
-                      value={stockForm.name}
-                      readOnly={!stockForm.name || stockForm.name === '검색 중...'}
-                      onChange={(e) => setStockForm(prev => ({ ...prev, name: e.target.value }))}
-                      onFocus={() => setIsNameFocused(true)}
-                      onBlur={() => setIsNameFocused(false)}
-                      ref={stockModalNameRef}
-                      className={`w-full px-4 py-3 rounded-xl border focus:outline-none transition-all font-bold text-center box-border shadow-sm ${!stockForm.name || stockForm.name === '검색 중...'
-                          ? 'bg-slate-100 border-slate-100 text-slate-400 cursor-not-allowed'
-                          : `bg-slate-50 border-slate-100 text-slate-700 hover:border-brand/50 focus:bg-white focus:border-brand focus:ring-4 focus:ring-brand/10 ${isNameFocused ? 'cursor-text' : 'cursor-pointer'}`
-                        }`}
-                    />
-                    {isSearchDropdownOpen && stockSearchResults.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-100 rounded-xl shadow-lg z-[60] py-2 max-h-[112px] overflow-y-auto">
-                        {stockSearchResults.map((res, i) => (
-                          <button
-                            key={`${res.code}-${i}`}
-                            type="button"
-                            className="w-full px-4 py-2 hover:bg-slate-50 text-left transition-colors flex justify-between items-center group"
-                            onClick={() => {
-                              setStockForm({
-                                ...stockForm,
-                                name: res.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
-                                code: res.code,
-                                exchange_code: res.exchange_code || ''
-                              });
-                              setIsSearchDropdownOpen(false);
-                              setStockSearchResults([]);
-                            }}
-                          >
-                            <span className="font-bold text-slate-700 group-hover:text-brand">{res.name}</span>
-                            <span className="text-xs font-bold text-slate-400">[{res.code}]{['KOSPI', 'KOSDAQ', 'KONEX'].includes(res.market) ? '' : ` ${res.market}`}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="w-[140px]">
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">종목코드(티커)</label>
-                    <input
-                      type="text"
-                      placeholder="입력(엔터)"
-                      value={stockForm.code}
-                      onChange={(e) => {
-                        const transliterated = transliterateKOtoEN(e.target.value);
-                        if (transliterated.length <= 6) {
-                          setStockForm(prev => ({ ...prev, code: transliterated }));
-                        }
-                      }}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter' && stockForm.code) {
-                          e.preventDefault();
-                          try {
-                            setIsSearchDropdownOpen(false);
-                            setStockForm(prev => ({ ...prev, name: '검색 중...' }));
-
-                            // To search globally (both domestic and overseas), pass no flags
-                            const res = await fetch(`/api/stock-info?code=${stockForm.code}`);
-                            const data = await res.json();
-
-                            if (res.ok && data.results && data.results.length > 0) {
-                              // 중복 종목코드 제거
-                              const uniqueResults = data.results.reduce((acc, current) => {
-                                const exists = acc.find(item => item.code === current.code);
-                                if (!exists) {
-                                  acc.push(current);
-                                }
-                                return acc;
-                              }, []);
-
-                              if (uniqueResults.length === 1) {
-                                // Single result - fill immediately
-                                const item = uniqueResults[0];
-                                setStockForm({
-                                  ...stockForm,
-                                  name: item.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
-                                  code: item.code,
-                                  exchange_code: item.exchange_code || ''
-                                });
-                              } else {
-                                // Multiple results - show dropdown
-                                setStockSearchResults(uniqueResults);
-                                setIsSearchDropdownOpen(true);
-                                setStockForm(prev => ({ ...prev, name: '' }));
-                              }
-                            } else {
-                              setStockForm(prev => ({ ...prev, name: '' }));
-                              showAlert("조회불가", <span><strong className="font-bold text-slate-800">&quot;{stockForm.code}&quot;</strong> 종목을 찾을 수 없습니다.</span>, "error", stockModalCodeRef);
-                            }
-                          } catch (err) {
-                            console.error('Fetch error:', err);
-                            setStockForm(prev => ({ ...prev, name: '' }));
-                            showAlert("검색 오류", "정보를 가져오는 중 일시적인 오류가 발생했습니다.", "error", stockModalCodeRef);
-                          }
-                        }
-                      }}
-                      ref={stockModalCodeRef}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-100 focus:outline-none focus:border-brand transition-all font-bold text-slate-700 text-center bg-slate-50 shadow-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 items-end">
-                  <div className="flex-1">
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">섹터</label>
-                    <div className="relative" ref={sectorRef}>
-                      <input
-                        type="text"
-                        readOnly
-                        placeholder="섹터 선택"
-                        value={stockForm.sector}
-                        className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-medium text-slate-700 bg-slate-50 cursor-pointer text-center shadow-sm"
-                        onClick={() => setIsSectorDropdownOpen(!isSectorDropdownOpen)}
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3"
-                        onClick={() => setIsSectorDropdownOpen(!isSectorDropdownOpen)}
-                      >
-                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      {isSectorDropdownOpen && (
-                        <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10">
-                          <div className="py-2 max-h-[210px] overflow-y-auto">
-                            {sectorOptions.map((sector) => (
-                              <button
-                                key={sector}
-                                type="button"
-                                className="w-full px-4 py-2 pt-3 text-sm hover:bg-slate-50 transition-colors text-center"
-                                onClick={() => {
-                                  setStockForm(prev => ({ ...prev, sector }));
-                                  setIsSectorDropdownOpen(false);
-                                }}
-                              >
-                                {sector}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="w-[140px] flex-shrink-0">
-                    <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">통화</label>
-                    <div className="relative" ref={currencyRef}>
-                      <input
-                        type="text"
-                        readOnly
-                        placeholder="통화 선택"
-                        value={stockForm.currency}
-                        className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-medium text-slate-700 bg-slate-50 cursor-pointer text-center shadow-sm"
-                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3"
-                        onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
-                      >
-                        <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      {isCurrencyDropdownOpen && (
-                        <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10">
-                          <div className="py-2 max-h-[210px] overflow-y-auto">
-                            {['KRW', 'USD', 'EUR', 'JPY', 'GBP', 'CNY', 'HKD'].map((cur) => {
-                              const getCurrencySymbol = (currency) => {
-                                switch (currency) {
-                                  case 'KRW': return '₩';
-                                  case 'USD': return '$';
-                                  case 'EUR': return '€';
-                                  case 'GBP': return '£';
-                                  case 'JPY': return '¥';
-                                  case 'CNY': return '¥';
-                                  case 'HKD': return 'HK$';
-                                  default: return currency;
-                                }
-                              };
-                              return (
-                                <button
-                                  key={cur}
-                                  type="button"
-                                  className="w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors flex items-center"
-                                  onClick={() => {
-                                    setStockForm(prev => ({ ...prev, currency: cur }));
-                                    setIsCurrencyDropdownOpen(false);
-                                  }}
-                                >
-                                  <span className="font-semibold text-sm text-slate-700">
-                                    {cur} ({getCurrencySymbol(cur)})
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsStockModalOpen(false)}
-                  className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-sm"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!stockForm.name.trim()) {
-                      showAlert("입력 오류", "종목명을 입력해 주세요.", "error", stockModalNameRef);
-                      return;
-                    }
-                    if (!stockForm.code.trim()) {
-                      showAlert("입력 오류", "종목코드를 입력해 주세요.", "error", stockModalCodeRef);
-                      return;
-                    }
-                    if (!stockForm.sector.trim()) {
-                      showAlert("입력 오류", "섹터를 선택해 주세요.", "error");
-                      return;
-                    }
-
-                    // 중복 체크
-                    try {
-                      const isDuplicate = await TransactionManager.checkStockDuplicate(
-                        stockForm.name.trim(),
-                        stockForm.code.trim()
-                      );
-                      if (isDuplicate) {
-                        showAlert("등록 오류", "이미 등록된 종목명 또는 종목코드입니다.", "error");
-                        return;
-                      }
-                    } catch (err) {
-                      console.error('중복 체크 오류:', err);
-                    }
-
-                    try {
-                      const newStock = await TransactionManager.addStock({
-                        name: stockForm.name.trim(),
-                        code: stockForm.code.trim(),
-                        sector: stockForm.sector.trim(),
-                        currency: stockForm.currency,
-                        exchange_code: stockForm.exchange_code || ''
-                      });
-
-                      // 신규 등록된 종목 자동 선택
-                      if (newStock) {
-                        setFormData(prev => ({
-                          ...prev,
-                          security_id: newStock.security_id || newStock.id,
-                          stock: `[${newStock.code}] ${newStock.name}`,
-                          stockCode: newStock.code,
-                          currency: newStock.currency || prev.currency
-                        }));
-                      }
-
-                      setStockForm({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
-                      setIsStockModalOpen(false);
-                      showAlert("등록 완료", "종목이 성공적으로 등록되었습니다.", "success");
-                    } catch (error) {
-                      console.error('종목 등록 오류:', error);
-                      showAlert("등록 오류", "종목 등록 중 오류가 발생했습니다.", "error");
-                    }
-                  }}
-                  className="flex-1 py-4 rounded-xl bg-brand text-white font-bold hover:bg-brand-dark transition-all shadow-sm cursor-pointer"
-                >
-                  등록
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Account Registration Modal */}
-      {isAccountModalOpen && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsAccountModalOpen(false)}></div>
-
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-xl font-bold text-slate-800">등록</h3>
-              <button onClick={() => setIsAccountModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-6 flex-1 overflow-visible">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">금융기관</label>
-                  <input
-                    type="text"
-                    placeholder="금융기관 입력"
-                    value={accountForm.institution}
-                    onChange={(e) => setAccountForm(prev => ({ ...prev, institution: e.target.value }))}
-                    ref={institutionRef}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-medium text-slate-700 shadow-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-500 mb-1.5 ml-1">계좌구분</label>
-                  <div className="relative" ref={accountTypeRef}>
-                    <input
-                      type="text"
-                      readOnly
-                      placeholder="구분 선택"
-                      value={accountForm.type}
-                      onChange={(e) => setAccountForm(prev => ({ ...prev, type: e.target.value.toUpperCase() }))}
-                      ref={accountTypeInputRef}
-                      className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:border-brand transition-all font-medium text-slate-700 bg-slate-50 cursor-pointer text-center shadow-sm"
-                      onClick={() => setIsAccountTypeDropdownOpen(!isAccountTypeDropdownOpen)}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex items-center pr-3"
-                      onClick={() => setIsAccountTypeDropdownOpen(!isAccountTypeDropdownOpen)}
-                    >
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                      </svg>
-                    </button>
-                    {/* 구분 드롭다운 메뉴 */}
-                    {isAccountTypeDropdownOpen && (
-                      <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10">
-                        <div className="py-2 max-h-50 overflow-y-auto block overflow-x-hidden">
-                          {['일반', 'ISA', 'IRP', 'DC', '연금저축', '기타'].map((type) => (
-                            <button
-                              key={type}
-                              type="button"
-                              className="w-full px-5 py-2 text-center hover:bg-slate-50 transition-colors"
-                              onClick={() => {
-                                setAccountForm(prev => ({ ...prev, type }));
-                                setIsAccountTypeDropdownOpen(false);
-                              }}
-                            >
-                              {type}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAccountModalOpen(false)}
-                  className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-sm"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!accountForm.institution.trim()) {
-                      setIsAccountTypeDropdownOpen(false);
-                      showAlert("입력 오류", "금융기관을 입력해 주세요.", "error", institutionRef);
-                      return;
-                    }
-                    if (!accountForm.type.trim()) {
-                      showAlert("입력 오류", "계좌구분을 입력 또는 선택해 주세요.", "error", accountTypeInputRef);
-                      return;
-                    }
-                    const combined = `${accountForm.institution.trim()} (${accountForm.type.trim()})`;
-                    const exists = await TransactionManager.isAccountNameExists(combined);
-                    if (exists) {
-                      showAlert("입력 오류", "이미 등록된 계좌명입니다.", "error", accountTypeInputRef);
-                      return;
-                    }
-                    try {
-                      const newAccount = await TransactionManager.addAccount({
-                        financial_institution: accountForm.institution.trim(),
-                        type: accountForm.type.trim(),
-                        account_nm: combined
-                      });
-                      if (newAccount) {
-                        setFormData(prev => ({ ...prev, account: newAccount.account_nm, account_id: newAccount.account_id }));
-
-                        await refreshAccounts();
-                        setIsAccountModalOpen(false);
-                        showAlert("등록 완료", "계좌가 성공적으로 등록되었습니다.", "success");
-                      }
-                    } catch (error) {
-                      showAlert("오류", error.message || "계좌 등록 중 문제가 발생했습니다.", "error");
-                    }
-                  }}
-                  className="flex-1 py-4 rounded-xl bg-brand text-white font-bold hover:bg-brand-dark transition-all shadow-sm cursor-pointer"
-                >
-                  등록
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Account Delete Confirmation Modal */}
-      {accountDeleteConfirm.isOpen && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setAccountDeleteConfirm({ isOpen: false, name: '' })}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Trash2 size={32} />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">계좌를 삭제하시겠습니까?</h3>
-            <p className="text-slate-500 mb-6 leading-relaxed">
-              <span className="font-bold text-slate-700">&quot;{accountDeleteConfirm.name}&quot;</span> 계좌 정보가 삭제됩니다.
-            </p>
-            <p className="text-xs text-rose-400 mb-8 leading-relaxed">이 작업은 취소할 수 없으며, 거래 내역이 있는 경우 삭제가 제한될 수 있습니다.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setAccountDeleteConfirm({ isOpen: false, name: '' })}
-                className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all border border-slate-200"
-              >
-                아니오
-              </button>
-              <button
-                onClick={confirmAccountDelete}
-                className="flex-1 py-4 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-200 transition-all"
-              >
-                예
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Stock Delete Confirmation Modal */}
-      {stockDeleteConfirm.isOpen && (
-        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
-          <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setStockDeleteConfirm({ isOpen: false, id: null, name: '' })}
-          ></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Trash2 size={32} />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">종목을 삭제하시겠습니까?</h3>
-            <p className="text-slate-500 mb-2 leading-relaxed">
-              <span className="font-bold text-slate-700">&quot;{stockDeleteConfirm.name}&quot;</span> 종목이 삭제됩니다.
-            </p>
-            <p className="text-xs text-rose-400 mb-8 leading-relaxed">이 작업은 거래 내역에도 영향을 줄 수 있습니다.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStockDeleteConfirm({ isOpen: false, id: null, name: '' })}
-                className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all border border-slate-200"
-              >
-                아니오
-              </button>
-              <button
-                onClick={confirmStockDelete}
                 className="flex-1 py-4 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-200 transition-all"
               >
                 예

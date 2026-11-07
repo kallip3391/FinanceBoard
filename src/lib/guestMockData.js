@@ -534,6 +534,37 @@ export const GUEST_DIVIDEND_TRANSACTIONS = [
     stock: 'Schwab US Dividend Equity',
     stockCode: 'SCHD',
     security: { name: 'Schwab US Dividend Equity', code: 'SCHD', sector: '해외', currency: 'USD' }
+  },
+  // --- 2025년 테스트 배당 거래내역 (게스트 전용: 국내 1건 + 해외 1건) ---
+  {
+    id: 'tx-div-kr-2025-1',
+    date: '2025-12-15',
+    account_id: 'acc-1',
+    account: '키움증권 (일반)',
+    dividend_amount: null,
+    total_dividend: 250000,
+    currency: 'KRW',
+    security_id: 'sec-kr-1',
+    stock_name: '삼성전자',
+    stock_code: '005930',
+    stock: '삼성전자',
+    stockCode: '005930',
+    security: { name: '삼성전자', code: '005930', sector: '국내', currency: 'KRW' }
+  },
+  {
+    id: 'tx-div-us-2025-1',
+    date: '2025-12-20',
+    account_id: 'acc-2',
+    account: '미래에셋 (해외)',
+    dividend_amount: 135.0,
+    total_dividend: 180000,
+    currency: 'USD',
+    security_id: 'sec-us-1',
+    stock_name: 'Apple',
+    stock_code: 'AAPL',
+    stock: 'Apple',
+    stockCode: 'AAPL',
+    security: { name: 'Apple', code: 'AAPL', sector: '해외', currency: 'USD' }
   }
 ];
 
@@ -1016,5 +1047,9 @@ export const GUEST_MONTHLY_DIVIDENDS = [
 
   // 2026-01: 국내 1종목 + 해외 1종목 (JEPI)
   { record_month: '2026-01', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
-  { record_month: '2026-01', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 130000 }
+  { record_month: '2026-01', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 130000 },
+
+  // 2025-12: 게스트 테스트용 2025년 배당 자료 (국내 1건 + 해외 1건)
+  { record_month: '2025-12', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 250000 },
+  { record_month: '2025-12', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 180000 }
 ];
