@@ -236,9 +236,9 @@ export default function MobileDashboard() {
           </div>
         )}
 
-        {/* ── 2. 포트폴리오 비중 차트 카드 ── */}
+        {/* ── 2. 포트폴리오 비중 차트 카드 (거래내역 상단과 동일한 animate-fade-in 효과) ── */}
         {user && !summary?.isLoading && (holdings?.length || 0) > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2 opacity-0 animate-page-slide stagger-1">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2 animate-fade-in">
             {/* 섹션 서브헤더 */}
             <div className="flex items-center gap-2 pb-1">
               <div className="w-1.5 h-4.5 rounded-full bg-emerald-600" />
@@ -308,13 +308,17 @@ export default function MobileDashboard() {
           </div>
         )}
 
-        {/* ── 3. 하단 2x2 그리드 영역 (한 행에 2개씩 총 4개 카드 - 캐스케이드 애니메이션) ── */}
+        {/* ── 3. 하단 2x2 그리드 영역 (배당금현황 월별 카드와 동일한 animate-page-slide & 35ms 딜레이 효과 적용) ── */}
         {user && !summary?.isLoading && (
           <div className="grid grid-cols-2 gap-2.5 pt-1">
             {/* [1번째 칸] 보유종목 (활성화 카드 -> 탭 시 바텀시트 모달) */}
             <div
               onClick={handleOpenHoldingsModal}
-              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all cursor-pointer flex flex-col justify-between opacity-0 animate-page-slide stagger-2"
+              style={{
+                animationDelay: '0ms',
+                animationFillMode: 'forwards',
+              }}
+              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all duration-200 cursor-pointer flex flex-col justify-between opacity-0 animate-page-slide"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -338,7 +342,7 @@ export default function MobileDashboard() {
                   </div>
                   <div className="text-right flex flex-col items-end shrink-0">
                     <span className="text-[12px] font-black text-slate-900 tabular-nums leading-tight">
-                      {formatCurrency(summary.totalEvaluation, 'KRW')}원
+                      {formatCurrency(summary.totalEvaluation, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
                     </span>
                     <span className={`text-[10.5px] font-bold tabular-nums mt-0.5 leading-tight ${isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-500'}`}>
                       {isProfit ? '+' : ''}{summary.avgProfitRate.toFixed(2)}%
@@ -354,7 +358,13 @@ export default function MobileDashboard() {
             </div>
 
             {/* [2번째 칸] 계좌별 현황 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-3">
+            <div
+              style={{
+                animationDelay: '35ms',
+                animationFillMode: 'forwards',
+              }}
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+            >
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100/80 shadow-2xs">
@@ -374,7 +384,13 @@ export default function MobileDashboard() {
             </div>
 
             {/* [3번째 칸] 섹터 분석 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-4">
+            <div
+              style={{
+                animationDelay: '70ms',
+                animationFillMode: 'forwards',
+              }}
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+            >
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shadow-2xs">
@@ -394,7 +410,13 @@ export default function MobileDashboard() {
             </div>
 
             {/* [4번째 칸] 배당 요약 (향후 추가 영역) */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide stagger-5">
+            <div
+              style={{
+                animationDelay: '105ms',
+                animationFillMode: 'forwards',
+              }}
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+            >
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100/80 shadow-2xs">
@@ -468,14 +490,14 @@ export default function MobileDashboard() {
                   <div>
                     <p className="text-[10.5px] font-bold text-slate-400 text-left leading-tight">평가액</p>
                     <p className="text-[16px] font-black text-slate-900 tracking-tight text-right mt-0.5 tabular-nums leading-tight">
-                      {formatCurrency(summary.totalEvaluation, 'KRW')}원
+                      {formatCurrency(summary.totalEvaluation, 'KRW')}<span className="text-[11px] font-bold ml-0.5">원</span>
                     </p>
                   </div>
                   <div className="mt-2.5">
                     <p className="text-[10.5px] font-bold text-slate-400 text-left leading-tight">손익</p>
                     <div className="flex flex-col items-end mt-0.5">
                       <span className={`text-[14px] font-black tabular-nums leading-tight ${isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-700'}`}>
-                        {isProfit ? '+' : ''}{formatCurrency(summary.totalProfit, 'KRW')}원
+                        {isProfit ? '+' : ''}{formatCurrency(summary.totalProfit, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
                       </span>
                       <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight ${isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-500'}`}>
                         ({isProfit ? '+' : ''}{(summary.avgProfitRate || 0).toFixed(2)}%)
@@ -489,14 +511,14 @@ export default function MobileDashboard() {
                   <div>
                     <p className="text-[10.5px] font-bold text-slate-400 text-left leading-tight">배당금</p>
                     <p className={`text-[16px] font-black tracking-tight text-right mt-0.5 tabular-nums leading-tight ${totalDividendKRW > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
-                      {totalDividendKRW > 0 ? `+${formatCurrency(totalDividendKRW, 'KRW')}` : '0'}원
+                      {totalDividendKRW > 0 ? `+${formatCurrency(totalDividendKRW, 'KRW')}` : '0'}<span className="text-[11px] font-bold ml-0.5">원</span>
                     </p>
                   </div>
                   <div className="mt-2.5">
                     <p className="text-[10.5px] font-bold text-slate-400 text-left leading-tight">총손익</p>
                     <div className="flex flex-col items-end mt-0.5">
                       <span className={`text-[14px] font-black tabular-nums leading-tight ${isTotalProfit ? 'text-red-600' : isTotalLoss ? 'text-blue-600' : 'text-slate-700'}`}>
-                        {isTotalProfit ? '+' : ''}{formatCurrency(totalProfitWithDividend, 'KRW')}원
+                        {isTotalProfit ? '+' : ''}{formatCurrency(totalProfitWithDividend, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
                       </span>
                       <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight ${isTotalRateProfit ? 'text-red-600' : isTotalRateLoss ? 'text-blue-600' : 'text-slate-500'}`}>
                         ({isTotalRateProfit ? '+' : ''}{totalReturnRateVal.toFixed(2)}%)
@@ -568,10 +590,10 @@ export default function MobileDashboard() {
                         <div className="flex items-center gap-2 shrink-0 pl-2">
                           <div className="text-right">
                             <span className="text-[13px] font-black text-slate-900 tabular-nums block leading-tight">
-                              {formatCurrency(h.evaluationAmountKRW, 'KRW')}원
+                              {formatCurrency(h.evaluationAmountKRW, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
                             </span>
                             <span className={`text-[11px] font-bold tabular-nums block mt-0.5 leading-tight ${profitPos ? 'text-red-600' : profitNeg ? 'text-blue-600' : 'text-slate-500'}`}>
-                              {profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}원 ({ratePos ? '+' : ''}{formattedReturnRate}%)
+                              {profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span> ({ratePos ? '+' : ''}{formattedReturnRate}%)
                             </span>
                           </div>
                           <div className="p-0.5 text-slate-400">
@@ -592,7 +614,14 @@ export default function MobileDashboard() {
                             <div className="flex flex-col items-center justify-start min-w-0">
                               <span className="text-[10px] text-slate-400 font-medium leading-tight">매수가</span>
                               <span className="text-[11px] font-bold text-slate-800 tabular-nums mt-1 whitespace-nowrap leading-tight">
-                                {getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}
+                                {isKRW ? (
+                                  <>
+                                    {formatCurrency(h.purchasePrice, 'KRW')}
+                                    <span className="text-[9.5px] font-bold ml-0.5">원</span>
+                                  </>
+                                ) : (
+                                  `${getCurrencySymbol(h.currency)}${formatCurrency(h.purchasePrice, h.currency)}`
+                                )}
                               </span>
                             </div>
 
@@ -600,7 +629,14 @@ export default function MobileDashboard() {
                             <div className="flex flex-col items-center justify-start min-w-0">
                               <span className="text-[10px] text-slate-400 font-medium leading-tight">현재가</span>
                               <span className="text-[11px] font-bold text-slate-800 tabular-nums mt-1 whitespace-nowrap leading-tight">
-                                {getCurrencySymbol(h.currency)}{formatCurrency(h.currentPrice, h.currency)}
+                                {isKRW ? (
+                                  <>
+                                    {formatCurrency(h.currentPrice, 'KRW')}
+                                    <span className="text-[9.5px] font-bold ml-0.5">원</span>
+                                  </>
+                                ) : (
+                                  `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}`
+                                )}
                               </span>
                             </div>
 
@@ -608,7 +644,7 @@ export default function MobileDashboard() {
                             <div className="flex flex-col items-center justify-start min-w-0">
                               <span className="text-[10px] text-slate-400 font-medium leading-tight">배당금</span>
                               <span className={`text-[11px] font-bold tabular-nums mt-1 whitespace-nowrap leading-tight ${(h.dividend || 0) > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}원` : '0원'}
+                                {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}` : '0'}<span className="text-[9.5px] font-bold ml-0.5">원</span>
                               </span>
                             </div>
 
@@ -617,7 +653,7 @@ export default function MobileDashboard() {
                               <span className="text-[10px] text-slate-400 font-medium leading-tight">총손익</span>
                               <div className="flex flex-col items-end mt-1">
                                 <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${totalProfitPos ? 'text-red-600' : totalProfitNeg ? 'text-blue-600' : 'text-slate-700'}`}>
-                                  {totalProfitPos ? '+' : ''}{formatCurrency(totalProfitKRW, 'KRW')}원
+                                  {totalProfitPos ? '+' : ''}{formatCurrency(totalProfitKRW, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span>
                                 </span>
                                 <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${totalRatePos ? 'text-red-600' : totalRateNeg ? 'text-blue-600' : 'text-slate-700'}`}>
                                   ({totalRatePos ? '+' : ''}{formattedTotalRate}%)

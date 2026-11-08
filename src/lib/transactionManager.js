@@ -454,6 +454,22 @@ export class TransactionManager {
     return data || [];
   }
 
+  static async getClosedTradesPnL() {
+    const userId = await this.getCurrentUserId();
+    if (!userId) return [];
+
+    const { data, error } = await supabase
+      .from('view_closed_trades_pnl')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('view_closed_trades_pnl 조회 실패:', error);
+      return [];
+    }
+    return data || [];
+  }
+
   static async getExchangeRate(date, fromCurrency = 'USD', toCurrency = 'KRW') {
     if (fromCurrency === toCurrency) return 1;
     
