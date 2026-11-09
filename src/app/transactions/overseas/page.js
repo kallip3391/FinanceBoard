@@ -151,6 +151,9 @@ export default function TransactionsPage() {
         security_id: selected.security_id
       }));
       setIsFilterStockDropdownOpen(false);
+      if (typeof document !== 'undefined') {
+        document.activeElement?.blur();
+      }
       return;
     }
 
@@ -204,6 +207,7 @@ export default function TransactionsPage() {
   }, []);
 
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const filterScrollRef = useMobileKeyboardModal(isFilterModalOpen);
 
   useEffect(() => {
     const isAnyModalOpen = isFilterModalOpen || isModalOpen || isStockModalOpen || isAccountModalOpen;
@@ -2356,7 +2360,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <div ref={filterScrollRef} className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
               <div className="space-y-4">
                 {/* 1. 조회 기간 선택 */}
                 <div className="relative z-20">
@@ -2628,6 +2632,9 @@ export default function TransactionsPage() {
                                       security_id: stock.security_id 
                                     }));
                                     setIsFilterStockDropdownOpen(false);
+                                    if (typeof document !== 'undefined') {
+                                      document.activeElement?.blur();
+                                    }
                                   }}
                                   onMouseEnter={() => setFocusedStockIndex(originalIndex)}
                                   className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer ${

@@ -1056,15 +1056,6 @@ export default function MobileDividendDashboard({
                                 </span>
                               </div>
 
-                              {/* 가운데: 외화 종목인 경우 외화 총손익(수익률) */}
-                              {!isKRW && (
-                                <div className="px-1 text-center flex-1">
-                                  <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap ${item.foreignTotalRealizedProfit > 0 ? 'text-red-600' : item.foreignTotalRealizedProfit < 0 ? 'text-blue-600' : 'text-slate-500'}`}>
-                                    {formatForeignAmount(item.foreignTotalRealizedProfit, item.currency, true)} ({item.foreignTotalRealizedProfit > 0 ? '+' : ''}{item.foreignTotalRate.toFixed(2)}%)
-                                  </span>
-                                </div>
-                              )}
-
                               {/* 우: 원화 총수익률 */}
                               <span className={`text-[11px] font-bold tabular-nums shrink-0 text-right whitespace-nowrap ${isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-500'}`}>
                                 ({item.totalRealizedProfit > 0 ? '+' : ''}{item.realizedRate.toFixed(2)}%)
