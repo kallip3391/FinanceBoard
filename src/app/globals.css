@@ -118,6 +118,13 @@
   .stagger-18 { animation-delay: 0.9s; }
   .stagger-19 { animation-delay: 0.95s; }
   .stagger-20 { animation-delay: 1s; }
+
+  /* 420px 이하 화면에서 특정 문구 숨김 유틸리티 */
+  @media (max-width: 420px) {
+    .hide-under-420 {
+      display: none !important;
+    }
+  }
 }
 
 @keyframes fadeIn {

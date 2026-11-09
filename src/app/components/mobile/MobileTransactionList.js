@@ -445,8 +445,8 @@ export default function MobileTransactionList({
                                   </span>
                                 </div>
 
-                                {/* 중: 외화 표시 (국내/해외 매수가와 동일한 폰트 및 색상, 우측 정렬) */}
-                                <div className="w-[122px] flex justify-end items-center pr-2 shrink-0">
+                                {/* 중: 외화 표시 (420px 이하 숨김) */}
+                                <div className="w-auto min-[421px]:w-[122px] flex justify-end items-center pr-2 shrink-0 hide-under-420 max-[420px]:hidden">
                                   {!isKRW && cleanDivAmount ? (
                                     <span className="text-[11px] font-medium text-slate-500 tabular-nums truncate">
                                       {cleanDivAmount}
@@ -507,12 +507,12 @@ export default function MobileTransactionList({
                                 </span>
                               </div>
 
-                              {/* 중: 수량(우측라인 맞춤) + 매수가(우측라인 맞춤) */}
-                              <div className="w-[122px] flex items-center justify-end gap-1.5 pr-2 shrink-0">
+                              {/* 중: 수량(우측라인 맞춤) + 매수가(우측라인 맞춤, 420px 이하 숨김) */}
+                              <div className="w-auto min-[421px]:w-[122px] flex items-center justify-end gap-1.5 pr-2 shrink-0">
                                 <span className="w-[44px] text-right text-slate-700 font-semibold tabular-nums truncate">
                                   {formattedQuantity}주
                                 </span>
-                                <span className="w-[64px] text-right text-slate-500 font-medium tabular-nums truncate">
+                                <span className="w-[64px] text-right text-slate-500 font-medium tabular-nums truncate hide-under-420 max-[420px]:hidden">
                                   {formattedPrice}
                                 </span>
                               </div>

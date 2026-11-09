@@ -579,15 +579,26 @@ export default function MobileDashboard() {
                       {/* 카드 1행 (클릭 시 아코디언 펼치기/접기) */}
                       <div
                         onClick={() => toggleExpand(itemKey)}
-                        className="flex justify-between items-center cursor-pointer select-none"
+                        className="flex items-center gap-2.5 cursor-pointer select-none"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-bold text-slate-900 truncate leading-tight">
+                        {/* 좌측: 로고 */}
+                        <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
+
+                        {/* 우측: 2행 구성 (1행: 종목명 & 금액, 2행: 코드/구분/수량 & 손익) */}
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          {/* 1행: 종목명 (좌) & 평가금액 (우) */}
+                          <div className="flex justify-between items-center leading-tight gap-1.5">
+                            <p className="text-[13px] font-bold text-slate-900 truncate pr-1">
                               {h.name}
                             </p>
-                            <div className="flex items-center gap-0 mt-1 text-[11px] text-slate-400 font-medium">
+                            <span className="text-[13px] font-black text-slate-900 tabular-nums shrink-0 whitespace-nowrap">
+                              {formatCurrency(h.evaluationAmountKRW, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
+                            </span>
+                          </div>
+
+                          {/* 2행: 종목코드+구분+수량 (좌) & 손익 (우) */}
+                          <div className="flex justify-between items-center mt-1 text-[11px] leading-tight gap-1.5">
+                            <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
                               {/* 1. 종목코드 (8자리 고정폭) */}
                               <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
                                 {formatStockCode(h.code)}
@@ -609,25 +620,21 @@ export default function MobileDashboard() {
                                 {formatCurrency(h.totalQuantity, 'QTY')}주
                               </span>
                             </div>
+
+                            {/* 우: 손익 & 수익률 */}
+                            <span className={`text-[11px] font-bold tabular-nums shrink-0 text-right whitespace-nowrap ${profitPos ? 'text-red-600' : profitNeg ? 'text-blue-600' : 'text-slate-500'}`}>
+                              <span className="hide-under-420 max-[420px]:hidden">{profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span> </span>({ratePos ? '+' : ''}{formattedReturnRate}%)
+                            </span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0 pl-2">
-                          <div className="text-right">
-                            <span className="text-[13px] font-black text-slate-900 tabular-nums block leading-tight">
-                              {formatCurrency(h.evaluationAmountKRW, 'KRW')}<span className="text-[10px] font-bold ml-0.5">원</span>
-                            </span>
-                            <span className={`text-[11px] font-bold tabular-nums block mt-0.5 leading-tight ${profitPos ? 'text-red-600' : profitNeg ? 'text-blue-600' : 'text-slate-500'}`}>
-                              {profitPos ? '+' : ''}{formatCurrency(h.profitAmountKRW, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span> ({ratePos ? '+' : ''}{formattedReturnRate}%)
-                            </span>
-                          </div>
-                          <div className="p-0.5 text-slate-400">
-                            {isExpanded ? (
-                              <ChevronUp size={16} strokeWidth={2.5} />
-                            ) : (
-                              <ChevronDown size={16} strokeWidth={2.5} />
-                            )}
-                          </div>
+                        {/* 우측 끝: 아코디언 토글 화살표 */}
+                        <div className="p-0.5 text-slate-400 shrink-0">
+                          {isExpanded ? (
+                            <ChevronUp size={16} strokeWidth={2.5} />
+                          ) : (
+                            <ChevronDown size={16} strokeWidth={2.5} />
+                          )}
                         </div>
                       </div>
 
