@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES, CURRENCIES } from "@/lib/transactionManager";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
+import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 
 
@@ -86,6 +87,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const modalFormRef = useMobileKeyboardModal(isModalOpen);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -1380,7 +1382,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <form ref={modalFormRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
               {/* 1. 배당일 (가운데 정렬) */}
               <div>
                 <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당일</label>
@@ -1741,7 +1743,10 @@ export default function TransactionsPage() {
                       value={formData.dividendAmount}
                       onChange={(e) => handleNumberInput(e, 'dividendAmount')}
                       onKeyDown={(e) => {
-                        if (e.key === 'Tab' && e.shiftKey) {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          priceRef.current?.blur();
+                        } else if (e.key === 'Tab' && e.shiftKey) {
                           e.preventDefault();
                           setIsStockDropdownOpen(false);
                           setFormData(prev => ({

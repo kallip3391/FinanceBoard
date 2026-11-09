@@ -48,6 +48,16 @@ const getCurrencySymbol = (currency) => {
   }
 };
 
+// 종목코드 포맷 (숫자 코드는 6자리 0 패딩 보정)
+const formatStockCode = (code) => {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(6, "0");
+  }
+  return str;
+};
+
 /* ───────── 토스 로고 컴포넌트 (테두리 없는 모던 라운드 룩) ───────── */
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
@@ -577,11 +587,26 @@ export default function MobileDashboard() {
                             <p className="text-[13px] font-bold text-slate-900 truncate leading-tight">
                               {h.name}
                             </p>
-                            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400 font-medium">
-                              {h.code && <span className="font-mono">{h.code}</span>}
-                              <span className="text-slate-600 font-semibold">{formatCurrency(h.totalQuantity, 'QTY')}주</span>
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md border ${isKRW ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                            <div className="flex items-center gap-0 mt-1 text-[11px] text-slate-400 font-medium">
+                              {/* 1. 종목코드 (8자리 고정폭) */}
+                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                                {formatStockCode(h.code)}
+                              </span>
+
+                              {/* 2. 구분 (국내/해외 배지) */}
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                  isKRW
+                                    ? 'bg-blue-50 text-blue-600 border-blue-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                              >
                                 {isKRW ? '국내' : '해외'}
+                              </span>
+
+                              {/* 3. 수량 (거래내역과 동일하게 고정폭 및 우측 정렬) */}
+                              <span className="w-[44px] text-right text-slate-700 font-semibold tabular-nums truncate ml-2">
+                                {formatCurrency(h.totalQuantity, 'QTY')}주
                               </span>
                             </div>
                           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
 import {
   Filter,
@@ -11,7 +11,48 @@ import {
   ArrowLeftRight,
   Globe,
   Coins,
+  Calendar,
 } from "lucide-react";
+
+function StockLogo({ code, name, isKRW }) {
+  const [hasError, setHasError] = useState(false);
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+
+  // ETF 여부 판별 (종목명에 ETF 또는 주요 ETF 브랜드가 포함된 경우)
+  const isETF = (name || '').toUpperCase().includes('ETF') ||
+                /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
+
+  if (!logoUrl || hasError) {
+    const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
+
+    return (
+      <div
+        className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold shrink-0 ${
+          isETF
+            ? 'bg-purple-100 text-purple-700 text-[10px]'
+            : isKRW
+              ? 'bg-blue-100/80 text-blue-600 text-xs'
+              : 'bg-amber-100/80 text-amber-700 text-xs'
+        }`}
+      >
+        {displayText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-slate-100/60">
+      <img
+        src={logoUrl}
+        alt={name || cleanCode}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-lg"
+        loading="lazy"
+      />
+    </div>
+  );
+}
 
 const TABS = [
   { key: "trading", label: "국내", href: "/transactions/trading" },
@@ -323,129 +364,171 @@ export default function MobileTransactionList({
                 </div>
               ) : (
                 <div key={`tx-page-${currentPage}`} className="flex flex-col gap-2.5">
-                  {displayList.map((tx, idx) => {
-                    const isBuy = tx.trade_type === "BUY" || tx.type === "매수";
-                    const stockName = tx.security?.name || tx.stock_name || tx.stock || "-";
-                    const rawCode = tx.security?.code || tx.stock_code || tx.stockCode || "";
-                    const stockCode = formatStockCode(rawCode);
-                    const currency = tx.currency || (type === "overseas" ? "USD" : "KRW");
-                    const isKRW = currency === "KRW";
+                  {(() => {
+                    const dateThemeColor =
+                      type === "trading"
+                        ? "text-blue-600"
+                        : type === "overseas"
+                        ? "text-emerald-600"
+                        : "text-indigo-600";
 
-                    // 수량 포맷
-                    const qtyNum = typeof tx.quantity === "number" ? tx.quantity : parseFloat(tx.quantity);
-                    const formattedQuantity = !isNaN(qtyNum) ? qtyNum.toLocaleString("ko-KR") : (tx.quantity || "-");
+                    return displayList.map((tx, idx) => {
+                      const isBuy = tx.trade_type === "BUY" || tx.type === "매수";
+                      const stockName = tx.security?.name || tx.stock_name || tx.stock || "-";
+                      const rawCode = tx.security?.code || tx.stock_code || tx.stockCode || "";
+                      const stockCode = formatStockCode(rawCode);
+                      const currency = tx.currency || (type === "overseas" ? "USD" : "KRW");
+                      const isKRW = currency === "KRW";
 
-                    // 단가 포맷 (국내: 원단위 소수점 없음, 해외: 해당 통화 기호 + 소수점 2자리)
-                    const formattedPrice = formatPrice(tx.price, currency);
+                      // 수량 포맷
+                      const qtyNum = typeof tx.quantity === "number" ? tx.quantity : parseFloat(tx.quantity);
+                      const formattedQuantity = !isNaN(qtyNum) ? qtyNum.toLocaleString("ko-KR") : (tx.quantity || "-");
 
-                    // 총금액 포맷
-                    const formattedTotalAmount = formatTotalAmount(tx.amount, tx.quantity, tx.price, currency);
+                      // 단가 포맷 (국내: 원단위 소수점 없음, 해외: 해당 통화 기호 + 소수점 2자리)
+                      const formattedPrice = formatPrice(tx.price, currency);
 
-                    // 배당 탭인 경우
-                    if (type === "dividends") {
-                      const hasDivAmount =
-                        tx.dividend_amount !== null &&
-                        tx.dividend_amount !== undefined &&
-                        tx.dividend_amount !== "" &&
-                        tx.dividend_amount !== "-";
-                      const divAmountFormatted = hasDivAmount ? formatPrice(tx.dividend_amount, currency) : "";
-                      const cleanDivAmount = divAmountFormatted === "-" ? "" : divAmountFormatted;
+                      // 총금액 포맷
+                      const formattedTotalAmount = formatTotalAmount(tx.amount, tx.quantity, tx.price, currency);
 
-                      const totalDivKRW =
-                        typeof tx.total_dividend === "number"
-                          ? `${Math.round(tx.total_dividend).toLocaleString("ko-KR")}원`
-                          : (tx.total_dividend && tx.total_dividend !== "-" ? `${tx.total_dividend}` : "");
+                      // 배당 탭인 경우
+                      if (type === "dividends") {
+                        const hasDivAmount =
+                          tx.dividend_amount !== null &&
+                          tx.dividend_amount !== undefined &&
+                          tx.dividend_amount !== "" &&
+                          tx.dividend_amount !== "-";
+                        const divAmountFormatted = hasDivAmount ? formatPrice(tx.dividend_amount, currency) : "";
+                        const cleanDivAmount = divAmountFormatted === "-" ? "" : divAmountFormatted;
 
+                        const totalDivKRW =
+                          typeof tx.total_dividend === "number"
+                            ? `${Math.round(tx.total_dividend).toLocaleString("ko-KR")}원`
+                            : (tx.total_dividend && tx.total_dividend !== "-" ? `${tx.total_dividend}` : "");
+
+                        return (
+                          <div
+                            key={tx.id || idx}
+                            onClick={() => onEdit && onEdit(tx)}
+                            className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
+                          >
+                            {/* 1열: 종목 로고 */}
+                            <StockLogo code={stockCode} name={stockName} isKRW={isKRW} />
+
+                            {/* 2열: 우측 상세 컨텐츠 */}
+                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                              {/* 1행: 종목명 (좌) & 날짜 (우측상단 - 2안 캘린더 아이콘 결합형) */}
+                              <div className="flex justify-between items-center leading-tight">
+                                <p className="text-[13px] font-bold text-slate-900 truncate pr-2">
+                                  {stockName}
+                                </p>
+                                <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${dateThemeColor} tabular-nums shrink-0`}>
+                                  <Calendar size={11} strokeWidth={2.2} className="shrink-0" />
+                                  <span>{formatShortDate(tx.date)}</span>
+                                </span>
+                              </div>
+
+                              {/* 2행: 종목코드(8자리 고정폭) + 국내/해외 배지 + 외화(우측정렬 녹색) + 총배당금(원화) */}
+                              <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
+                                {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
+                                <div className="flex items-center gap-0 shrink-0">
+                                  <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                                    {stockCode}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                      isKRW
+                                        ? "bg-blue-50 text-blue-600 border-blue-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200"
+                                    }`}
+                                  >
+                                    {isKRW ? "국내" : "해외"}
+                                  </span>
+                                </div>
+
+                                {/* 중: 외화 표시 (국내/해외 매수가와 동일한 폰트 및 색상, 우측 정렬) */}
+                                <div className="w-[122px] flex justify-end items-center pr-2 shrink-0">
+                                  {!isKRW && cleanDivAmount ? (
+                                    <span className="text-[11px] font-medium text-slate-500 tabular-nums truncate">
+                                      {cleanDivAmount}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                {/* 우: 총 배당금 (국내/해외 총금액과 동일한 폰트 및 색상) */}
+                                <div className="flex-1 text-right shrink-0">
+                                  <span className="text-xs font-black text-slate-900 tabular-nums">
+                                    {totalDivKRW}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // 국내 및 해외 거래내역:
                       return (
                         <div
                           key={tx.id || idx}
                           onClick={() => onEdit && onEdit(tx)}
-                          className={`flex justify-between items-center p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
+                          className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                         >
-                          {/* 1열: 일자 / 통화 */}
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-[48px] shrink-0 flex flex-col items-center justify-center gap-1 text-center">
-                              <span className="text-[11px] font-bold text-slate-500 tabular-nums whitespace-nowrap leading-tight text-center tracking-tight">
-                                {formatShortDate(tx.date)}
-                              </span>
-                              <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 leading-tight ${
-                                  isKRW
-                                    ? "bg-blue-50 text-blue-600 border-blue-200"
-                                    : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                }`}
-                              >
-                                {currency}
+                          {/* 1열: 종목 로고 */}
+                          <StockLogo code={stockCode} name={stockName} isKRW={isKRW} />
+
+                          {/* 2열: 우측 상세 컨텐츠 */}
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            {/* 1행: 종목명 (좌) & 날짜 (우측상단 - 2안 캘린더 아이콘 결합형) */}
+                            <div className="flex justify-between items-center leading-tight">
+                              <p className="text-[13px] font-bold text-slate-900 truncate pr-2">
+                                {stockName}
+                              </p>
+                              <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${dateThemeColor} tabular-nums shrink-0`}>
+                                <Calendar size={11} strokeWidth={2.2} className="shrink-0" />
+                                <span>{formatShortDate(tx.date)}</span>
                               </span>
                             </div>
 
-                            {/* 2열: 종목명 / 종목코드 & 배당단가 */}
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-800 truncate leading-tight">
-                                {stockName}
-                              </p>
-                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 font-medium">
-                                <span className="font-mono">{stockCode}</span>
-                                <span className="text-slate-500">{cleanDivAmount}</span>
+                            {/* 2행: 종목코드(8자리 고정폭) + 매수/매도 배지 + 수량(우측라인) + 매수가(우측라인) + 총금액 */}
+                            <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
+                              {/* 좌: 종목코드(8자리 고정폭) + 매수/매도 구분 */}
+                              <div className="flex items-center gap-0 shrink-0">
+                                <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                                  {stockCode}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                    isBuy
+                                      ? "bg-rose-50 text-rose-600 border-rose-200"
+                                      : "bg-blue-50 text-blue-600 border-blue-200"
+                                  }`}
+                                >
+                                  {isBuy ? "매수" : "매도"}
+                                </span>
+                              </div>
+
+                              {/* 중: 수량(우측라인 맞춤) + 매수가(우측라인 맞춤) */}
+                              <div className="w-[122px] flex items-center justify-end gap-1.5 pr-2 shrink-0">
+                                <span className="w-[44px] text-right text-slate-700 font-semibold tabular-nums truncate">
+                                  {formattedQuantity}주
+                                </span>
+                                <span className="w-[64px] text-right text-slate-500 font-medium tabular-nums truncate">
+                                  {formattedPrice}
+                                </span>
+                              </div>
+
+                              {/* 우: 총금액 */}
+                              <div className="flex-1 text-right shrink-0">
+                                <span className="text-xs font-black text-slate-900 tabular-nums">
+                                  {formattedTotalAmount}
+                                </span>
                               </div>
                             </div>
                           </div>
-
-                          {/* 3열: 총 배당금 */}
-                          <div className="text-right shrink-0 pl-2">
-                            <span className="text-xs font-black text-emerald-600 tabular-nums">
-                              {totalDivKRW}
-                            </span>
-                          </div>
                         </div>
                       );
-                    }
-
-                    // 국내 및 해외 거래내역:
-                    return (
-                      <div
-                        key={tx.id || idx}
-                        onClick={() => onEdit && onEdit(tx)}
-                        className={`flex justify-between items-center p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
-                      >
-                        {/* 1열: 일자 / 구분 + 2열: 종목명 / 종목코드 수량 단가 */}
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-[48px] shrink-0 flex flex-col items-center justify-center gap-1 text-center">
-                            <span className="text-[11px] font-bold text-slate-500 tabular-nums whitespace-nowrap leading-tight text-center tracking-tight">
-                              {formatShortDate(tx.date)}
-                            </span>
-                            <span
-                              className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 leading-tight ${
-                                isBuy
-                                  ? "bg-rose-50 text-rose-600 border-rose-200"
-                                  : "bg-blue-50 text-blue-600 border-blue-200"
-                              }`}
-                            >
-                              {isBuy ? "매수" : "매도"}
-                            </span>
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate leading-tight">
-                              {stockName}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 font-medium">
-                              <span className="font-mono text-slate-400">{stockCode}</span>
-                              <span className="text-slate-700 font-semibold">{formattedQuantity}주</span>
-                              <span className="text-slate-500">{formattedPrice}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 3열: 총금액 */}
-                        <div className="text-right shrink-0 pl-2">
-                          <span className="text-xs font-black text-slate-900 tabular-nums">
-                            {formattedTotalAmount}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                    });
+                  })()}
                 </div>
               )}
             </div>

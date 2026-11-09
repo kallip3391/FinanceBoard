@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
+import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 
 
@@ -71,6 +72,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const modalFormRef = useMobileKeyboardModal(isModalOpen);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [stockDeleteConfirm, setStockDeleteConfirm] = useState({ isOpen: false, id: null, name: '' });
@@ -1326,7 +1328,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <form ref={modalFormRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
               {/* 1. 거래일 & 구분 (2열 나란히 배치, 거래일 가운데 정렬) */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
@@ -1714,7 +1716,11 @@ export default function TransactionsPage() {
                     value={formData.quantity}
                     onChange={(e) => handleNumberInput(e, 'quantity')}
                     onKeyDown={(e) => {
-                      if (e.key === 'Tab' && e.shiftKey) {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        priceRef.current?.focus();
+                        priceRef.current?.select();
+                      } else if (e.key === 'Tab' && e.shiftKey) {
                         e.preventDefault();
                         setIsStockDropdownOpen(false);
                         setFormData(prev => ({ 
@@ -1743,6 +1749,12 @@ export default function TransactionsPage() {
                       placeholder="0"
                       value={formData.price}
                       onChange={(e) => handleNumberInput(e, 'price')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          priceRef.current?.blur();
+                        }
+                      }}
                       onBlur={(e) => {
                         const val = e.target.value.replace(/,/g, '');
                         if (val && !isNaN(parseFloat(val))) {

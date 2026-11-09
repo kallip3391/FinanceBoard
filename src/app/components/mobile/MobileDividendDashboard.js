@@ -1042,11 +1042,11 @@ export default function MobileDividendDashboard({
 
                             {/* 2행: 종목코드+배지 (좌), 외화 손익+수익률 (중), 원화 수익률 (우) 동일 라인 - 대시보드 폰트 스타일 일치 */}
                             <div className="flex justify-between items-center mt-1 text-[11px] leading-tight">
-                              {/* 좌: 종목코드 + 국내/해외 배지 */}
-                              <div className="flex items-center gap-1.5 shrink-0 text-slate-400 font-medium">
-                                <span className="font-mono">{item.code}</span>
+                              {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
+                              <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
+                                <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{item.code}</span>
                                 <span
-                                  className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md border ${
+                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
                                     isKRW
                                       ? "bg-blue-50 text-blue-600 border-blue-200"
                                       : "bg-amber-50 text-amber-700 border-amber-200"
@@ -1267,11 +1267,11 @@ export default function MobileDividendDashboard({
 
                           {/* 2행: 종목코드+배지 (좌), 외화 손익+수익률 (중), 원화 수익률 (우) 동일 라인 - 대시보드 폰트 스타일 일치 */}
                           <div className="flex justify-between items-center mt-1 text-[11px] leading-tight">
-                            {/* 좌: 코드 + 국내/해외 배지 */}
-                            <div className="flex items-center gap-1.5 shrink-0 text-slate-400 font-medium">
-                              <span className="font-mono">{selectedTradeModal.code}</span>
+                            {/* 좌: 코드(8자리 고정폭) + 국내/해외 구분 */}
+                            <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
+                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{selectedTradeModal.code}</span>
                               <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md border ${
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
                                   isModalKRW
                                     ? "bg-blue-50 text-blue-600 border-blue-200"
                                     : "bg-amber-50 text-amber-700 border-amber-200"
