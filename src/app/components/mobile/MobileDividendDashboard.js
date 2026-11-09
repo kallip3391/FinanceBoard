@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Sprout, Calendar, X, TrendingUp, Briefcase } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Sprout, Calendar, X, TrendingUp, Briefcase } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
+import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
 
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
@@ -337,12 +338,13 @@ export default function MobileDividendDashboard({
   formatCurrency
 }) {
   const [selectedMonthModal, setSelectedMonthModal] = useState(null);
+  const { data: monthModalData, isOpen: isMonthModalOpen, isClosing: isMonthClosing } = useAnimatedDataModal(selectedMonthModal);
   // 'dividends' (배당) | 'trades' (매매) 탭 상태 (기본값: 'dividends')
   const [settlementTab, setSettlementTab] = useState('dividends');
 
   // ── 매매손익 DB 조회 상태 및 정규화 데이터 ──
   const [closedTrades, setClosedTrades] = useState([]);
-  const [isTradesLoading, setIsTradesLoading] = useState(false);
+  const [, setIsTradesLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -412,6 +414,7 @@ export default function MobileDividendDashboard({
 
   // ── 매매손익 화면 상태 및 스와이프 핸들러 ──
   const [selectedTradeModal, setSelectedTradeModal] = useState(null);
+  const { data: tradeModalData, isOpen: isTradeModalOpen, isClosing: isTradeClosing } = useAnimatedDataModal(selectedTradeModal);
   const [tradePage, setTradePage] = useState(1);
   const tradePageSize = 4;
   const totalTradePages = Math.max(1, Math.ceil(tradesList.length / tradePageSize));
@@ -467,6 +470,7 @@ export default function MobileDividendDashboard({
   };
   const handleTradeModalTouchEnd = (e) => {
     if (tradeModalTouchStartY.current === null) return;
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
     const diffY = e.changedTouches[0].clientY - tradeModalTouchStartY.current;
     tradeModalTouchStartY.current = null;
     if (diffY > 40) {
@@ -1084,13 +1088,17 @@ export default function MobileDividendDashboard({
       </div>
 
       {/* ── 종목별 상세 바텀시트 모달 ── */}
-      {selectedMonthModal && (
+      {isMonthModalOpen && monthModalData && (
         <div
-          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
+          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isMonthClosing ? 'animate-fade-out' : 'animate-fade-in'
+          }`}
           onClick={() => setSelectedMonthModal(null)}
         >
           <div
-            className="bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-100 max-h-[75vh] flex flex-col animate-page-slide"
+            className={`bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-100 max-h-[75vh] flex flex-col ${
+              isMonthClosing ? 'animate-sheet-down' : 'animate-sheet-up'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 상단 드래그 핸들 (탭하여 닫기) */}
@@ -1110,10 +1118,10 @@ export default function MobileDividendDashboard({
                 </span>
                 <div className="flex items-center gap-2 mt-0.5">
                   <h3 className="text-lg font-black text-slate-800 tracking-tight">
-                    {selectedMonthModal.mNum}월 배당 종목
+                    {monthModalData.mNum}월 배당 종목
                   </h3>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                    총 {selectedMonthModal.items.length}개 종목
+                    총 {monthModalData.items.length}개 종목
                   </span>
                 </div>
               </div>
@@ -1122,7 +1130,7 @@ export default function MobileDividendDashboard({
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 font-bold block">월 총 배당금</span>
                   <span className="text-base font-black text-emerald-600 tabular-nums tracking-tight">
-                    {formatCurrency(selectedMonthModal.total)}원
+                    {formatCurrency(monthModalData.total)}원
                   </span>
                 </div>
                 <button
@@ -1137,7 +1145,7 @@ export default function MobileDividendDashboard({
 
             {/* 종목별 리스트 (스크롤 가능 - 하단 여백 추가로 마지막 종목 잘림 방지) */}
             <div className="overflow-y-auto space-y-2.5 pr-1 pb-10 flex-1">
-              {selectedMonthModal.items.map((st, idx) => {
+              {monthModalData.items.map((st, idx) => {
                 const isKRW = st.currency === 'KRW';
                 return (
                   <div
@@ -1179,13 +1187,17 @@ export default function MobileDividendDashboard({
       )}
 
       {/* ── 매매손익 종목별 상세 바텀시트 모달 (Image 2 시안 100% 구현) ── */}
-      {selectedTradeModal && (
+      {isTradeModalOpen && tradeModalData && (
         <div
-          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
+          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isTradeClosing ? 'animate-fade-out' : 'animate-fade-in'
+          }`}
           onClick={() => setSelectedTradeModal(null)}
         >
           <div
-            className="bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col animate-page-slide"
+            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col ${
+              isTradeClosing ? 'animate-sheet-down' : 'animate-sheet-up'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 상단 드래그 핸들 바 */}
@@ -1222,28 +1234,28 @@ export default function MobileDividendDashboard({
             <div className="overflow-y-auto pb-8 flex-1">
               <div className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-100 shadow-2xs">
                 {(() => {
-                  const isModalKRW = selectedTradeModal.isKRW;
-                  const modalProfit = selectedTradeModal.totalRealizedProfit > 0;
-                  const modalLoss = selectedTradeModal.totalRealizedProfit < 0;
-                  const modalTotalProfit = selectedTradeModal.totalRealizedProfit;
-                  const modalForeignProfit = selectedTradeModal.foreignRealizedProfit;
-                  const modalForeignTotalProfit = selectedTradeModal.foreignTotalRealizedProfit;
-                  const modalForeignDiv = selectedTradeModal.foreignDividend;
+                  const isModalKRW = tradeModalData.isKRW;
+                  const modalProfit = tradeModalData.totalRealizedProfit > 0;
+                  const modalLoss = tradeModalData.totalRealizedProfit < 0;
+                  const modalTotalProfit = tradeModalData.totalRealizedProfit;
+                  const modalForeignProfit = tradeModalData.foreignRealizedProfit;
+                  const modalForeignTotalProfit = tradeModalData.foreignTotalRealizedProfit;
+                  const modalForeignDiv = tradeModalData.foreignDividend;
 
                   return (
                     <>
                       {/* 상단 종목 정보 행 (1행: 종목명 & 원화총실현손익+ChevronUp, 2행: 코드/해외배지 & 외화손익(수익률) & 원화수익률) */}
                       <div className="flex items-center gap-2.5 select-none">
                         <StockLogo
-                          code={selectedTradeModal.code}
-                          name={selectedTradeModal.name}
+                          code={tradeModalData.code}
+                          name={tradeModalData.name}
                           isKRW={isModalKRW}
                         />
                         <div className="flex-1 min-w-0 flex flex-col justify-center">
                           {/* 1행: 종목명 (좌) & 원화 총실현손익 금액 + 닫기버튼 (우) - 대시보드 폰트 스타일(13px font-bold, 13px font-black) 일치 */}
                           <div className="flex justify-between items-center leading-tight">
                             <p className="text-[13px] font-bold text-slate-900 truncate pr-2">
-                              {selectedTradeModal.name}
+                              {tradeModalData.name}
                             </p>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className={`text-[13px] font-black tabular-nums whitespace-nowrap ${modalProfit ? 'text-red-600' : modalLoss ? 'text-blue-600' : 'text-slate-900'}`}>
@@ -1260,7 +1272,7 @@ export default function MobileDividendDashboard({
                           <div className="flex justify-between items-center mt-1 text-[11px] leading-tight">
                             {/* 좌: 코드(8자리 고정폭) + 국내/해외 구분 */}
                             <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
-                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{selectedTradeModal.code}</span>
+                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{tradeModalData.code}</span>
                               <span
                                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
                                   isModalKRW
@@ -1276,14 +1288,14 @@ export default function MobileDividendDashboard({
                             {!isModalKRW && (
                               <div className="px-1 text-center flex-1">
                                 <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap ${modalForeignTotalProfit > 0 ? 'text-red-600' : modalForeignTotalProfit < 0 ? 'text-blue-600' : 'text-slate-500'}`}>
-                                  {formatForeignAmount(modalForeignTotalProfit, selectedTradeModal.currency, true)} ({modalForeignTotalProfit > 0 ? '+' : ''}{selectedTradeModal.foreignTotalRate.toFixed(2)}%)
+                                  {formatForeignAmount(modalForeignTotalProfit, tradeModalData.currency, true)} ({modalForeignTotalProfit > 0 ? '+' : ''}{tradeModalData.foreignTotalRate.toFixed(2)}%)
                                 </span>
                               </div>
                             )}
 
                             {/* 우: 원화 총수익률 (ChevronUp 너비 16px + gap 6px = 22px 만큼 우측 여백을 주어 1행의 금액 끝자리와 정렬) */}
                             <span className={`text-[11px] font-bold tabular-nums shrink-0 text-right whitespace-nowrap pr-[22px] ${modalProfit ? 'text-red-600' : modalLoss ? 'text-blue-600' : 'text-slate-500'}`}>
-                              ({modalTotalProfit > 0 ? '+' : ''}{selectedTradeModal.realizedRate.toFixed(2)}%)
+                              ({modalTotalProfit > 0 ? '+' : ''}{tradeModalData.realizedRate.toFixed(2)}%)
                             </span>
                           </div>
                         </div>
@@ -1297,16 +1309,16 @@ export default function MobileDividendDashboard({
                             <span className="text-[10px] text-slate-400 font-medium leading-tight">평균 매수가</span>
                             <span className="text-[11px] font-bold text-slate-800 tabular-nums mt-1 whitespace-nowrap leading-tight">
                               {isModalKRW
-                                ? `${formatCurrency(selectedTradeModal.avgBuyPrice, 'KRW')}`
-                                : formatForeignAmount(selectedTradeModal.foreignAvgBuyPrice, selectedTradeModal.currency)
+                                ? `${formatCurrency(tradeModalData.avgBuyPrice, 'KRW')}`
+                                : formatForeignAmount(tradeModalData.foreignAvgBuyPrice, tradeModalData.currency)
                               }
                               {isModalKRW && <span className="text-[9.5px] font-bold ml-0.5">원</span>}
                             </span>
                             <span className="text-[10px] text-slate-400 font-medium leading-tight mt-1">평균 매도가</span>
                             <span className="text-[11px] font-bold text-slate-800 tabular-nums mt-1 whitespace-nowrap leading-tight">
                               {isModalKRW
-                                ? `${formatCurrency(selectedTradeModal.avgSellPrice, 'KRW')}`
-                                : formatForeignAmount(selectedTradeModal.foreignAvgSellPrice, selectedTradeModal.currency)
+                                ? `${formatCurrency(tradeModalData.avgSellPrice, 'KRW')}`
+                                : formatForeignAmount(tradeModalData.foreignAvgSellPrice, tradeModalData.currency)
                               }
                               {isModalKRW && <span className="text-[9.5px] font-bold ml-0.5">원</span>}
                             </span>
@@ -1317,21 +1329,21 @@ export default function MobileDividendDashboard({
                             <span className="text-[10px] text-slate-400 font-medium leading-tight">실현손익</span>
                             <div className="flex flex-col items-end w-fit mx-auto mt-1">
                               {/* 윗부분: 원화 */}
-                              <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${selectedTradeModal.realizedProfit > 0 ? 'text-red-600' : selectedTradeModal.realizedProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                {selectedTradeModal.realizedProfit > 0 ? '+' : ''}{formatCurrency(selectedTradeModal.realizedProfit, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span>
+                              <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${tradeModalData.realizedProfit > 0 ? 'text-red-600' : tradeModalData.realizedProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
+                                {tradeModalData.realizedProfit > 0 ? '+' : ''}{formatCurrency(tradeModalData.realizedProfit, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span>
                               </span>
-                              <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${selectedTradeModal.realizedProfit > 0 ? 'text-red-600' : selectedTradeModal.realizedProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                ({selectedTradeModal.realizedProfit > 0 ? '+' : ''}{selectedTradeModal.profitRate.toFixed(2)}%)
+                              <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${tradeModalData.realizedProfit > 0 ? 'text-red-600' : tradeModalData.realizedProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
+                                ({tradeModalData.realizedProfit > 0 ? '+' : ''}{tradeModalData.profitRate.toFixed(2)}%)
                               </span>
 
                               {/* 아랫부분: 외화 (외화 종목인 경우 Image 2 반영) */}
                               {!isModalKRW && (
                                 <div className="flex flex-col items-end mt-1.5">
                                   <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${modalForeignProfit > 0 ? 'text-red-600' : modalForeignProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                    {formatForeignAmount(modalForeignProfit, selectedTradeModal.currency, true)}
+                                    {formatForeignAmount(modalForeignProfit, tradeModalData.currency, true)}
                                   </span>
                                   <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${modalForeignProfit > 0 ? 'text-red-600' : modalForeignProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                    ({modalForeignProfit > 0 ? '+' : ''}{selectedTradeModal.foreignProfitRate.toFixed(2)}%)
+                                    ({modalForeignProfit > 0 ? '+' : ''}{tradeModalData.foreignProfitRate.toFixed(2)}%)
                                   </span>
                                 </div>
                               )}
@@ -1343,8 +1355,8 @@ export default function MobileDividendDashboard({
                             <span className="text-[10px] text-slate-400 font-medium leading-tight">배당금</span>
                             <div className="flex flex-col items-end w-fit mx-auto mt-1">
                               {/* 윗부분: 한화(원화) */}
-                              <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${selectedTradeModal.dividend > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                {selectedTradeModal.dividend > 0 ? `+${formatCurrency(selectedTradeModal.dividend, 'KRW')}` : '0'}<span className="text-[9.5px] font-bold ml-0.5">원</span>
+                              <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${tradeModalData.dividend > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                {tradeModalData.dividend > 0 ? `+${formatCurrency(tradeModalData.dividend, 'KRW')}` : '0'}<span className="text-[9.5px] font-bold ml-0.5">원</span>
                               </span>
                               {/* 2열의 원화 수익률과 높이를 맞추기 위한 투명 스페이서 */}
                               <span className="text-[10px] leading-tight select-none pointer-events-none opacity-0 mt-0.5" aria-hidden="true">
@@ -1355,7 +1367,7 @@ export default function MobileDividendDashboard({
                               {!isModalKRW && (
                                 <div className="flex flex-col items-end mt-1.5">
                                   <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${modalForeignDiv > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                    {modalForeignDiv > 0 ? `+${formatForeignAmount(modalForeignDiv, selectedTradeModal.currency)}` : `${getCurrencySymbol(selectedTradeModal.currency)}0`}
+                                    {modalForeignDiv > 0 ? `+${formatForeignAmount(modalForeignDiv, tradeModalData.currency)}` : `${getCurrencySymbol(tradeModalData.currency)}0`}
                                   </span>
                                   {/* 2열의 외화 수익률과 높이를 맞추기 위한 투명 스페이서 */}
                                   <span className="text-[10px] leading-tight select-none pointer-events-none opacity-0 mt-0.5" aria-hidden="true">
@@ -1375,17 +1387,17 @@ export default function MobileDividendDashboard({
                                 {modalTotalProfit > 0 ? '+' : ''}{formatCurrency(modalTotalProfit, 'KRW')}<span className="text-[9.5px] font-bold ml-0.5">원</span>
                               </span>
                               <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${modalTotalProfit > 0 ? 'text-red-600' : modalTotalProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                ({modalTotalProfit > 0 ? '+' : ''}{selectedTradeModal.realizedRate.toFixed(2)}%)
+                                ({modalTotalProfit > 0 ? '+' : ''}{tradeModalData.realizedRate.toFixed(2)}%)
                               </span>
 
                               {/* 아랫부분: 외화 (외화 종목인 경우 Image 2 반영) */}
                               {!isModalKRW && (
                                 <div className="flex flex-col items-end mt-1.5">
                                   <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${modalForeignTotalProfit > 0 ? 'text-red-600' : modalForeignTotalProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                    {formatForeignAmount(modalForeignTotalProfit, selectedTradeModal.currency, true)}
+                                    {formatForeignAmount(modalForeignTotalProfit, tradeModalData.currency, true)}
                                   </span>
                                   <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${modalForeignTotalProfit > 0 ? 'text-red-600' : modalForeignTotalProfit < 0 ? 'text-blue-600' : 'text-slate-700'}`}>
-                                    ({modalForeignTotalProfit > 0 ? '+' : ''}{selectedTradeModal.foreignTotalRate.toFixed(2)}%)
+                                    ({modalForeignTotalProfit > 0 ? '+' : ''}{tradeModalData.foreignTotalRate.toFixed(2)}%)
                                   </span>
                                 </div>
                               )}

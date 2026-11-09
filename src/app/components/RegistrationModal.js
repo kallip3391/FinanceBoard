@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, UserPlus, Mail, User, CheckCircle } from "lucide-react";
+import { X, UserPlus, CheckCircle } from "lucide-react";
+import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
+  const { mounted, isClosing } = useAnimatedModal(isOpen);
   const [formData, setFormData] = useState({
     email: '',
     displayName: ''
@@ -31,7 +33,7 @@ export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, onSubmit, isSubmitting, isDone]);
 
-  if (!isOpen) return null;
+  if (!mounted) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,9 +53,9 @@ export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
 
   if (isDone) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-        <div className="relative bg-white rounded-[2.5rem] p-10 w-[380px] shadow-2xl animate-slide-up text-center border border-slate-100">
+      <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${isClosing ? 'pointer-events-none' : ''}`}>
+        <div className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`} onClick={onClose}></div>
+        <div className={`relative bg-white rounded-[2.5rem] p-10 w-[380px] shadow-2xl text-center border border-slate-100 ${isClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
           <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle size={40} strokeWidth={2.5} />
           </div>
@@ -67,9 +69,9 @@ export default function RegistrationModal({ isOpen, onClose, onSubmit }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-[480px] overflow-hidden animate-slide-up border border-slate-100 flex flex-col min-h-[420px]">
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${isClosing ? 'pointer-events-none' : ''}`}>
+      <div className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`} onClick={onClose}></div>
+      <div className={`relative bg-white rounded-[2.5rem] shadow-2xl w-[480px] overflow-hidden border border-slate-100 flex flex-col min-h-[420px] ${isClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
         {/* Header */}
         <div className="px-6 py-5 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
           <div className="flex items-center gap-2.5">

@@ -8,6 +8,7 @@ import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
 import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
+import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 
 
@@ -102,8 +103,17 @@ export default function TransactionsPage() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const filterScrollRef = useMobileKeyboardModal(isFilterModalOpen);
 
+  const { mounted: isModalMounted, isClosing: isModalClosing } = useAnimatedModal(isModalOpen);
+  const { mounted: isFilterMounted, isClosing: isFilterClosing } = useAnimatedModal(isFilterModalOpen);
+  const { mounted: isStockMounted, isClosing: isStockClosing } = useAnimatedModal(isStockModalOpen);
+  const { mounted: isAccountMounted, isClosing: isAccountClosing } = useAnimatedModal(isAccountModalOpen);
+  const { mounted: alertMounted, isClosing: alertClosing } = useAnimatedModal(alertModal.isOpen);
+  const { mounted: deleteMounted, isClosing: deleteClosing } = useAnimatedModal(deleteConfirm.isOpen);
+  const { mounted: stockDeleteMounted, isClosing: stockDeleteClosing } = useAnimatedModal(stockDeleteConfirm.isOpen);
+  const { mounted: accountDeleteMounted, isClosing: accountDeleteClosing } = useAnimatedModal(accountDeleteConfirm.isOpen);
+
   useEffect(() => {
-    const isAnyModalOpen = isFilterModalOpen || isModalOpen || isStockModalOpen || isAccountModalOpen;
+    const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
     if (isAnyModalOpen) {
       const scrollY = window.scrollY;
       document.body.style.position = 'fixed';
@@ -130,7 +140,7 @@ export default function TransactionsPage() {
         window.scrollTo(0, parseInt(scrollY || '0') * -1);
       }
     };
-  }, [isFilterModalOpen, isModalOpen, isStockModalOpen, isAccountModalOpen]);
+  }, [isFilterMounted, isModalMounted, isStockMounted, isAccountMounted, alertMounted, deleteMounted, stockDeleteMounted, accountDeleteMounted]);
   const [isFilterTypeDropdownOpen, setIsFilterTypeDropdownOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState({
     dateFrom: '',
@@ -1283,9 +1293,9 @@ export default function TransactionsPage() {
       </div>
 
       {/* Add Transaction Modal */}
-      {isModalOpen && mounted && createPortal(
-        <div className="fixed inset-0 z-[9990] bg-black/60 backdrop-blur-xs flex items-end md:items-center justify-center p-0 md:p-4 transition-opacity animate-fade-in" onClick={toggleModal}>
-          <div className="relative bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 overflow-hidden animate-page-slide max-h-[92vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+      {isModalMounted && mounted && createPortal(
+        <div className={`fixed inset-0 z-[9990] bg-black/60 backdrop-blur-xs flex items-end md:items-center justify-center p-0 md:p-4 transition-opacity ${isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} onClick={toggleModal}>
+          <div className={`relative bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col pointer-events-auto ${isModalClosing ? 'animate-sheet-down md:animate-modal-out' : 'animate-sheet-up md:animate-page-slide'}`} onClick={(e) => e.stopPropagation()}>
             {/* Mobile handle */}
             <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-2.5 mb-0.5 shrink-0 md:hidden" />
 
@@ -1780,9 +1790,9 @@ export default function TransactionsPage() {
         document.body
       )}
 
-      {isStockModalOpen && mounted && createPortal(
-        <div className="fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity animate-fade-in" onClick={() => setIsStockModalOpen(false)}>
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-visible animate-page-slide max-h-[90vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+      {isStockMounted && mounted && createPortal(
+        <div className={`fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity ${isStockClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} onClick={() => setIsStockModalOpen(false)}>
+          <div className={`relative bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-visible max-h-[90vh] flex flex-col pointer-events-auto ${isStockClosing ? 'animate-modal-out' : 'animate-page-slide'}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
               <h3 className="text-lg font-bold text-slate-800">종목 추가</h3>
               <button onClick={() => setIsStockModalOpen(false)} className="p-1.5 -mr-1 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all cursor-pointer">
@@ -2029,9 +2039,9 @@ export default function TransactionsPage() {
       )}
 
             {/* Account Registration Modal */}
-      {isAccountModalOpen && mounted && createPortal(
-        <div className="fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity animate-fade-in" onClick={() => setIsAccountModalOpen(false)}>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 overflow-visible animate-page-slide max-h-[90vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+      {isAccountMounted && mounted && createPortal(
+        <div className={`fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity ${isAccountClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} onClick={() => setIsAccountModalOpen(false)}>
+          <div className={`relative bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 overflow-visible max-h-[90vh] flex flex-col pointer-events-auto ${isAccountClosing ? 'animate-modal-out' : 'animate-page-slide'}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
               <h3 className="text-lg font-bold text-slate-800">계좌등록</h3>
               <button onClick={() => setIsAccountModalOpen(false)} className="p-1.5 -mr-1 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all cursor-pointer">
@@ -2153,13 +2163,13 @@ export default function TransactionsPage() {
       )}
 
       {/* Alert Modal (Custom UI replacement for browser alert) */}
-      {mounted && alertModal.isOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      {mounted && alertMounted && createPortal(
+        <div className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 ${alertClosing ? 'pointer-events-none' : ''}`}>
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+            className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${alertClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
             onClick={closeAlert}
           ></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
+          <div className={`relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-100 ${alertClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 ${alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'
               }`}>
               {alertModal.type === 'success' ? <Check size={32} /> : <X size={32} />}
@@ -2183,13 +2193,13 @@ export default function TransactionsPage() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {mounted && deleteConfirm.isOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      {mounted && deleteMounted && createPortal(
+        <div className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 ${deleteClosing ? 'pointer-events-none' : ''}`}>
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setDeleteConfirm({ isOpen: false, id: null })}
+            className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${deleteClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+            onClick={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
           ></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
+          <div className={`relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-100 ${deleteClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <Trash2 size={32} />
             </div>
@@ -2197,7 +2207,7 @@ export default function TransactionsPage() {
             <p className="text-slate-500 mb-8 leading-relaxed">이 작업은 취소할 수 없습니다.<br />거래 내역에서 영구적으로 삭제됩니다.</p>
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleteConfirm({ isOpen: false, id: null })}
+                onClick={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
                 className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all border border-slate-200"
               >
                 아니오
@@ -2215,13 +2225,13 @@ export default function TransactionsPage() {
       )}
 
       {/* Stock Delete Confirmation Modal */}
-      {mounted && stockDeleteConfirm.isOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      {mounted && stockDeleteMounted && createPortal(
+        <div className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 ${stockDeleteClosing ? 'pointer-events-none' : ''}`}>
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setStockDeleteConfirm({ isOpen: false, id: null, name: '' })}
+            className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${stockDeleteClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+            onClick={() => setStockDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
           ></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
+          <div className={`relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-100 ${stockDeleteClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <Trash2 size={32} />
             </div>
@@ -2232,7 +2242,7 @@ export default function TransactionsPage() {
             <p className="text-xs text-rose-400 mb-8 leading-relaxed">이 작업은 거래 내역에도 영향을 줄 수 있습니다.</p>
             <div className="flex gap-3">
               <button
-                onClick={() => setStockDeleteConfirm({ isOpen: false, id: null, name: '' })}
+                onClick={() => setStockDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
                 className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all border border-slate-200"
               >
                 아니오
@@ -2250,13 +2260,13 @@ export default function TransactionsPage() {
       )}
 
       {/* Account Delete Confirmation Modal */}
-      {mounted && accountDeleteConfirm.isOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      {mounted && accountDeleteMounted && createPortal(
+        <div className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 ${accountDeleteClosing ? 'pointer-events-none' : ''}`}>
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setAccountDeleteConfirm({ isOpen: false, name: '' })}
+            className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${accountDeleteClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+            onClick={() => setAccountDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
           ></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 animate-slide-up text-center border border-slate-100">
+          <div className={`relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-100 ${accountDeleteClosing ? 'animate-modal-out' : 'animate-slide-up'}`}>
             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <Trash2 size={32} />
             </div>
@@ -2267,7 +2277,7 @@ export default function TransactionsPage() {
             <p className="text-xs text-rose-400 mb-8 leading-relaxed">계좌의 모든 거래 내역에 영향을 줄 수 있습니다.</p>
             <div className="flex gap-3">
               <button
-                onClick={() => setAccountDeleteConfirm({ isOpen: false, name: '' })}
+                onClick={() => setAccountDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
                 className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-all border border-slate-200"
               >
                 아니오
@@ -2284,13 +2294,13 @@ export default function TransactionsPage() {
         document.body
       )}
       {/* Filter Modal (1안: 현대적 모던 바텀시트 / 배당금 상세 팝업과 동일한 효과 및 디자인) */}
-      {mounted && isFilterModalOpen && createPortal(
+      {mounted && isFilterMounted && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex flex-col justify-end md:justify-center md:items-center p-0 md:p-4 transition-opacity"
+          className={`fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex flex-col justify-end md:justify-center md:items-center p-0 md:p-4 transition-opacity ${isFilterClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`}
           onClick={() => setIsFilterModalOpen(false)}
         >
           <div 
-            className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col animate-page-slide w-full max-w-lg mx-auto overflow-hidden pointer-events-auto"
+            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden pointer-events-auto ${isFilterClosing ? 'animate-sheet-down md:animate-modal-out' : 'animate-sheet-up md:animate-page-slide'}`}
             onClick={(e) => e.stopPropagation()}
           >
             

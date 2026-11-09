@@ -17,8 +17,8 @@ export function useMobileKeyboardModal(isOpen) {
     const formEl = formRef.current;
     if (!isOpen || !formEl) return;
 
-    // 모달 오픈 시 초기 맨 위로 스크롤
-    formEl.scrollTo({ top: 0, behavior: 'instant' });
+    // 모달 오픈 시 초기 맨 위로 스크롤 (구형/신형 브라우저 완벽 대응)
+    formEl.scrollTop = 0;
     formEl.style.paddingBottom = '';
 
     const handleFocusIn = (e) => {
@@ -45,12 +45,17 @@ export function useMobileKeyboardModal(isOpen) {
             const targetRect = target.getBoundingClientRect();
             const currentScroll = formEl.scrollTop;
             const targetTopRelativeToForm = (targetRect.top - formRect.top) + currentScroll;
+            const desiredTop = Math.max(0, targetTopRelativeToForm - 70);
 
             // 폼 상단에서 약 70px 아래에 입력 항목이 오도록 스크롤 (키보드 위로 편안하게 노출)
-            formEl.scrollTo({
-              top: Math.max(0, targetTopRelativeToForm - 70),
-              behavior: 'smooth'
-            });
+            try {
+              formEl.scrollTo({
+                top: desiredTop,
+                behavior: 'smooth'
+              });
+            } catch {
+              formEl.scrollTop = desiredTop;
+            }
 
             try {
               target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -75,9 +80,17 @@ export function useMobileKeyboardModal(isOpen) {
         // 입력 폼 내 다른 필드로의 이동이 아닌 경우 (키보드 닫힘 / 완료 / 외부 클릭)
         if (!isAnotherInputActive && formEl) {
           formEl.style.paddingBottom = '';
-          formEl.scrollTo({ top: 0, behavior: 'smooth' });
+          try {
+            formEl.scrollTo({ top: 0, behavior: 'smooth' });
+          } catch {
+            formEl.scrollTop = 0;
+          }
           if (typeof window !== 'undefined') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            try {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch {
+              window.scrollTo(0, 0);
+            }
           }
         }
       }, 150);
@@ -101,8 +114,18 @@ export function useMobileKeyboardModal(isOpen) {
           }
         }
         formEl.style.paddingBottom = '';
-        formEl.scrollTo({ top: 0, behavior: 'smooth' });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        try {
+          formEl.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch {
+          formEl.scrollTop = 0;
+        }
+        if (typeof window !== 'undefined') {
+          try {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } catch {
+            window.scrollTo(0, 0);
+          }
+        }
       }
       lastViewportHeight = currentHeight;
     };

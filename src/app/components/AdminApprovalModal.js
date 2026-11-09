@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { X, UserCheck, UserX, Shield, Mail, RotateCcw, ChevronDown, Check, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 export default function AdminApprovalModal({ isOpen, onClose }) {
+  const { mounted, isClosing } = useAnimatedModal(isOpen);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(null);
@@ -101,7 +103,7 @@ export default function AdminApprovalModal({ isOpen, onClose }) {
     }
   };
 
-  if (!isOpen) return null;
+  if (!mounted) return null;
 
   const filteredUsers = users.filter(u => 
     u.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -114,11 +116,11 @@ export default function AdminApprovalModal({ isOpen, onClose }) {
 
   return (
     <div 
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+      className={`fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`}
       onClick={onClose}
     >
       <div 
-        className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-slide-up max-h-[90vh] flex flex-col border border-slate-100"
+        className={`relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-100 ${isClosing ? 'animate-modal-out' : 'animate-slide-up'}`}
         onClick={(e) => e.stopPropagation()}
       >
         

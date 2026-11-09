@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 const emptySubscribe = () => () => {};
 
@@ -121,6 +122,7 @@ export default function MobileDashboard() {
 
   // 보유종목 바텀시트 모달 상태
   const [isHoldingsModalOpen, setIsHoldingsModalOpen] = useState(false);
+  const { mounted: isHoldingsMounted, isClosing: isHoldingsClosing } = useAnimatedModal(isHoldingsModalOpen);
   // 아코디언 펼침 상태 관리 (종목코드별 토글)
   const [expandedCodes, setExpandedCodes] = useState({});
 
@@ -150,6 +152,7 @@ export default function MobileDashboard() {
   };
   const handleHeaderTouchEnd = (e) => {
     if (touchStartYRef.current === null) return;
+    if (!e.changedTouches || e.changedTouches.length === 0) return;
     const touchEndY = e.changedTouches[0].clientY;
     const diffY = touchEndY - touchStartYRef.current;
     touchStartYRef.current = null;
@@ -450,13 +453,17 @@ export default function MobileDashboard() {
       </div>
 
       {/* ── 4. 보유종목 바텀시트 모달 (아코디언 11개 항목 + 상단바 탭/드래그 닫기) ── */}
-      {isHoldingsModalOpen && (
+      {isHoldingsMounted && (
         <div
-          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity"
+          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isHoldingsClosing ? 'animate-fade-out' : 'animate-fade-in'
+          }`}
           onClick={handleCloseHoldingsModal}
         >
           <div
-            className="bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col animate-page-slide"
+            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col ${
+              isHoldingsClosing ? 'animate-sheet-down' : 'animate-sheet-up'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 상단 드래그 핸들 바 (탭하거나 아래로 쓸어내려 닫기) */}
