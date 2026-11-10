@@ -1143,7 +1143,7 @@ export default function DividendsPage() {
                       {selectedYear}년 연간 월별 배당 내역
                     </h3>
                     <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
-                      총 {groupedData[selectedYear]?.count || 0}건 배당
+                      총 {groupedData[selectedYear]?.count || 0}건
                     </span>
                   </div>
                 </div>
