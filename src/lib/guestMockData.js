@@ -780,7 +780,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 506250,
     returnRate: '6.10',
     totalReturnRate: '7.32',
-    dividend: 101250
+    dividend: 101250,
+    foreignDividend: 75.0
   },
   {
     security_id: 'sec-us-6',
@@ -799,7 +800,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 567000,
     returnRate: '7.61',
     totalReturnRate: '7.61',
-    dividend: 0
+    dividend: 0,
+    foreignDividend: 0
   },
   {
     security_id: 'sec-us-1',
@@ -818,7 +820,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 675000,
     returnRate: '9.52',
     totalReturnRate: '10.39',
-    dividend: 61425
+    dividend: 61425,
+    foreignDividend: 45.5
   },
   {
     security_id: 'sec-us-7',
@@ -837,7 +840,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 540000,
     returnRate: '7.55',
     totalReturnRate: '7.55',
-    dividend: 0
+    dividend: 0,
+    foreignDividend: 0
   },
   {
     security_id: 'sec-us-3',
@@ -856,7 +860,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 1242000,
     returnRate: '20.00',
     totalReturnRate: '20.00',
-    dividend: 0
+    dividend: 0,
+    foreignDividend: 0
   },
   {
     security_id: 'sec-us-4',
@@ -875,7 +880,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 526500,
     returnRate: '7.88',
     totalReturnRate: '7.88',
-    dividend: 0
+    dividend: 0,
+    foreignDividend: 0
   },
   {
     security_id: 'sec-us-10',
@@ -894,7 +900,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 364500,
     returnRate: '5.77',
     totalReturnRate: '8.97',
-    dividend: 202500
+    dividend: 202500,
+    foreignDividend: 150.0
   },
   {
     security_id: 'sec-us-8',
@@ -913,7 +920,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 270000,
     returnRate: '4.55',
     totalReturnRate: '7.27',
-    dividend: 162000
+    dividend: 162000,
+    foreignDividend: 120.0
   },
   {
     security_id: 'sec-us-5',
@@ -932,7 +940,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: -405000,
     returnRate: '-6.25',
     totalReturnRate: '-6.25',
-    dividend: 0
+    dividend: 0,
+    foreignDividend: 0
   },
   {
     security_id: 'sec-us-9',
@@ -951,7 +960,8 @@ export const GUEST_HOLDINGS = [
     profitAmountKRW: 303750,
     returnRate: '6.58',
     totalReturnRate: '9.36',
-    dividend: 128250
+    dividend: 128250,
+    foreignDividend: 95.0
   }
 ];
 
@@ -1011,12 +1021,12 @@ export const GUEST_MONTHLY_DIVIDENDS = [
   // 2026-10: 국내 2종목 + 해외 2종목 (Apple, Microsoft)
   { record_month: '2026-10', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 240000 },
   { record_month: '2026-10', security_name: 'PLUS 고배당주', security_code: '161510', currency: 'KRW', dividend_count: 1, total_dividend: 310000 },
-  { record_month: '2026-10', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 265000 },
-  { record_month: '2026-10', security_name: 'Microsoft', security_code: 'MSFT', currency: 'USD', dividend_count: 1, total_dividend: 281925 },
+  { record_month: '2026-10', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 265000, dividend_amount: 196.30 },
+  { record_month: '2026-10', security_name: 'Microsoft', security_code: 'MSFT', currency: 'USD', dividend_count: 1, total_dividend: 281925, dividend_amount: 208.83 },
 
   // 2026-09: 국내 1종목 + 해외 1종목 (SCHD)
   { record_month: '2026-09', security_name: 'TIGER 미국배당다우존스', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 260000 },
-  { record_month: '2026-09', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 202500 },
+  { record_month: '2026-09', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 202500, dividend_amount: 150.00 },
 
   // 2026-08: 국내 2종목
   { record_month: '2026-08', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
@@ -1024,11 +1034,11 @@ export const GUEST_MONTHLY_DIVIDENDS = [
 
   // 2026-07: 국내 1종목 + 해외 1종목 (JEPI)
   { record_month: '2026-07', security_name: 'KODEX 미국배당커버드콜액티브', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 220000 },
-  { record_month: '2026-07', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 190000 },
+  { record_month: '2026-07', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 190000, dividend_amount: 140.74 },
 
   // 2026-06: 국내 1종목 + 해외 1종목 (Realty Income)
   { record_month: '2026-06', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 160000 },
-  { record_month: '2026-06', security_name: 'Realty Income', security_code: 'O', currency: 'USD', dividend_count: 1, total_dividend: 125000 },
+  { record_month: '2026-06', security_name: 'Realty Income', security_code: 'O', currency: 'USD', dividend_count: 1, total_dividend: 125000, dividend_amount: 92.59 },
 
   // 2026-05: 국내 2종목
   { record_month: '2026-05', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
@@ -1036,20 +1046,20 @@ export const GUEST_MONTHLY_DIVIDENDS = [
 
   // 2026-04: 국내 1종목 + 해외 1종목 (Apple)
   { record_month: '2026-04', security_name: '맥쿼리인프라', security_code: '088980', currency: 'KRW', dividend_count: 1, total_dividend: 150000 },
-  { record_month: '2026-04', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 140000 },
+  { record_month: '2026-04', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 140000, dividend_amount: 103.70 },
 
   // 2026-03: 국내 1종목 + 해외 1종목 (SCHD)
   { record_month: '2026-03', security_name: '현대차', security_code: '005380', currency: 'KRW', dividend_count: 1, total_dividend: 230000 },
-  { record_month: '2026-03', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 150000 },
+  { record_month: '2026-03', security_name: 'Schwab US Dividend Equity', security_code: 'SCHD', currency: 'USD', dividend_count: 1, total_dividend: 150000, dividend_amount: 111.11 },
 
   // 2026-02: 국내 1종목
   { record_month: '2026-02', security_name: 'TIGER 미국배당다우존스', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 250000 },
 
   // 2026-01: 국내 1종목 + 해외 1종목 (JEPI)
   { record_month: '2026-01', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 180000 },
-  { record_month: '2026-01', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 130000 },
+  { record_month: '2026-01', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 130000, dividend_amount: 96.30 },
 
   // 2025-12: 게스트 테스트용 2025년 배당 자료 (국내 1건 + 해외 1건)
   { record_month: '2025-12', security_name: '삼성전자', security_code: '005930', currency: 'KRW', dividend_count: 1, total_dividend: 250000 },
-  { record_month: '2025-12', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 180000 }
+  { record_month: '2025-12', security_name: 'Apple', security_code: 'AAPL', currency: 'USD', dividend_count: 1, total_dividend: 180000, dividend_amount: 133.33 }
 ];

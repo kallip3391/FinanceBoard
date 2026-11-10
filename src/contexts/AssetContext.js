@@ -117,6 +117,8 @@ export function AssetProvider({ children }) {
         const totalReturnRate = totalCostKRW > 0 ? 
           ((profitKRW + (Number(h.total_dividend) || 0)) / totalCostKRW) * 100 : 0;
 
+        const rawForeignDiv = Number(h.total_dividend_amount || h.total_dividend_foreign || h.dividend_amount || h.foreign_dividend || h.foreignDividend) || 0;
+
         return {
           ...h,
           name: h.security_name,
@@ -129,6 +131,7 @@ export function AssetProvider({ children }) {
           returnRate: returnRate.toFixed(2),
           totalReturnRate: totalReturnRate.toFixed(2),
           dividend: Number(h.total_dividend) || 0,
+          foreignDividend: rawForeignDiv,
           purchasePrice: purchasePrice,
           totalQuantity: h.total_quantity
         };
@@ -154,6 +157,7 @@ export function AssetProvider({ children }) {
           prev.evaluationAmountKRW += processed.evaluationAmountKRW;
           prev.profitAmountKRW += processed.profitAmountKRW;
           prev.dividend += processed.dividend;
+          prev.foreignDividend = (prev.foreignDividend || 0) + (processed.foreignDividend || 0);
           
           const currentRate = exchangeRates[prev.currency.toUpperCase()] || 1;
           prev.purchasePrice = prev.totalCostKRW / (prev.totalQuantity * currentRate);

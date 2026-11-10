@@ -132,15 +132,18 @@ export default function DividendsPage() {
       grouped[year].months[month].count += (item.dividend_count || 1);
 
       const stockName = item.security_name || '알 수 없음';
+      const foreignAmt = Number(item.dividend_amount || item.total_dividend_foreign || item.foreign_dividend || item.dividendAmount) || 0;
       if (!grouped[year].months[month].stocks[stockName]) {
         grouped[year].months[month].stocks[stockName] = {
           name: stockName,
           code: item.security_code || '',
           total: 0,
-          currency: item.currency || 'KRW'
+          currency: item.currency || 'KRW',
+          dividendAmount: 0
         };
       }
       grouped[year].months[month].stocks[stockName].total += amt;
+      grouped[year].months[month].stocks[stockName].dividendAmount += foreignAmt;
     });
 
     // Convert stocks map to sorted array for each month

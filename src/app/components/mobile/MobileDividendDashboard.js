@@ -7,6 +7,7 @@ import {
 import { ChevronLeft, ChevronRight, ChevronUp, Sprout, Calendar, X, TrendingUp, Briefcase } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
+import { useAssets } from "@/contexts/AssetContext";
 
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
@@ -75,6 +76,16 @@ const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
     return `${sym}0.00`;
   }
   return `${sym}${absNum}`;
+};
+
+// 종목코드 포맷 (숫자 코드는 6자리 0 패딩 보정)
+const formatStockCode = (code) => {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(6, "0");
+  }
+  return str;
 };
 
 // ── 매매손익 샘플 데이터 (국내 및 외화 종목 지원) ──
@@ -339,6 +350,7 @@ export default function MobileDividendDashboard({
 }) {
   const [selectedMonthModal, setSelectedMonthModal] = useState(null);
   const { data: monthModalData, isOpen: isMonthModalOpen, isClosing: isMonthClosing } = useAnimatedDataModal(selectedMonthModal);
+  const { dividendTransactions } = useAssets();
   // 'dividends' (배당) | 'trades' (매매) 탭 상태 (기본값: 'dividends')
   const [settlementTab, setSettlementTab] = useState('dividends');
 
@@ -1147,36 +1159,79 @@ export default function MobileDividendDashboard({
             <div className="overflow-y-auto space-y-2.5 pr-1 pb-10 flex-1">
               {monthModalData.items.map((st, idx) => {
                 const isKRW = st.currency === 'KRW';
+                const stockCode = formatStockCode(st.code);
+
+                // 해외종목 외화 배당금 산출
+                let foreignAmount = Number(st.dividendAmount) || 0;
+                if (!isKRW && foreignAmount <= 0 && dividendTransactions && dividendTransactions.length > 0) {
+                  const mStr = String(monthModalData.mNum).padStart(2, '0');
+                  const mKey = `${selectedYear}-${mStr}`;
+                  const matchingTxList = dividendTransactions.filter(tx =>
+                    (tx.date || '').startsWith(mKey) &&
+                    ((tx.stock_code || tx.stockCode) === st.code || (tx.stock_name || tx.stock) === st.name)
+                  );
+                  foreignAmount = matchingTxList.reduce((sum, tx) => sum + (Number(tx.dividend_amount) || 0), 0);
+                }
+                if (!isKRW && foreignAmount <= 0 && st.total > 0) {
+                  foreignAmount = st.total / 1350;
+                }
+
+                const sym = getCurrencySymbol(st.currency || 'USD');
+                const cleanDivAmount = !isKRW && foreignAmount > 0
+                  ? `${sym} ${foreignAmount.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '';
+
                 return (
                   <div
                     key={`modal-st-${idx}`}
-                    className="flex justify-between items-center p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors"
+                    className="p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors flex items-center gap-2.5"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <StockLogo code={st.code} name={st.name} isKRW={isKRW} />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-800 truncate leading-tight">
+                    {/* 1열: 종목 로고 */}
+                    <StockLogo code={st.code} name={st.name} isKRW={isKRW} />
+
+                    {/* 2열: 우측 상세 컨텐츠 */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                      {/* 1행: 종목명 */}
+                      <div className="flex justify-between items-center leading-tight">
+                        <p className="text-[13px] font-bold text-slate-900 truncate pr-2">
                           {st.name}
                         </p>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-400 font-medium">
-                          {st.code && <span className="font-mono">{st.code}</span>}
+                      </div>
+
+                      {/* 2행: 종목코드(8자리 고정폭) + 국내/해외 배지 + 외화(우측정렬) + 총배당금(원화) */}
+                      <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
+                        {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
+                        <div className="flex items-center gap-0 shrink-0">
+                          <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                            {stockCode}
+                          </span>
                           <span
-                            className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
                               isKRW
-                                ? 'bg-blue-50 text-blue-600 border-blue-200'
-                                : 'bg-amber-50 text-amber-600 border-amber-200'
+                                ? "bg-blue-50 text-blue-600 border-blue-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}
                           >
-                            {isKRW ? '국내' : '해외'}
+                            {isKRW ? "국내" : "해외"}
+                          </span>
+                        </div>
+
+                        {/* 중: 외화 표시 (해외종목일 때만 표시, 420px 이하 숨김) */}
+                        <div className="w-auto min-[421px]:w-[122px] flex justify-end items-center pr-2 shrink-0 hide-under-420 max-[420px]:hidden">
+                          {!isKRW && cleanDivAmount ? (
+                            <span className="text-[11px] font-medium text-slate-500 tabular-nums truncate">
+                              {cleanDivAmount}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* 우: 총 배당금(원화) */}
+                        <div className="flex-1 text-right shrink-0">
+                          <span className="text-xs font-black text-slate-900 tabular-nums">
+                            {formatCurrency(st.total)}원
                           </span>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="text-right shrink-0 pl-2">
-                      <span className="text-xs font-black text-slate-900 tabular-nums">
-                        {formatCurrency(st.total)}원
-                      </span>
                     </div>
                   </div>
                 );

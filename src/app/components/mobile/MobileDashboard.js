@@ -49,6 +49,24 @@ const getCurrencySymbol = (currency) => {
   }
 };
 
+const formatForeignAmount = (val, currency = 'USD') => {
+  if (val === undefined || val === null) return '0.00';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return '-';
+  const symMap = {
+    USD: '$',
+    EUR: '€',
+    JPY: '¥',
+    CNY: '¥',
+    GBP: '£',
+    HKD: 'HK$'
+  };
+  const sym = symMap[currency] || (currency ? `${currency} ` : '$');
+  const digits = (currency === 'JPY' || currency === 'KRW') ? 0 : 2;
+  const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return `${sym}${absNum}`;
+};
+
 // 종목코드 포맷 (숫자 코드는 6자리 0 패딩 보정)
 const formatStockCode = (code) => {
   if (!code) return "";
@@ -117,8 +135,23 @@ function PieTooltip({ active, payload, total }) {
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
   const { user } = useAuth();
-  const { holdings = [], summary = {} } = useAssets();
+  const { holdings = [], summary = {}, dividendTransactions = [] } = useAssets();
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
+
+  // 해외 종목별 외화 배당금 합산 매핑 (종목코드 및 security_id 기준)
+  const foreignDividendMap = useMemo(() => {
+    const map = {};
+    (dividendTransactions || []).forEach(tx => {
+      const code = tx.stock_code || tx.stockCode || tx.security?.code;
+      const sid = tx.security_id;
+      const amt = Number(tx.dividend_amount) || 0;
+      if (amt > 0) {
+        if (code) map[code] = (map[code] || 0) + amt;
+        if (sid) map[sid] = (map[sid] || 0) + amt;
+      }
+    });
+    return map;
+  }, [dividendTransactions]);
 
   // 보유종목 바텀시트 모달 상태
   const [isHoldingsModalOpen, setIsHoldingsModalOpen] = useState(false);
@@ -578,6 +611,10 @@ export default function MobileDashboard() {
                   const totalRatePos = totalRateNum > 0;
                   const totalRateNeg = totalRateNum < 0;
 
+                  const rawForeignDiv = Number(h.foreignDividend) > 0
+                    ? Number(h.foreignDividend)
+                    : (foreignDividendMap[h.code] || foreignDividendMap[h.security_id] || (!isKRW && h.dividend > 0 && h.exchangeRate > 0 ? (h.dividend / h.exchangeRate) : 0));
+
                   return (
                     <div
                       key={itemKey}
@@ -682,9 +719,16 @@ export default function MobileDashboard() {
                             {/* 3열: 배당금 */}
                             <div className="flex flex-col items-center justify-start min-w-0">
                               <span className="text-[10px] text-slate-400 font-medium leading-tight">배당금</span>
-                              <span className={`text-[11px] font-bold tabular-nums mt-1 whitespace-nowrap leading-tight ${(h.dividend || 0) > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}` : '0'}<span className="text-[9.5px] font-bold ml-0.5">원</span>
-                              </span>
+                              <div className="flex flex-col items-end mt-1">
+                                <span className={`text-[11px] font-bold tabular-nums whitespace-nowrap leading-tight ${(h.dividend || 0) > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                  {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend, 'KRW')}` : '0'}<span className="text-[9.5px] font-bold ml-0.5">원</span>
+                                </span>
+                                {!isKRW && (
+                                  <span className={`text-[10px] font-bold tabular-nums mt-0.5 leading-tight whitespace-nowrap ${rawForeignDiv > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    {rawForeignDiv > 0 ? `+${formatForeignAmount(rawForeignDiv, h.currency)}` : formatForeignAmount(0, h.currency)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* 4열: 총손익 */}
