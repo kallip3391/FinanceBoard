@@ -1,6 +1,7 @@
 "use client";
 
 import { mockTrendData } from "../data/mockData";
+import { GUEST_TREND_DATA } from "@/lib/guestMockData";
 import { Filter, RotateCcw } from "lucide-react";
 import { 
   AreaChart,
@@ -81,9 +82,14 @@ export default function TrendsPage() {
     async function loadData() {
       try {
         const data = await TransactionManager.getDailyTrendData();
-        setTrendData(data);
+        if (data && data.length > 0) {
+          setTrendData(data);
+        } else {
+          setTrendData(GUEST_TREND_DATA);
+        }
       } catch (e) {
         console.error(e);
+        setTrendData(GUEST_TREND_DATA);
       } finally {
         setLoading(false);
         setChartReady(true);

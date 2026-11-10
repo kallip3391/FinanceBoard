@@ -1184,7 +1184,7 @@ export default function MobileDividendDashboard({
                 return (
                   <div
                     key={`modal-st-${idx}`}
-                    className="p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors flex items-center gap-2.5"
+                    className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors flex items-center gap-2.5 opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                   >
                     {/* 1열: 종목 로고 */}
                     <StockLogo code={st.code} name={st.name} isKRW={isKRW} />

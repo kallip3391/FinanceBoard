@@ -25,6 +25,7 @@ export default function ClientLayout({ children }) {
           "/transactions/overseas",
           "/transactions/dividends",
           "/dividends",
+          "/trades",
         ];
         if (!authorizedPaths.includes(pathname)) return;
         const fixedElements = document.querySelectorAll(".fixed.inset-0");

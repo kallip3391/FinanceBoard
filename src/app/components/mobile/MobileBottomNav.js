@@ -19,7 +19,8 @@ export default function MobileBottomNav() {
         const Icon = tab.icon;
         const isActive =
           pathname === tab.href ||
-          (tab.href === "/transactions/trading" && pathname.startsWith("/transactions"));
+          (tab.href === "/transactions/trading" && pathname.startsWith("/transactions")) ||
+          (tab.href === "/dividends" && pathname.startsWith("/trades"));
         return (
           <Link
             key={tab.name}

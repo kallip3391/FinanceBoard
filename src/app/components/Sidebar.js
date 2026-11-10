@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, Globe, ArrowLeftRight, Coins } from "lucide-react";
+import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, Globe, ArrowLeftRight, Coins, Briefcase } from "lucide-react";
 
 export default function Sidebar({ isOpen, onClose }) {
   const pathname = usePathname();
   const [isTransactionsOpen, setIsTransactionsOpen] = useState(false);
+  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
 
   useEffect(() => {
     if (pathname.startsWith('/transactions')) {
       setTimeout(() => setIsTransactionsOpen(true), 0);
+    }
+    if (pathname === '/dividends' || pathname.startsWith('/trades') || pathname.startsWith('/settlement')) {
+      setTimeout(() => setIsSettlementOpen(true), 0);
     }
   }, [pathname]);
 
@@ -20,13 +24,26 @@ export default function Sidebar({ isOpen, onClose }) {
     { 
       name: "거래 내역", 
       icon: <List size={20} />,
+      key: "transactions",
+      isOpen: isTransactionsOpen,
+      toggle: () => setIsTransactionsOpen(!isTransactionsOpen),
       sublinks: [
         { name: "국내", href: "/transactions/trading", icon: <ArrowLeftRight size={14} /> },
         { name: "해외", href: "/transactions/overseas", icon: <Globe size={14} /> },
         { name: "배당", href: "/transactions/dividends", icon: <Coins size={14} /> }
       ]
     },
-    { name: "배당금 현황", href: "/dividends", icon: <Sprout size={20} /> },
+    { 
+      name: "수익 결산", 
+      icon: <TrendingUp size={20} />,
+      key: "settlement",
+      isOpen: isSettlementOpen,
+      toggle: () => setIsSettlementOpen(!isSettlementOpen),
+      sublinks: [
+        { name: "배당금 현황", href: "/dividends", icon: <Sprout size={14} /> },
+        { name: "매매손익 현황", href: "/trades", icon: <Briefcase size={14} /> }
+      ]
+    },
   ];
 
   return (
@@ -50,7 +67,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <TrendingUp size={20} />
             FINANCE BOARD
           </div>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer">
             <X size={20} />
           </button>
         </div>
@@ -59,12 +76,13 @@ export default function Sidebar({ isOpen, onClose }) {
           {links.map((link) => {
             if (link.sublinks) {
               const isAnySubActive = link.sublinks.some(sl => pathname === sl.href);
+              const isMenuOpen = link.isOpen;
               return (
                 <div key={link.name} className="flex flex-col gap-1">
                   <button
-                    onClick={() => setIsTransactionsOpen(!isTransactionsOpen)}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
-                      isAnySubActive && !isTransactionsOpen
+                    onClick={link.toggle}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer ${
+                      isAnySubActive && !isMenuOpen
                         ? "bg-brand/10 text-brand"
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
@@ -73,10 +91,10 @@ export default function Sidebar({ isOpen, onClose }) {
                       {link.icon}
                       <span className="font-medium">{link.name}</span>
                     </div>
-                    {isTransactionsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {isMenuOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
                   
-                  {isTransactionsOpen && (
+                  {isMenuOpen && (
                     <div className="flex flex-col gap-1 ml-9 mt-1 border-l-2 border-slate-100 pl-4 animate-fade-in">
                       {link.sublinks.map((sub) => {
                         const isSubActive = pathname === sub.href;

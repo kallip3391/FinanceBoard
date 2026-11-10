@@ -35,7 +35,7 @@ export const mockTrendData = [
   { date: '2026-02-11', buy: 520000000, value: 590000000, rate: 13.46 },
   { date: '2026-02-26', buy: 525000000, value: 605000000, rate: 15.24 },
   { date: '2026-03-13', buy: 528880643, value: 610214875, rate: 15.38 },
-];
+].map(d => ({ ...d, invest: d.buy, eval: d.value, profitRate: d.rate }));
 
 export const mockDailyTrendData = [
   // 최근 3개월 일별 데이터
@@ -108,7 +108,7 @@ export const mockDailyTrendData = [
   { date: '2026-03-11', buy: 529500000, value: 628000000, rate: 18.62 },
   { date: '2026-03-12', buy: 530000000, value: 624000000, rate: 17.74 },
   { date: '2026-03-13', buy: 528880643, value: 610214875, rate: 15.38 },
-];
+].map(d => ({ ...d, invest: d.buy, eval: d.value, profitRate: d.rate }));
 
 export const mockDividendData = [
   { month: '24/01', amount: 120000 },

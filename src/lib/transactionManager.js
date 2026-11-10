@@ -400,7 +400,10 @@ export class TransactionManager {
 
       const { data, error } = await query;
 
-      if (error) break;
+      if (error) {
+        console.error("v_daily_asset_trends 조회 실패:", error);
+        break;
+      }
       if (!data || data.length === 0) hasMore = false;
       else {
         allData = [...allData, ...data];

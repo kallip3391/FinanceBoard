@@ -1,0 +1,925 @@
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  TrendingUp,
+  Briefcase,
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ArrowUpDown,
+  Coins,
+  Wallet,
+  CheckCircle2
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAssets } from "@/contexts/AssetContext";
+import { TransactionManager } from "@/lib/transactionManager";
+import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
+
+// ── 종목 로고 컴포넌트 ──
+function StockLogo({ code, name, isKRW }) {
+  const [hasError, setHasError] = useState(false);
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+
+  const isETF = (name || '').toUpperCase().includes('ETF') ||
+                /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
+
+  if (!logoUrl || hasError) {
+    const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
+
+    return (
+      <div
+        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+          isETF
+            ? 'bg-purple-100 text-purple-700 text-[10px]'
+            : isKRW
+              ? 'bg-blue-100/80 text-blue-600 text-xs'
+              : 'bg-amber-100/80 text-amber-700 text-xs'
+        }`}
+      >
+        {displayText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-9 h-9 rounded-xl shrink-0 overflow-hidden flex items-center justify-center bg-slate-100/60 shadow-2xs">
+      <img
+        src={logoUrl}
+        alt={name || cleanCode}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-xl"
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+// ── 통화 기호 헬퍼 ──
+const getCurrencySymbol = (currency) => {
+  switch (currency) {
+    case 'USD': return '$';
+    case 'EUR': return '€';
+    case 'JPY': return '¥';
+    case 'CNY': return '¥';
+    case 'GBP': return '£';
+    case 'HKD': return 'HK$';
+    default: return currency ? `${currency} ` : '$';
+  }
+};
+
+const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
+  if (val === undefined || val === null) return showSign ? '+0.00' : '0.00';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return '-';
+  const sym = getCurrencySymbol(currency);
+  const isPos = num > 0;
+  const isNeg = num < 0;
+  const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (showSign) {
+    if (isPos) return `+${sym}${absNum}`;
+    if (isNeg) return `-${sym}${absNum}`;
+    return `${sym}0.00`;
+  }
+  return `${sym}${absNum}`;
+};
+
+const formatStockCode = (code) => {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(6, "0");
+  }
+  return str;
+};
+
+// ── 매매손익 샘플 데이터 (MobileDividendDashboard와 동일) ──
+const SAMPLE_TRADE_DATA = [
+  {
+    name: "삼성전자",
+    code: "005930",
+    currency: "KRW",
+    quantity: 100,
+    avgBuyPrice: 68000,
+    avgSellPrice: 72500,
+    realizedProfit: 450000,
+    realizedRate: 6.62,
+    dividend: 0,
+    totalRealizedProfit: 450000,
+  },
+  {
+    name: "애플",
+    code: "AAPL",
+    currency: "USD",
+    quantity: 30,
+    avgBuyPrice: 229500, // 원화 환산 매수가
+    avgSellPrice: 244688,
+    foreignAvgBuyPrice: 170.00,
+    foreignAvgSellPrice: 181.25,
+    realizedProfit: 450000,
+    foreignRealizedProfit: 335.80,
+    realizedRate: 6.62,
+    dividend: 0,
+    foreignDividend: 0,
+    totalRealizedProfit: 450000,
+    foreignTotalRealizedProfit: 335.80,
+  },
+  {
+    name: "SK하이닉스",
+    code: "000660",
+    currency: "KRW",
+    quantity: 30,
+    avgBuyPrice: 175000,
+    avgSellPrice: 192000,
+    realizedProfit: 510000,
+    realizedRate: 9.71,
+    dividend: 0,
+    totalRealizedProfit: 510000,
+  },
+  {
+    name: "엔비디아",
+    code: "NVDA",
+    currency: "USD",
+    quantity: 40,
+    avgBuyPrice: 151875,
+    avgSellPrice: 170708,
+    foreignAvgBuyPrice: 112.50,
+    foreignAvgSellPrice: 126.45,
+    realizedProfit: 645000,
+    foreignRealizedProfit: 481.30,
+    realizedRate: 12.40,
+    dividend: 28000,
+    foreignDividend: 20.90,
+    totalRealizedProfit: 673000,
+    foreignTotalRealizedProfit: 502.20,
+  },
+  {
+    name: "테슬라",
+    code: "TSLA",
+    currency: "USD",
+    quantity: 15,
+    avgBuyPrice: 334800,
+    avgSellPrice: 320895,
+    foreignAvgBuyPrice: 248.00,
+    foreignAvgSellPrice: 237.70,
+    realizedProfit: -148000,
+    foreignRealizedProfit: -110.40,
+    realizedRate: -4.15,
+    dividend: 0,
+    foreignDividend: 0,
+    totalRealizedProfit: -148000,
+    foreignTotalRealizedProfit: -110.40,
+  },
+  {
+    name: "현대차",
+    code: "005380",
+    currency: "KRW",
+    quantity: 20,
+    avgBuyPrice: 220000,
+    avgSellPrice: 245000,
+    realizedProfit: 500000,
+    realizedRate: 11.36,
+    dividend: 0,
+    totalRealizedProfit: 500000,
+  },
+  {
+    name: "마이크로소프트",
+    code: "MSFT",
+    currency: "USD",
+    quantity: 10,
+    avgBuyPrice: 553500,
+    avgSellPrice: 598860,
+    foreignAvgBuyPrice: 410.00,
+    foreignAvgSellPrice: 443.60,
+    realizedProfit: 391000,
+    foreignRealizedProfit: 291.80,
+    realizedRate: 8.20,
+    dividend: 35000,
+    foreignDividend: 26.10,
+    totalRealizedProfit: 426000,
+    foreignTotalRealizedProfit: 317.90,
+  },
+  {
+    name: "TIGER 미국배당다우존스",
+    code: "458730",
+    currency: "KRW",
+    quantity: 500,
+    avgBuyPrice: 10300,
+    avgSellPrice: 10900,
+    realizedProfit: 320000,
+    realizedRate: 5.80,
+    dividend: 0,
+    totalRealizedProfit: 320000,
+  },
+  {
+    name: "PLUS 고배당주",
+    code: "161510",
+    currency: "KRW",
+    quantity: 400,
+    avgBuyPrice: 12200,
+    avgSellPrice: 13400,
+    realizedProfit: 460000,
+    realizedRate: 9.79,
+    dividend: 0,
+    totalRealizedProfit: 460000,
+  },
+  {
+    name: "NAVER",
+    code: "035420",
+    currency: "KRW",
+    quantity: 20,
+    avgBuyPrice: 194000,
+    avgSellPrice: 202000,
+    realizedProfit: 135000,
+    realizedRate: 4.12,
+    dividend: 0,
+    totalRealizedProfit: 135000,
+  },
+  {
+    name: "카카오",
+    code: "035720",
+    currency: "KRW",
+    quantity: 70,
+    avgBuyPrice: 43500,
+    avgSellPrice: 42500,
+    realizedProfit: -68000,
+    realizedRate: -2.30,
+    dividend: 0,
+    totalRealizedProfit: -68000,
+  },
+  {
+    name: "기아",
+    code: "000270",
+    currency: "KRW",
+    quantity: 40,
+    avgBuyPrice: 94000,
+    avgSellPrice: 102000,
+    realizedProfit: 295000,
+    realizedRate: 8.40,
+    dividend: 0,
+    totalRealizedProfit: 295000,
+  },
+];
+
+// ── view_closed_trades_pnl 뷰 정규화 함수 ──
+const normalizeTradeItem = (row) => {
+  if (!row) return null;
+  const isFromView = row['종목'] !== undefined || row['종목코드'] !== undefined;
+
+  const name = isFromView ? (row['종목'] || '') : (row.name || '');
+  const code = isFromView ? (row['종목코드'] || '') : (row.code || '');
+  const currency = (isFromView ? row['통화'] : row.currency) || 'KRW';
+  const isKRW = currency === 'KRW';
+  const quantity = Number(isFromView ? row['수량'] : row.quantity) || 100;
+  const sector = (isFromView ? row['섹터'] : row.sector) || '';
+
+  // 원화 수치
+  const avgBuyPrice = Number(isFromView ? row['평균매수_원화'] : row.avgBuyPrice) || 0;
+  const avgSellPrice = Number(isFromView ? row['평균매도_원화'] : row.avgSellPrice) || 0;
+  const realizedProfit = Number(isFromView ? row['손익_원화'] : row.realizedProfit) || 0;
+  const dividend = Number(isFromView ? row['배당_원화'] : row.dividend) || 0;
+  const totalRealizedProfit = Number(isFromView ? row['총손익_원화'] : (row.totalRealizedProfit ?? (realizedProfit + dividend))) || 0;
+
+  const profitRate = isFromView && row['수익률_원화'] !== undefined && row['수익률_원화'] !== null
+    ? Number(row['수익률_원화'])
+    : (avgBuyPrice > 0 ? ((avgSellPrice - avgBuyPrice) / avgBuyPrice) * 100 : (Number(row.realizedRate) || 0));
+
+  const totalRate = isFromView && row['총수익률_원화'] !== undefined && row['총수익률_원화'] !== null
+    ? Number(row['총수익률_원화'])
+    : (avgBuyPrice * quantity > 0 ? (totalRealizedProfit / (avgBuyPrice * quantity)) * 100 : profitRate);
+
+  // 외화 수치
+  const foreignAvgBuyPrice = Number(isFromView ? row['평균매수_외화'] : (row.foreignAvgBuyPrice ?? row.avgBuyPrice)) || 0;
+  const foreignAvgSellPrice = Number(isFromView ? row['평균매도_외화'] : (row.foreignAvgSellPrice ?? row.avgSellPrice)) || 0;
+  const foreignRealizedProfit = Number(isFromView ? row['손익_외화'] : row.foreignRealizedProfit) || 0;
+  const foreignDividend = Number(isFromView ? row['배당_외화'] : row.foreignDividend) || 0;
+  const foreignTotalRealizedProfit = Number(isFromView ? row['총손익_외화'] : (row.foreignTotalRealizedProfit ?? (foreignRealizedProfit + foreignDividend))) || 0;
+
+  const foreignProfitRate = isFromView && row['수익률_외화'] !== undefined && row['수익률_외화'] !== null
+    ? Number(row['수익률_외화'])
+    : (foreignAvgBuyPrice > 0 ? ((foreignAvgSellPrice - foreignAvgBuyPrice) / foreignAvgBuyPrice) * 100 : profitRate);
+
+  const foreignTotalRate = isFromView && row['총수익률_외화'] !== undefined && row['총수익률_외화'] !== null
+    ? Number(row['총수익률_외화'])
+    : (foreignAvgBuyPrice * quantity > 0 ? (foreignTotalRealizedProfit / (foreignAvgBuyPrice * quantity)) * 100 : foreignProfitRate);
+
+  const buyCostKRW = avgBuyPrice * quantity;
+  const buyCostForeign = foreignAvgBuyPrice * quantity;
+
+  return {
+    raw: row,
+    name,
+    code,
+    currency,
+    isKRW,
+    quantity,
+    sector,
+
+    // 원화
+    avgBuyPrice,
+    avgSellPrice,
+    realizedProfit,
+    dividend,
+    totalRealizedProfit,
+    profitRate,
+    realizedRate: totalRate,
+
+    // 외화
+    foreignAvgBuyPrice,
+    foreignAvgSellPrice,
+    foreignRealizedProfit,
+    foreignDividend,
+    foreignTotalRealizedProfit,
+    foreignProfitRate,
+    foreignTotalRate,
+
+    // 원가
+    buyCostKRW,
+    buyCostForeign,
+  };
+};
+
+export default function TradesPnLPage() {
+  const { user } = useAuth();
+  const { isDividendsLoading: isAssetsLoading } = useAssets();
+
+  // 모바일 렌더링에 필요한 더미/기본 데이터
+  const [closedTrades, setClosedTrades] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 검색 & 필터 상태
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
+  const [sortBy, setSortBy] = useState("totalProfit_desc"); // totalProfit_desc, totalProfit_asc, rate_desc, rate_asc, name_asc
+
+  // 페이지네이션
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTrades = async () => {
+      setIsLoading(true);
+      try {
+        if (user?.id) {
+          const data = await TransactionManager.getClosedTradesPnL();
+          if (isMounted && data && data.length > 0) {
+            setClosedTrades(data);
+            return;
+          }
+        }
+        // DB 데이터가 비어있거나 게스트일 경우 샘플 데이터 사용
+        if (isMounted) {
+          setClosedTrades(SAMPLE_TRADE_DATA);
+        }
+      } catch (err) {
+        console.warn("view_closed_trades_pnl 조회 오류:", err);
+        if (isMounted) {
+          setClosedTrades(SAMPLE_TRADE_DATA);
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchTrades();
+    return () => { isMounted = false; };
+  }, [user?.id]);
+
+  const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
+
+  // 전체 정규화 리스트
+  const allTradesList = useMemo(() => {
+    return closedTrades.map(normalizeTradeItem).filter(Boolean);
+  }, [closedTrades]);
+
+  // 상단 요약 통계 (전체 기준)
+  const summary = useMemo(() => {
+    let sumTotalProfit = 0;
+    let sumProfit = 0;
+    let sumDividend = 0;
+    let sumBuyCost = 0;
+
+    allTradesList.forEach(item => {
+      sumTotalProfit += item.totalRealizedProfit;
+      sumProfit += item.realizedProfit;
+      sumDividend += item.dividend;
+      sumBuyCost += item.buyCostKRW;
+    });
+
+    const totalRate = sumBuyCost > 0 ? (sumTotalProfit / sumBuyCost) * 100 : 0;
+    const profitRate = sumBuyCost > 0 ? (sumProfit / sumBuyCost) * 100 : 0;
+
+    return {
+      sumTotalProfit,
+      totalRate,
+      sumProfit,
+      profitRate,
+      sumDividend,
+      sumBuyCost,
+      count: allTradesList.length
+    };
+  }, [allTradesList]);
+
+  // 검색 및 필터링된 리스트
+  const filteredList = useMemo(() => {
+    let list = [...allTradesList];
+
+    // 검색어 필터
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(item =>
+        item.name.toLowerCase().includes(q) ||
+        item.code.toLowerCase().includes(q)
+      );
+    }
+
+    // 통화 필터
+    if (currencyFilter === "KRW") {
+      list = list.filter(item => item.isKRW);
+    } else if (currencyFilter === "OVERSEAS") {
+      list = list.filter(item => !item.isKRW);
+    }
+
+    // 정렬
+    list.sort((a, b) => {
+      if (sortBy === "totalProfit_desc") return b.totalRealizedProfit - a.totalRealizedProfit;
+      if (sortBy === "totalProfit_asc") return a.totalRealizedProfit - b.totalRealizedProfit;
+      if (sortBy === "rate_desc") return b.realizedRate - a.realizedRate;
+      if (sortBy === "rate_asc") return a.realizedRate - b.realizedRate;
+      if (sortBy === "name_asc") return a.name.localeCompare(b.name, 'ko');
+      return 0;
+    });
+
+    return list;
+  }, [allTradesList, searchQuery, currencyFilter, sortBy]);
+
+  // 페이지네이션 계산
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / ITEMS_PER_PAGE));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredList.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredList, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, currencyFilter, sortBy]);
+
+  const startPage = Math.max(1, Math.floor((currentPage - 1) / 5) * 5 + 1);
+  const endPage = Math.min(totalPages, startPage + 4);
+
+  return (
+    <>
+      {/* 모바일 화면 (768px 미만) - 매매손익 탭으로 즉시 표시 */}
+      <div className="mobile-only-block w-full">
+        <MobileDividendDashboard
+          user={user}
+          loading={isLoading}
+          formatCurrency={formatCurrency}
+        />
+      </div>
+
+      {/* 데스크톱 화면 (768px 이상) 전용 */}
+      <div className="desktop-only h-full flex-col pb-8 animate-fade-in">
+        {/* Header Section */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100/50 shadow-sm">
+              <Briefcase size={20} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">매매손익 현황</h1>
+              <p className="text-xs text-slate-400 font-medium mt-0.5">체결 완료된 매매 내역의 실현손익 및 누적 배당금을 종합 분석합니다.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+            <CheckCircle2 size={15} className="text-blue-500" />
+            <span>총 {summary.count}개 종목 매매 체결</span>
+          </div>
+        </div>
+
+        {/* 상단 4대 핵심 요약 카드 (Glass Card) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* 1. 총 실현손익 (손익 + 배당) */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">총 실현손익</span>
+              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                summary.sumTotalProfit > 0 
+                  ? 'bg-red-50 text-red-600' 
+                  : summary.sumTotalProfit < 0 
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'bg-slate-100 text-slate-600'
+              }`}>
+                {summary.sumTotalProfit > 0 ? '+' : ''}{summary.totalRate.toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className={`text-2xl font-black tabular-nums tracking-tight ${
+                summary.sumTotalProfit > 0 ? 'text-red-600' : summary.sumTotalProfit < 0 ? 'text-blue-600' : 'text-slate-800'
+              }`}>
+                {summary.sumTotalProfit > 0 ? '+' : ''}{formatCurrency(summary.sumTotalProfit)}
+              </span>
+              <span className="text-xs font-bold text-slate-400">원</span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>매매손익 + 배당금 합산</span>
+              <span className="font-semibold text-slate-500">총 수익률</span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+          </div>
+
+          {/* 2. 순수 실현손익 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">실현손익 (매매차익)</span>
+              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                summary.sumProfit > 0 
+                  ? 'bg-red-50 text-red-600' 
+                  : summary.sumProfit < 0 
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'bg-slate-100 text-slate-600'
+              }`}>
+                {summary.sumProfit > 0 ? '+' : ''}{summary.profitRate.toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className={`text-2xl font-black tabular-nums tracking-tight ${
+                summary.sumProfit > 0 ? 'text-red-600' : summary.sumProfit < 0 ? 'text-blue-600' : 'text-slate-800'
+              }`}>
+                {summary.sumProfit > 0 ? '+' : ''}{formatCurrency(summary.sumProfit)}
+              </span>
+              <span className="text-xs font-bold text-slate-400">원</span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>매도금액 - 매수금액</span>
+              <span className="font-semibold text-slate-500">순수익률</span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+          </div>
+
+          {/* 3. 누적 배당금 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">누적 수령 배당금</span>
+              <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Coins size={12} strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600">
+                +{formatCurrency(summary.sumDividend)}
+              </span>
+              <span className="text-xs font-bold text-slate-400">원</span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>보유 기간 발생 배당금</span>
+              <span className="font-semibold text-emerald-600">배당 수익</span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+          </div>
+
+          {/* 4. 총 매수원가 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">총 매수원가 (투자원금)</span>
+              <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                <Wallet size={12} strokeWidth={2.5} />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800">
+                {formatCurrency(summary.sumBuyCost)}
+              </span>
+              <span className="text-xs font-bold text-slate-400">원</span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>SUM(수량 × 평균매수가)</span>
+              <span className="font-semibold text-slate-500">기준 원금</span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
+          </div>
+        </div>
+
+        {/* 필터 및 검색 바 */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-4 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* 검색 입력 */}
+          <div className="relative w-full md:w-80">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="종목명 또는 종목코드 검색"
+              className="w-full pl-9 pr-4 py-2 rounded-xl text-sm border border-slate-200 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+            {/* 국내/해외 탭 필터 */}
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setCurrencyFilter("ALL")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                전체
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("KRW")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
+                }`}
+              >
+                국내
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("OVERSEAS")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
+                }`}
+              >
+                해외
+              </button>
+            </div>
+
+            {/* 정렬 드롭다운 */}
+            <div className="relative">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-brand"
+              >
+                <option value="totalProfit_desc">총실현손익 높은순</option>
+                <option value="totalProfit_asc">총실현손익 낮은순</option>
+                <option value="rate_desc">총수익률 높은순</option>
+                <option value="rate_asc">총수익률 낮은순</option>
+                <option value="name_asc">종목명 가나다순</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 매매손익 상세 테이블 (거래내역 - 배당 화면 스타일 준용) */}
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-6">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-500">종목</th>
+                <th className="px-4 py-4 text-center text-sm font-semibold text-slate-500">수량</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매수가</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매도가</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">실현손익</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">배당금</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">총 실현손익</th>
+              </tr>
+            </thead>
+            <tbody key={`trades-list-${currentPage}-${currencyFilter}-${sortBy}`} className="divide-y divide-slate-50">
+              {isLoading ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-16 text-center text-slate-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-8 h-8 border-2 border-slate-200 border-t-brand rounded-full animate-spin"></div>
+                      <span className="text-sm font-medium">매매손익 내역을 불러오는 중...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : paginatedList.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-16 text-center text-slate-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-sm font-medium">검색 조건에 맞는 매매손익 내역이 없습니다.</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedList.map((item, i) => {
+                  const isProfit = item.totalRealizedProfit > 0;
+                  const isLoss = item.totalRealizedProfit < 0;
+                  const isPureProfit = item.realizedProfit > 0;
+                  const isPureLoss = item.realizedProfit < 0;
+
+                  return (
+                    <tr
+                      key={`trade-${item.code}-${i}`}
+                      className={`h-[72px] hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${(i % 10) + 1}`}
+                    >
+                      {/* 1열: 종목 (로고 + 이름 + 코드 + 통화배지) */}
+                      <td className="px-6 py-2">
+                        <div className="flex items-center gap-3 min-h-[52px]">
+                          <StockLogo code={item.code} name={item.name} isKRW={item.isKRW} />
+                          <div className="flex flex-col justify-center max-w-[240px]">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm text-slate-900 font-bold leading-tight truncate">
+                                {item.name}
+                              </span>
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                  item.isKRW
+                                    ? "bg-blue-50 text-blue-600 border-blue-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}
+                              >
+                                {item.isKRW ? "국내" : "해외"}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              {formatStockCode(item.code)}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 2열: 수량 */}
+                      <td className="px-4 py-2 text-center text-sm font-bold text-slate-700 tabular-nums">
+                        {item.quantity.toLocaleString()}주
+                      </td>
+
+                      {/* 3열: 평균 매수가 (원화 + 외화) */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          <span className="text-sm font-bold text-slate-800 tabular-nums">
+                            {formatCurrency(item.avgBuyPrice)}원
+                          </span>
+                          {!item.isKRW && item.foreignAvgBuyPrice > 0 && (
+                            <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                              {formatForeignAmount(item.foreignAvgBuyPrice, item.currency)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 4열: 평균 매도가 (원화 + 외화) */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          <span className="text-sm font-bold text-slate-800 tabular-nums">
+                            {formatCurrency(item.avgSellPrice)}원
+                          </span>
+                          {!item.isKRW && item.foreignAvgSellPrice > 0 && (
+                            <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                              {formatForeignAmount(item.foreignAvgSellPrice, item.currency)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 5열: 실현손익 (금액 + 수익률) */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          <span className={`text-sm font-bold tabular-nums ${
+                            isPureProfit ? 'text-red-600' : isPureLoss ? 'text-blue-600' : 'text-slate-800'
+                          }`}>
+                            {item.realizedProfit > 0 ? '+' : ''}{formatCurrency(item.realizedProfit)}원
+                          </span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className={`text-[11px] font-extrabold tabular-nums ${
+                              isPureProfit ? 'text-red-600' : isPureLoss ? 'text-blue-600' : 'text-slate-500'
+                            }`}>
+                              ({item.profitRate > 0 ? '+' : ''}{item.profitRate.toFixed(2)}%)
+                            </span>
+                            {!item.isKRW && item.foreignRealizedProfit !== 0 && (
+                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
+                                • {formatForeignAmount(item.foreignRealizedProfit, item.currency, true)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 6열: 배당금 (원화 + 외화) */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          <span className={`text-sm font-bold tabular-nums ${
+                            item.dividend > 0 ? 'text-emerald-600' : 'text-slate-400'
+                          }`}>
+                            {item.dividend > 0 ? `+${formatCurrency(item.dividend)}원` : '0원'}
+                          </span>
+                          {!item.isKRW && item.foreignDividend > 0 && (
+                            <span className="text-[11px] font-semibold text-emerald-600/80 tabular-nums mt-0.5">
+                              +{formatForeignAmount(item.foreignDividend, item.currency)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 7열: 총 실현손익 (손익+배당 하이라이트) */}
+                      <td className="px-6 py-2 text-right bg-slate-50/30">
+                        <div className="flex flex-col items-end justify-center">
+                          <span className={`text-base font-black tabular-nums tracking-tight ${
+                            isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-800'
+                          }`}>
+                            {item.totalRealizedProfit > 0 ? '+' : ''}{formatCurrency(item.totalRealizedProfit)}원
+                          </span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className={`text-xs font-black tabular-nums ${
+                              isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-500'
+                            }`}>
+                              ({item.realizedRate > 0 ? '+' : ''}{item.realizedRate.toFixed(2)}%)
+                            </span>
+                            {!item.isKRW && item.foreignTotalRealizedProfit !== 0 && (
+                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
+                                • {formatForeignAmount(item.foreignTotalRealizedProfit, item.currency, true)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 페이지네이션 컨트롤 */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-xl transition-all ${
+                currentPage === 1
+                  ? 'text-slate-200 cursor-not-allowed opacity-30'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+              }`}
+              title="첫 페이지"
+            >
+              <ChevronsLeft size={20} />
+            </button>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-xl transition-all ${
+                currentPage === 1
+                  ? 'text-slate-200 cursor-not-allowed opacity-50'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+              }`}
+              title="이전 페이지"
+            >
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map((pageNum) => (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-10 h-10 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                    currentPage === pageNum
+                      ? 'bg-brand text-white shadow-lg shadow-brand/20'
+                      : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className={`p-2 rounded-xl transition-all ${
+                currentPage === totalPages
+                  ? 'text-slate-300 cursor-not-allowed opacity-50'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+              }`}
+              title="다음 페이지"
+            >
+              <ChevronRight size={20} />
+            </button>
+
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className={`p-2 rounded-xl transition-all ${
+                currentPage === totalPages
+                  ? 'text-slate-200 cursor-not-allowed opacity-30'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+              }`}
+              title="마지막 페이지"
+            >
+              <ChevronsRight size={20} />
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}

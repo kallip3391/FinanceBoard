@@ -23,16 +23,25 @@ const emptySubscribe = () => () => {};
 
 export default function HoldingsPage() {
   const { user } = useAuth();
-  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData } = useAssets();
+  const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData, domesticTransactions, overseasTransactions } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [stockViewMode, setStockViewMode] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("stockViewMode") || "card" : "card"));
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const [chartReady, setChartReady] = useState(false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
   const [currentAccPage, setCurrentAccPage] = useState(1);
   const [loadedPeriods, setLoadedPeriods] = useState(new Set(['3개월', '6개월', '1년', '3년']));
   const STOCKS_PER_PAGE = 6;
   const LIST_PER_PAGE = 8;
+
+  // 컴포넌트 마운트 후 레이아웃 안정화 시점에 차트 렌더링 활성화 (ResponsiveContainer 크기 계산 오류 방지)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setChartReady(true);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 계좌별 합계 계산
   const accountHoldings = selectedAccount ? (holdingsByAccount[selectedAccount] || []) : [];
@@ -280,13 +289,40 @@ export default function HoldingsPage() {
   // 트렌드 데이터 가공 (useMemo로 최적화 및 연도 표시 그룹화 로직 포함)
   // 트렌드 데이터에 필요한 정보(가공된 데이터셋 + 그라데이션 오프셋) 통합 계산
   const chartDataObj = useMemo(() => {
+    // 만약 DB 트렌드 데이터가 비어있지만 현재 보유 자산이 있는 경우, 보유 자산 요약 기반 기준점 생성
+    let effectiveTrendData = trendData || [];
+    if (effectiveTrendData.length === 0 && summary && (summary.totalEvaluation > 0 || (summary.totalCost && summary.totalCost > 0))) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const cost = Number(summary.totalCost || (summary.totalEvaluation - summary.totalProfit) || 0);
+      const evalAmt = Number(summary.totalEvaluation || cost);
+      const rate = Number(summary.avgProfitRate || 0);
+      
+      const allTxDates = [...(domesticTransactions || []), ...(overseasTransactions || [])]
+        .map(tx => tx.date)
+        .filter(Boolean)
+        .sort();
+      const firstDate = allTxDates.length > 0 ? allTxDates[0] : null;
+
+      if (firstDate && firstDate < todayStr) {
+        effectiveTrendData = [
+          { date: firstDate, invest: cost, eval: cost, profitRate: 0 },
+          { date: todayStr, invest: cost, eval: evalAmt, profitRate: rate }
+        ];
+      } else {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        effectiveTrendData = [
+          { date: yesterday, invest: cost, eval: cost, profitRate: 0 },
+          { date: todayStr, invest: cost, eval: evalAmt, profitRate: rate }
+        ];
+      }
+    }
+
     // 초기 로딩 시에도 객체 구조를 유지하여 undefined 에러 방지
-    if (!trendData || trendData.length === 0) {
+    if (!effectiveTrendData || effectiveTrendData.length === 0) {
       return { data: [], off: 0.5 };
     }
+
     const now = new Date();
-    const endDateStr = now.toISOString().split('T')[0];
-    
     let days = 365;
     switch (selectedPeriod) {
       case "3개월": days = 90; break;
@@ -302,25 +338,47 @@ export default function HoldingsPage() {
       startDateStr = startDate.toISOString().split('T')[0];
     }
 
-    const range = trendData.filter(d => d.date >= startDateStr && d.date <= endDateStr);
+    const range = effectiveTrendData.filter(d => (d.date || '') >= startDateStr);
+    const sourceData = range.length > 0 ? range : effectiveTrendData;
 
-    // 그라데이션 오프셋 계산 (수익률 0 지점 찾기)
-    const profitRates = range.map(d => d.profitRate);
-    const maxProfit = Math.max(...profitRates, 0);
-    const minProfit = Math.min(...profitRates, 0);
-    let off = 0;
+    // 속성 매핑 정규화 (invest/buy, eval/value, profitRate/rate 상호 완벽 호환)
+    const normalizedData = sourceData.map(d => {
+      const invest = Number(d.invest !== undefined ? d.invest : (d.buy !== undefined ? d.buy : 0));
+      const evalAmt = Number(d.eval !== undefined ? d.eval : (d.value !== undefined ? d.value : 0));
+      const profitRate = Number(
+        d.profitRate !== undefined 
+          ? d.profitRate 
+          : (d.rate !== undefined 
+              ? d.rate 
+              : (invest > 0 ? ((evalAmt - invest) / invest) * 100 : 0))
+      );
+
+      return {
+        ...d,
+        invest,
+        eval: evalAmt,
+        profitRate,
+        displayDate: d.date ? d.date.replace(/-/g, '.') : ''
+      };
+    });
+
+    // 그라데이션 오프셋 계산 (수익률 0 지점 찾기, NaN 방지)
+    const profitRates = normalizedData.map(d => d.profitRate);
+    const maxProfit = profitRates.length > 0 ? Math.max(...profitRates, 0) : 0;
+    const minProfit = profitRates.length > 0 ? Math.min(...profitRates, 0) : 0;
+    let off = 0.5;
     if (maxProfit > minProfit) {
       off = maxProfit / (maxProfit - minProfit);
     }
+    if (isNaN(off) || !isFinite(off)) {
+      off = 0.5;
+    }
 
     return {
-      data: range.map(d => ({ 
-        ...d, 
-        displayDate: d.date.replace(/-/g, '.')
-      })),
+      data: normalizedData,
       off: off
     };
-  }, [trendData, selectedPeriod]);
+  }, [trendData, selectedPeriod, summary, domesticTransactions, overseasTransactions]);
 
   // chartData 구조 분해
   const finalChartData = chartDataObj.data;
@@ -358,7 +416,12 @@ export default function HoldingsPage() {
       if (isVisible) ticks.push(d.date);
     });
 
-    if (ticks.length === 0 && finalChartData.length > 0) ticks.push(finalChartData[finalChartData.length - 1].date);
+    if (ticks.length === 0 && finalChartData.length > 0) {
+      ticks.push(finalChartData[0].date);
+      if (finalChartData.length > 1) {
+        ticks.push(finalChartData[finalChartData.length - 1].date);
+      }
+    }
     
     ticks = Array.from(new Set(ticks)).sort();
 
@@ -450,14 +513,14 @@ export default function HoldingsPage() {
                 </span>
               </div>
             ))}
-            {!payload.find(p => p.dataKey === "profitRate") && payload[0].payload.profitRate !== undefined && (
+            {!payload.find(p => p.dataKey === "profitRate") && payload[0]?.payload?.profitRate !== undefined && (
               <div className="pt-2 mt-2 border-t border-slate-50 flex items-center justify-between gap-8">
                 <div className="flex items-center gap-2.5">
                   <div className="w-2 h-2 rounded-full bg-amber-500 shadow-sm"></div>
                   <span className="text-[13px] font-bold text-slate-600">수익률</span>
                 </div>
                 <span className={`font-black tracking-tight text-[14px] tabular-nums ${payload[0].payload.profitRate >= 0 ? "text-rose-500" : "text-blue-500"}`}>
-                  {payload[0].payload.profitRate > 0 ? "+" : ""}{payload[0].payload.profitRate.toFixed(2)}%
+                  {payload[0].payload.profitRate > 0 ? "+" : ""}{Number(payload[0].payload.profitRate || 0).toFixed(2)}%
                 </span>
               </div>
             )}
@@ -525,7 +588,7 @@ export default function HoldingsPage() {
             ) : (
               <div className="flex-1 w-full p-2 pb-0 flex flex-col gap-2 min-h-[400px] min-w-0 overflow-hidden">
                   <div className="h-[250px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "250px" }}>
-                    {isClient && (
+                    {isClient && chartReady && (
                       <ResponsiveContainer width="100%" height={250} debounce={100} minWidth={0}>
                         <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 10, right: 2, left: 0, bottom: 0 }}>
                         <defs>
@@ -623,7 +686,7 @@ export default function HoldingsPage() {
 
                 {/* 하단: 수익률 차트 (37.5%) */}
                 <div className="h-[150px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "150px" }}>
-                  {isClient && (
+                  {isClient && chartReady && (
                     <ResponsiveContainer width="100%" height={150} debounce={100} minWidth={0}>
                       <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 0, right: 2, left: 0, bottom: 0 }}>
                         <defs>
@@ -717,7 +780,7 @@ export default function HoldingsPage() {
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><PieChartIcon size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3></div>
               <div className="w-full h-[280px]">
-                {isClient && (
+                {isClient && chartReady && (
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                   </ResponsiveContainer>
@@ -728,7 +791,7 @@ export default function HoldingsPage() {
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><Globe size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3></div>
               <div className="w-full h-[280px]">
-                {isClient && (
+                {isClient && chartReady && (
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                   </ResponsiveContainer>
@@ -739,7 +802,7 @@ export default function HoldingsPage() {
             <div className="glass-card p-6 flex flex-col items-center">
               <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><LayoutList size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3></div>
               <div className="w-full h-[280px]">
-                {isClient && (
+                {isClient && chartReady && (
                   <ResponsiveContainer width="100%" height={280} minWidth={0}>
                     <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                   </ResponsiveContainer>

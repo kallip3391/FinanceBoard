@@ -998,19 +998,19 @@ export const GUEST_SUMMARY = {
 
 // 7. 자산 트렌드 데이터 (최근 1년 월별/일별 추이)
 export const GUEST_TREND_DATA = [
-  { date: '2025-11-01', buy: 105000000, value: 108000000, rate: 2.86 },
-  { date: '2025-12-01', buy: 110000000, value: 114500000, rate: 4.09 },
-  { date: '2026-01-01', buy: 114000000, value: 119800000, rate: 5.09 },
-  { date: '2026-02-01', buy: 116000000, value: 122500000, rate: 5.60 },
-  { date: '2026-03-01', buy: 118000000, value: 125800000, rate: 6.61 },
-  { date: '2026-04-01', buy: 119500000, value: 127600000, rate: 6.78 },
-  { date: '2026-05-01', buy: 120000000, value: 128900000, rate: 7.42 },
-  { date: '2026-06-01', buy: 121000000, value: 130200000, rate: 7.60 },
-  { date: '2026-07-01', buy: 121500000, value: 131500000, rate: 8.23 },
-  { date: '2026-08-01', buy: 122000000, value: 131800000, rate: 8.03 },
-  { date: '2026-09-01', buy: 122200000, value: 133200000, rate: 9.00 },
-  { date: '2026-10-01', buy: 122450000, value: 135400000, rate: 10.58 },
-  { date: '2026-11-01', buy: Math.round(calcTotalCost), value: Math.round(calcTotalEval), rate: Number(GUEST_SUMMARY.avgProfitRate.toFixed(2)) }
+  { date: '2025-11-01', buy: 105000000, value: 108000000, rate: 2.86, invest: 105000000, eval: 108000000, profitRate: 2.86 },
+  { date: '2025-12-01', buy: 110000000, value: 114500000, rate: 4.09, invest: 110000000, eval: 114500000, profitRate: 4.09 },
+  { date: '2026-01-01', buy: 114000000, value: 119800000, rate: 5.09, invest: 114000000, eval: 119800000, profitRate: 5.09 },
+  { date: '2026-02-01', buy: 116000000, value: 122500000, rate: 5.60, invest: 116000000, eval: 122500000, profitRate: 5.60 },
+  { date: '2026-03-01', buy: 118000000, value: 125800000, rate: 6.61, invest: 118000000, eval: 125800000, profitRate: 6.61 },
+  { date: '2026-04-01', buy: 119500000, value: 127600000, rate: 6.78, invest: 119500000, eval: 127600000, profitRate: 6.78 },
+  { date: '2026-05-01', buy: 120000000, value: 128900000, rate: 7.42, invest: 120000000, eval: 128900000, profitRate: 7.42 },
+  { date: '2026-06-01', buy: 121000000, value: 130200000, rate: 7.60, invest: 121000000, eval: 130200000, profitRate: 7.60 },
+  { date: '2026-07-01', buy: 121500000, value: 131500000, rate: 8.23, invest: 121500000, eval: 131500000, profitRate: 8.23 },
+  { date: '2026-08-01', buy: 122000000, value: 131800000, rate: 8.03, invest: 122000000, eval: 131800000, profitRate: 8.03 },
+  { date: '2026-09-01', buy: 122200000, value: 133200000, rate: 9.00, invest: 122200000, eval: 133200000, profitRate: 9.00 },
+  { date: '2026-10-01', buy: 122450000, value: 135400000, rate: 10.58, invest: 122450000, eval: 135400000, profitRate: 10.58 },
+  { date: '2026-11-01', buy: Math.round(calcTotalCost), value: Math.round(calcTotalEval), rate: Number(GUEST_SUMMARY.avgProfitRate.toFixed(2)), invest: Math.round(calcTotalCost), eval: Math.round(calcTotalEval), profitRate: Number(GUEST_SUMMARY.avgProfitRate.toFixed(2)) }
 ];
 
 // 8. 월별 배당 요약 (Monthly Dividend Summary: 게스트 모드 테스트용 국내/해외 종목)
