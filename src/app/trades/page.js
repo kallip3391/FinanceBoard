@@ -104,16 +104,27 @@ function AnimatedTradeCounter({
   showSign = false,
   duration = 800
 }) {
-  const [displayValue, setDisplayValue] = useState(value);
-  const prevValueRef = useRef(value);
+  const [displayValue, setDisplayValue] = useState(0);
+  const prevValueRef = useRef(0);
   const prevIsForeignRef = useRef(isForeign);
+  const hasAnimatedInitialRef = useRef(false);
 
   useEffect(() => {
     const endVal = Number(value) || 0;
-    // 통화 단위가 변경된 경우(KRW <-> USD) 0부터 롤링 시작
-    const startVal = prevIsForeignRef.current !== isForeign
+    // 최초 진입 시 또는 통화 단위 변경 시(KRW <-> USD) 0부터 롤링 시작
+    const shouldStartFromZero = !hasAnimatedInitialRef.current || prevIsForeignRef.current !== isForeign;
+    const startVal = shouldStartFromZero
       ? 0
       : (Number(prevValueRef.current) || 0);
+
+    // 아직 데이터 로딩 전이라 endVal이 0이고 startVal도 0이면 대기
+    if (endVal === 0 && startVal === 0) {
+      prevValueRef.current = 0;
+      prevIsForeignRef.current = isForeign;
+      return;
+    }
+
+    hasAnimatedInitialRef.current = true;
 
     let startTime = null;
     let animationFrame;
@@ -156,7 +167,8 @@ function AnimatedTradeCounter({
   );
 }
 
-// ── 매매손익 샘플 데이터 (MobileDividendDashboard와 동일) ──
+
+// ── 매매손익 샘플 데이터 (게스트 및 로컬 확인용) ──
 const SAMPLE_TRADE_DATA = [
   {
     name: "삼성전자",
@@ -452,18 +464,32 @@ export default function TradesPnLPage() {
   useEffect(() => {
     let isMounted = true;
     const fetchTrades = async () => {
+      if (!user) {
+        if (isMounted) {
+          setClosedTrades([]);
+          setIsLoading(false);
+        }
+        return;
+      }
+
       setIsLoading(true);
       try {
-        if (user?.id) {
-          const data = await TransactionManager.getClosedTradesPnL();
-          if (isMounted && data && data.length > 0) {
-            setClosedTrades(data);
-            return;
+        const isGuest = user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000';
+
+        if (isGuest) {
+          if (isMounted) {
+            setClosedTrades(SAMPLE_TRADE_DATA);
           }
+          return;
         }
-        // DB 데이터가 비어있거나 게스트일 경우 샘플 데이터 사용
+
+        const data = await TransactionManager.getClosedTradesPnL();
         if (isMounted) {
-          setClosedTrades(SAMPLE_TRADE_DATA);
+          if (data && data.length > 0) {
+            setClosedTrades(data);
+          } else {
+            setClosedTrades(SAMPLE_TRADE_DATA);
+          }
         }
       } catch (err) {
         console.warn("view_closed_trades_pnl 조회 오류:", err);
@@ -477,7 +503,7 @@ export default function TradesPnLPage() {
 
     fetchTrades();
     return () => { isMounted = false; };
-  }, [user?.id]);
+  }, [user]);
 
   const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
 
@@ -614,12 +640,32 @@ export default function TradesPnLPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
-            <CheckCircle2 size={15} className="text-blue-500" />
-            <span>총 {summary.count} 종목 매매</span>
+          <div className="flex items-center gap-4">
+            {!user ? (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
+                로그인 후 보유 자산을 확인할 수 있습니다.
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                <CheckCircle2 size={15} className="text-blue-500" />
+                <span>총 {summary.count} 종목 매매</span>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* 로딩 화면 */}
+        {user && isLoading && (
+          <div className="glass-card py-24 flex flex-col items-center justify-center gap-3">
+            <div className="w-9 h-9 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="font-bold text-slate-700 text-base">매매손익 내역을 불러오는 중...</span>
+            <span className="text-sm text-slate-400">잠시만 기다려주세요</span>
+          </div>
+        )}
+
+        {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
+        {user && !isLoading && (
+          <>
         {/* 상단 4대 핵심 요약 카드 (Glass Card) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* 1. 총 실현손익 (손익 + 배당) */}
@@ -1136,6 +1182,8 @@ export default function TradesPnLPage() {
               <ChevronsRight size={20} />
             </button>
           </div>
+        )}
+        </>
         )}
       </div>
     </>

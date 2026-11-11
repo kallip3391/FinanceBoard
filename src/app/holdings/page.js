@@ -105,16 +105,27 @@ function AnimatedTradeCounter({
   showSign = false,
   duration = 800
 }) {
-  const [displayValue, setDisplayValue] = useState(value);
-  const prevValueRef = useRef(value);
+  const [displayValue, setDisplayValue] = useState(0);
+  const prevValueRef = useRef(0);
   const prevIsForeignRef = useRef(isForeign);
+  const hasAnimatedInitialRef = useRef(false);
 
   useEffect(() => {
     const endVal = Number(value) || 0;
-    // 통화 단위가 변경된 경우(KRW <-> USD) 0부터 롤링 시작
-    const startVal = prevIsForeignRef.current !== isForeign
+    // 최초 진입 시 또는 통화 단위 변경 시(KRW <-> USD) 0부터 롤링 시작
+    const shouldStartFromZero = !hasAnimatedInitialRef.current || prevIsForeignRef.current !== isForeign;
+    const startVal = shouldStartFromZero
       ? 0
       : (Number(prevValueRef.current) || 0);
+
+    // 아직 데이터 로딩 전이라 endVal이 0이고 startVal도 0이면 대기
+    if (endVal === 0 && startVal === 0) {
+      prevValueRef.current = 0;
+      prevIsForeignRef.current = isForeign;
+      return;
+    }
+
+    hasAnimatedInitialRef.current = true;
 
     let startTime = null;
     let animationFrame;
