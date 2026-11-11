@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ArrowUpDown,
   Check,
+  CheckCircle2,
   Coins,
   Wallet
 } from "lucide-react";
@@ -1101,9 +1102,17 @@ export default function HoldingsPage() {
       <div className="flex flex-col gap-4">
         {/* Header Section */}
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">
-            {holdingTab === "account" ? "계좌별 보유현황" : "종목별 보유현황"}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">
+              {holdingTab === "account" ? "계좌별 보유현황" : "종목별 보유현황"}
+            </h2>
+            {user && (
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                <CheckCircle2 size={15} className="text-blue-500" />
+                <span>총 {holdingsSummary.count} 종목 보유</span>
+              </div>
+            )}
+          </div>
           <div className="flex bg-slate-100 p-1 rounded-xl">
             <button
               onClick={() => {
