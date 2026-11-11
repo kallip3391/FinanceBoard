@@ -339,6 +339,185 @@ const normalizeTradeItem = (row) => {
   };
 };
 
+const getTopRoundedPath = (x, y, width, height, radius = 3) => {
+  if (width <= 0 || height <= 0) return '';
+  const r = Math.min(radius, width / 2, height);
+  return `M${x},${y + height} L${x},${y + r} A${r},${r} 0 0 1 ${x + r},${y} L${x + width - r},${y} A${r},${r} 0 0 1 ${x + width},${y + r} L${x + width},${y + height} Z`;
+};
+
+const MobileDividendChart = React.memo(function MobileDividendChart({
+  months,
+  selectedYear,
+  formatCurrency
+}) {
+  const [chartReady, setChartReady] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setChartReady(true);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div key={`m-chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1">
+      <style>{`
+        @keyframes chartRiseUp {
+          0% {
+            clip-path: inset(100% 0 0 0);
+            -webkit-clip-path: inset(100% 0 0 0);
+          }
+          100% {
+            clip-path: inset(0 0 0 0);
+            -webkit-clip-path: inset(0 0 0 0);
+          }
+        }
+        .m-chart-bar-krw {
+          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+        }
+        .m-chart-bar-overseas {
+          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
+          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
+        }
+        .m-chart-bar-overseas-instant {
+          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+        }
+      `}</style>
+      {chartReady ? (
+        <ResponsiveContainer width="100%" height={180} minWidth={0}>
+          <BarChart
+            key={`m-barchart-${selectedYear}`}
+            data={months}
+            barCategoryGap="18%"
+            margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis
+              dataKey="month"
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+              height={24}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
+              tickFormatter={(v) => (v >= 10000 ? `${Math.round(v / 10000)}만` : v > 0 ? v : '')}
+            />
+            <Tooltip
+              cursor={{ fill: '#f8fafc', opacity: 0.8 }}
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  const hasKRW = data.KRW > 0;
+                  const hasOVERSEAS = data.OVERSEAS > 0;
+                  const hasTotal = data.total > 0;
+
+                  return (
+                    <div className="bg-white/95 backdrop-blur-md p-3 border border-slate-200 rounded-2xl shadow-xl min-w-[170px] z-50">
+                      <p className="text-xs font-black text-slate-800 mb-2 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                        <Calendar size={13} className="text-emerald-600 stroke-[2.5]" />
+                        {selectedYear}년 {data.mNum}월
+                      </p>
+                      <div className="space-y-1.5 mb-2">
+                        {hasKRW && (
+                          <div className="flex justify-between items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                              <span className="text-[11px] font-bold text-slate-600">국내</span>
+                            </div>
+                            <span className="text-xs font-black text-slate-800 tabular-nums">
+                              {formatCurrency(data.KRW)}원
+                            </span>
+                          </div>
+                        )}
+                        {hasOVERSEAS && (
+                          <div className="flex justify-between items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                              <span className="text-[11px] font-bold text-slate-600">해외</span>
+                            </div>
+                            <span className="text-xs font-black text-slate-800 tabular-nums">
+                              {formatCurrency(data.OVERSEAS)}원
+                            </span>
+                          </div>
+                        )}
+                        {!hasTotal && (
+                          <span className="text-xs font-semibold text-slate-400 block py-0.5">
+                            배당 내역 없음
+                          </span>
+                        )}
+                      </div>
+                      <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center">
+                        <span className="text-[11px] font-bold text-slate-500">월 총합</span>
+                        <span className="text-xs font-black text-emerald-600 tabular-nums">
+                          {formatCurrency(data.total)}원
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Bar
+              dataKey="total"
+              isAnimationActive={false}
+              shape={(props) => {
+                const { x, y, width, height, payload } = props;
+                if (!payload || !payload.total || payload.total <= 0) return null;
+
+                const krwH = (payload.KRW / payload.total) * height || 0;
+                const overseasH = (payload.OVERSEAS / payload.total) * height || 0;
+                const hasKRW = payload.KRW > 0;
+                const hasOVERSEAS = payload.OVERSEAS > 0;
+
+                return (
+                  <g>
+                    {hasKRW && (
+                      hasOVERSEAS ? (
+                        <rect
+                          className="m-chart-bar-krw"
+                          x={x}
+                          y={y + (height - krwH)}
+                          width={width}
+                          height={krwH + 0.5}
+                          fill="#3b82f6"
+                        />
+                      ) : (
+                        <path
+                          className="m-chart-bar-krw"
+                          d={getTopRoundedPath(x, y + (height - krwH), width, krwH, 3)}
+                          fill="#3b82f6"
+                        />
+                      )
+                    )}
+                    {hasOVERSEAS && (
+                      <path
+                        className={hasKRW ? "m-chart-bar-overseas" : "m-chart-bar-overseas-instant"}
+                        d={getTopRoundedPath(x, y + (height - krwH - overseasH), width, overseasH, 3)}
+                        fill="#f59e0b"
+                      />
+                    )}
+                  </g>
+                );
+              }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="w-full h-[180px] flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function MobileDividendDashboard({
   user,
   loading,
@@ -731,112 +910,12 @@ export default function MobileDividendDashboard({
             </div>
           </div>
 
-          {/* 12개월 스택 바 차트 (연도 변경 시 처음 진입한 것처럼 바닥에서 솟아오르도록 key 지정) */}
-          <div key={`chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1">
-            <ResponsiveContainer width="100%" height={180} minWidth={0}>
-              <BarChart
-                key={`barchart-${selectedYear}`}
-                data={monthly12Data.months}
-                barCategoryGap="18%"
-                margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="month"
-                  axisLine={false}
-                  tickLine={false}
-                  interval={0}
-                  tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                  height={24}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
-                  tickFormatter={(v) => (v >= 10000 ? `${Math.round(v / 10000)}만` : v > 0 ? v : '')}
-                />
-                {/* 국내/해외 구분 Recharts 툴팁 (웹화면과 100% 동일한 디자인) */}
-                <Tooltip
-                  cursor={{ fill: '#f8fafc', opacity: 0.8 }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      const hasKRW = data.KRW > 0;
-                      const hasOVERSEAS = data.OVERSEAS > 0;
-                      const hasTotal = data.total > 0;
-
-                      return (
-                        <div className="bg-white/95 backdrop-blur-md p-3 border border-slate-200 rounded-2xl shadow-xl min-w-[170px] z-50">
-                          <p className="text-xs font-black text-slate-800 mb-2 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
-                            <Calendar size={13} className="text-emerald-600 stroke-[2.5]" />
-                            {selectedYear}년 {data.mNum}월
-                          </p>
-                          <div className="space-y-1.5 mb-2">
-                            {hasKRW && (
-                              <div className="flex justify-between items-center gap-3">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                  <span className="text-[11px] font-bold text-slate-600">국내</span>
-                                </div>
-                                <span className="text-xs font-black text-slate-800 tabular-nums">
-                                  {formatCurrency(data.KRW)}원
-                                </span>
-                              </div>
-                            )}
-                            {hasOVERSEAS && (
-                              <div className="flex justify-between items-center gap-3">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                                  <span className="text-[11px] font-bold text-slate-600">해외</span>
-                                </div>
-                                <span className="text-xs font-black text-slate-800 tabular-nums">
-                                  {formatCurrency(data.OVERSEAS)}원
-                                </span>
-                              </div>
-                            )}
-                            {!hasTotal && (
-                              <span className="text-xs font-semibold text-slate-400 block py-0.5">
-                                배당 내역 없음
-                              </span>
-                            )}
-                          </div>
-                          <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-[11px] font-bold text-slate-500">월 총합</span>
-                            <span className="text-xs font-black text-emerald-600 tabular-nums">
-                              {formatCurrency(data.total)}원
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar 
-                  key={`bar-krw-${selectedYear}`}
-                  dataKey="KRW" 
-                  name="국내" 
-                  stackId="a" 
-                  fill="#3b82f6" 
-                  radius={[0, 0, 0, 0]} 
-                  isAnimationActive={true}
-                  animationDuration={800}
-                  animationEasing="ease-out"
-                />
-                <Bar 
-                  key={`bar-overseas-${selectedYear}`}
-                  dataKey="OVERSEAS" 
-                  name="해외" 
-                  stackId="a" 
-                  fill="#f59e0b" 
-                  radius={[3, 3, 0, 0]} 
-                  isAnimationActive={true}
-                  animationDuration={800}
-                  animationEasing="ease-out"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {/* 12개월 스택 바 차트 */}
+          <MobileDividendChart
+            months={monthly12Data.months}
+            selectedYear={selectedYear}
+            formatCurrency={formatCurrency}
+          />
         </div>
 
         {/* ── 1월 ~ 12월 2열 카드 그리드 (좌우 스와이프 제스처 지원) ── */}
@@ -1133,7 +1212,7 @@ export default function MobileDividendDashboard({
                     {monthModalData.mNum}월 배당 종목
                   </h3>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                    총 {monthModalData.items.length}개 종목
+                    {monthModalData.items.length}종목
                   </span>
                 </div>
               </div>

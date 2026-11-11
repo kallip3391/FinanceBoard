@@ -520,7 +520,7 @@ export default function MobileDashboard() {
                   보유종목 현황
                 </h3>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  총 {holdings.length}개 종목
+                  총 {holdings.length} 종목
                 </span>
               </div>
               <button

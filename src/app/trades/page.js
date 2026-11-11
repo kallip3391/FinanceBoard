@@ -1,22 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  TrendingUp,
   Briefcase,
   Search,
-  Filter,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  ArrowUpDown,
   Coins,
   Wallet,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  ArrowUpDown,
+  Check
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager } from "@/lib/transactionManager";
 import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
 
@@ -82,11 +81,11 @@ const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
   const isNeg = num < 0;
   const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (showSign) {
-    if (isPos) return `+${sym}${absNum}`;
-    if (isNeg) return `-${sym}${absNum}`;
-    return `${sym}0.00`;
+    if (isPos) return `+${sym} ${absNum}`;
+    if (isNeg) return `-${sym} ${absNum}`;
+    return `${sym} 0.00`;
   }
-  return `${sym}${absNum}`;
+  return `${sym} ${absNum}`;
 };
 
 const formatStockCode = (code) => {
@@ -97,6 +96,65 @@ const formatStockCode = (code) => {
   }
   return str;
 };
+
+// ── 상단 요약 카드 숫자 롤링 카운터 (배당금 차트와 동일한 easeOutQuart 800ms 효과) ──
+function AnimatedTradeCounter({
+  value,
+  isForeign = false,
+  showSign = false,
+  duration = 800
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+  const prevIsForeignRef = useRef(isForeign);
+
+  useEffect(() => {
+    const endVal = Number(value) || 0;
+    // 통화 단위가 변경된 경우(KRW <-> USD) 0부터 롤링 시작
+    const startVal = prevIsForeignRef.current !== isForeign
+      ? 0
+      : (Number(prevValueRef.current) || 0);
+
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      // easeOutQuart
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const current = startVal + (endVal - startVal) * easeProgress;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endVal);
+        prevValueRef.current = endVal;
+        prevIsForeignRef.current = isForeign;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [value, isForeign, duration]);
+
+  const safeVal = Number.isFinite(displayValue) ? displayValue : (Number(value) || 0);
+
+  if (isForeign) {
+    return <>{formatForeignAmount(safeVal, 'USD', showSign)}</>;
+  }
+
+  const rounded = Math.round(safeVal);
+  return (
+    <>
+      {showSign && rounded > 0 ? '+' : ''}
+      {new Intl.NumberFormat('ko-KR').format(rounded)}
+    </>
+  );
+}
 
 // ── 매매손익 샘플 데이터 (MobileDividendDashboard와 동일) ──
 const SAMPLE_TRADE_DATA = [
@@ -344,9 +402,16 @@ const normalizeTradeItem = (row) => {
   };
 };
 
+const SORT_OPTIONS = [
+  { value: "totalProfit_desc", label: "총실현손익 높은순" },
+  { value: "totalProfit_asc", label: "총실현손익 낮은순" },
+  { value: "rate_desc", label: "총수익률 높은순" },
+  { value: "rate_asc", label: "총수익률 낮은순" },
+  { value: "name_asc", label: "종목명 가나다순" },
+];
+
 export default function TradesPnLPage() {
   const { user } = useAuth();
-  const { isDividendsLoading: isAssetsLoading } = useAssets();
 
   // 모바일 렌더링에 필요한 더미/기본 데이터
   const [closedTrades, setClosedTrades] = useState([]);
@@ -356,10 +421,33 @@ export default function TradesPnLPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
   const [sortBy, setSortBy] = useState("totalProfit_desc"); // totalProfit_desc, totalProfit_asc, rate_desc, rate_asc, name_asc
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
+
+  // 드롭다운 외부 클릭 및 ESC 키 처리
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isSortDropdownOpen) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSortDropdownOpen]);
 
   // 페이지네이션
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 9;
 
   useEffect(() => {
     let isMounted = true;
@@ -398,22 +486,42 @@ export default function TradesPnLPage() {
     return closedTrades.map(normalizeTradeItem).filter(Boolean);
   }, [closedTrades]);
 
-  // 상단 요약 통계 (전체 기준)
+  // 상단 요약 통계 (전체 / 국내 / 해외 탭 연동)
   const summary = useMemo(() => {
+    let targetList = allTradesList;
+    if (currencyFilter === "KRW") {
+      targetList = allTradesList.filter(item => item.isKRW);
+    } else if (currencyFilter === "OVERSEAS") {
+      targetList = allTradesList.filter(item => !item.isKRW);
+    }
+
     let sumTotalProfit = 0;
     let sumProfit = 0;
     let sumDividend = 0;
     let sumBuyCost = 0;
 
-    allTradesList.forEach(item => {
+    let sumForeignTotalProfit = 0;
+    let sumForeignProfit = 0;
+    let sumForeignDividend = 0;
+    let sumForeignBuyCost = 0;
+
+    targetList.forEach(item => {
       sumTotalProfit += item.totalRealizedProfit;
       sumProfit += item.realizedProfit;
       sumDividend += item.dividend;
       sumBuyCost += item.buyCostKRW;
+
+      sumForeignTotalProfit += (item.foreignTotalRealizedProfit || 0);
+      sumForeignProfit += (item.foreignRealizedProfit || 0);
+      sumForeignDividend += (item.foreignDividend || 0);
+      sumForeignBuyCost += (item.buyCostForeign || 0);
     });
 
     const totalRate = sumBuyCost > 0 ? (sumTotalProfit / sumBuyCost) * 100 : 0;
     const profitRate = sumBuyCost > 0 ? (sumProfit / sumBuyCost) * 100 : 0;
+
+    const foreignTotalRate = sumForeignBuyCost > 0 ? (sumForeignTotalProfit / sumForeignBuyCost) * 100 : 0;
+    const foreignProfitRate = sumForeignBuyCost > 0 ? (sumForeignProfit / sumForeignBuyCost) * 100 : 0;
 
     return {
       sumTotalProfit,
@@ -422,9 +530,17 @@ export default function TradesPnLPage() {
       profitRate,
       sumDividend,
       sumBuyCost,
-      count: allTradesList.length
+
+      sumForeignTotalProfit,
+      foreignTotalRate,
+      sumForeignProfit,
+      foreignProfitRate,
+      sumForeignDividend,
+      sumForeignBuyCost,
+
+      count: targetList.length
     };
-  }, [allTradesList]);
+  }, [allTradesList, currencyFilter]);
 
   // 검색 및 필터링된 리스트
   const filteredList = useMemo(() => {
@@ -485,7 +601,7 @@ export default function TradesPnLPage() {
       </div>
 
       {/* 데스크톱 화면 (768px 이상) 전용 */}
-      <div className="desktop-only h-full flex-col pb-8 animate-fade-in">
+      <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2.5">
@@ -500,108 +616,146 @@ export default function TradesPnLPage() {
 
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
             <CheckCircle2 size={15} className="text-blue-500" />
-            <span>총 {summary.count}개 종목 매매 체결</span>
+            <span>총 {summary.count} 종목 매매</span>
           </div>
         </div>
 
         {/* 상단 4대 핵심 요약 카드 (Glass Card) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* 1. 총 실현손익 (손익 + 배당) */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-slate-500">총 실현손익</span>
               <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                summary.sumTotalProfit > 0 
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
                   ? 'bg-red-50 text-red-600' 
-                  : summary.sumTotalProfit < 0 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
                     ? 'bg-blue-50 text-blue-600' 
                     : 'bg-slate-100 text-slate-600'
               }`}>
-                {summary.sumTotalProfit > 0 ? '+' : ''}{summary.totalRate.toFixed(2)}%
+                {(currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 ? '+' : ''}
+                {(currencyFilter === "OVERSEAS" ? summary.foreignTotalRate : summary.totalRate).toFixed(2)}%
               </span>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className={`text-2xl font-black tabular-nums tracking-tight ${
-                summary.sumTotalProfit > 0 ? 'text-red-600' : summary.sumTotalProfit < 0 ? 'text-blue-600' : 'text-slate-800'
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
+                  ? 'text-red-600' 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
+                    ? 'text-blue-600' 
+                    : 'text-slate-800'
               }`}>
-                {summary.sumTotalProfit > 0 ? '+' : ''}{formatCurrency(summary.sumTotalProfit)}
+                <AnimatedTradeCounter
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit}
+                  isForeign={currencyFilter === "OVERSEAS"}
+                  showSign={true}
+                  duration={800}
+                />
               </span>
-              <span className="text-xs font-bold text-slate-400">원</span>
+              {currencyFilter !== "OVERSEAS" && (
+                <span className="text-xs font-bold text-slate-400">원</span>
+              )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>매매손익 + 배당금 합산</span>
+              <span>매매손익 + 배당금 합계</span>
               <span className="font-semibold text-slate-500">총 수익률</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
           </div>
 
           {/* 2. 순수 실현손익 */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">실현손익 (매매차익)</span>
+              <span className="text-xs font-bold text-slate-500">실현손익</span>
               <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                summary.sumProfit > 0 
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) > 0 
                   ? 'bg-red-50 text-red-600' 
-                  : summary.sumProfit < 0 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) < 0 
                     ? 'bg-blue-50 text-blue-600' 
                     : 'bg-slate-100 text-slate-600'
               }`}>
-                {summary.sumProfit > 0 ? '+' : ''}{summary.profitRate.toFixed(2)}%
+                {(currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) > 0 ? '+' : ''}
+                {(currencyFilter === "OVERSEAS" ? summary.foreignProfitRate : summary.profitRate).toFixed(2)}%
               </span>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className={`text-2xl font-black tabular-nums tracking-tight ${
-                summary.sumProfit > 0 ? 'text-red-600' : summary.sumProfit < 0 ? 'text-blue-600' : 'text-slate-800'
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) > 0 
+                  ? 'text-red-600' 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) < 0 
+                    ? 'text-blue-600' 
+                    : 'text-slate-800'
               }`}>
-                {summary.sumProfit > 0 ? '+' : ''}{formatCurrency(summary.sumProfit)}
+                <AnimatedTradeCounter
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit}
+                  isForeign={currencyFilter === "OVERSEAS"}
+                  showSign={true}
+                  duration={800}
+                />
               </span>
-              <span className="text-xs font-bold text-slate-400">원</span>
+              {currencyFilter !== "OVERSEAS" && (
+                <span className="text-xs font-bold text-slate-400">원</span>
+              )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>매도금액 - 매수금액</span>
+              <span>매도금액 - 매수금액 합계</span>
               <span className="font-semibold text-slate-500">순수익률</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
           </div>
 
           {/* 3. 누적 배당금 */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">누적 수령 배당금</span>
+              <span className="text-xs font-bold text-slate-500">누적 배당금</span>
               <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <Coins size={12} strokeWidth={2.5} />
               </div>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600">
-                +{formatCurrency(summary.sumDividend)}
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 cursor-default select-none">
+                <AnimatedTradeCounter
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignDividend : summary.sumDividend}
+                  isForeign={currencyFilter === "OVERSEAS"}
+                  showSign={true}
+                  duration={800}
+                />
               </span>
-              <span className="text-xs font-bold text-slate-400">원</span>
+              {currencyFilter !== "OVERSEAS" && (
+                <span className="text-xs font-bold text-slate-400">원</span>
+              )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>보유 기간 발생 배당금</span>
+              <span>보유기간 배당금</span>
               <span className="font-semibold text-emerald-600">배당 수익</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
           </div>
 
-          {/* 4. 총 매수원가 */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          {/* 4. 총 매수금액 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">총 매수원가 (투자원금)</span>
+              <span className="text-xs font-bold text-slate-500">총 매수금액</span>
               <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
                 <Wallet size={12} strokeWidth={2.5} />
               </div>
             </div>
-            <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800">
-                {formatCurrency(summary.sumBuyCost)}
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                <AnimatedTradeCounter
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignBuyCost : summary.sumBuyCost}
+                  isForeign={currencyFilter === "OVERSEAS"}
+                  showSign={false}
+                  duration={800}
+                />
               </span>
-              <span className="text-xs font-bold text-slate-400">원</span>
+              {currencyFilter !== "OVERSEAS" && (
+                <span className="text-xs font-bold text-slate-400">원</span>
+              )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>SUM(수량 × 평균매수가)</span>
-              <span className="font-semibold text-slate-500">기준 원금</span>
+              <span>수량 × 평균매수가 합계</span>
+              <span className="font-semibold text-slate-500">투자원금</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
           </div>
@@ -658,29 +812,64 @@ export default function TradesPnLPage() {
               </button>
             </div>
 
-            {/* 정렬 드롭다운 */}
-            <div className="relative">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-brand"
+            {/* 정렬 드롭다운 (커스텀 프리미엄 팝업) */}
+            <div className="relative" ref={sortDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsSortDropdownOpen((prev) => !prev)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs select-none ${
+                  isSortDropdownOpen
+                    ? 'bg-blue-50/50 border-brand ring-2 ring-brand/10 text-brand shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60 hover:text-slate-900'
+                }`}
               >
-                <option value="totalProfit_desc">총실현손익 높은순</option>
-                <option value="totalProfit_asc">총실현손익 낮은순</option>
-                <option value="rate_desc">총수익률 높은순</option>
-                <option value="rate_asc">총수익률 낮은순</option>
-                <option value="name_asc">종목명 가나다순</option>
-              </select>
+                <ArrowUpDown size={13} className={isSortDropdownOpen ? 'text-brand' : 'text-slate-400'} />
+                <span className="tracking-tight">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label || "정렬 기준"}</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${
+                    isSortDropdownOpen ? 'rotate-180 text-brand' : 'text-slate-400'
+                  }`}
+                />
+              </button>
+
+              {isSortDropdownOpen && (
+                <div className="absolute top-full right-0 mt-2 w-48 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
+                  <div className="space-y-0.5">
+                    {SORT_OPTIONS.map((opt) => {
+                      const isSelected = sortBy === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setSortBy(opt.value);
+                            setIsSortDropdownOpen(false);
+                          }}
+                          className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all text-left flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-brand/10 text-brand font-black'
+                              : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {isSelected && <Check size={14} className="text-brand shrink-0" strokeWidth={2.5} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* 매매손익 상세 테이블 (거래내역 - 배당 화면 스타일 준용) */}
-        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-6">
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-3">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-500">종목</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">종목</th>
                 <th className="px-4 py-4 text-center text-sm font-semibold text-slate-500">수량</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매수가</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매도가</th>
@@ -714,6 +903,12 @@ export default function TradesPnLPage() {
                   const isPureProfit = item.realizedProfit > 0;
                   const isPureLoss = item.realizedProfit < 0;
 
+                  const fProfitRate = Number(item.foreignProfitRate) || 0;
+                  const fTotalRate = Number(item.foreignTotalRate) || 0;
+                  const kProfitRate = Number(item.profitRate) || 0;
+                  const kTotalRate = Number(item.realizedRate) || 0;
+                  const showOverseasAmount = currencyFilter === "OVERSEAS" && !item.isKRW;
+
                   return (
                     <tr
                       key={`trade-${item.code}-${i}`}
@@ -724,12 +919,15 @@ export default function TradesPnLPage() {
                         <div className="flex items-center gap-3 min-h-[52px]">
                           <StockLogo code={item.code} name={item.name} isKRW={item.isKRW} />
                           <div className="flex flex-col justify-center max-w-[240px]">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm text-slate-900 font-bold leading-tight truncate">
-                                {item.name}
+                            <p className="text-sm text-slate-900 font-bold leading-tight truncate">
+                              {item.name}
+                            </p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="font-mono text-slate-400 font-medium text-[11px] w-[62px] shrink-0 truncate">
+                                {formatStockCode(item.code)}
                               </span>
                               <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
                                   item.isKRW
                                     ? "bg-blue-50 text-blue-600 border-blue-200"
                                     : "bg-amber-50 text-amber-700 border-amber-200"
@@ -738,9 +936,6 @@ export default function TradesPnLPage() {
                                 {item.isKRW ? "국내" : "해외"}
                               </span>
                             </div>
-                            <span className="text-[11px] text-slate-400 font-mono mt-0.5">
-                              {formatStockCode(item.code)}
-                            </span>
                           </div>
                         </div>
                       </td>
@@ -750,92 +945,115 @@ export default function TradesPnLPage() {
                         {item.quantity.toLocaleString()}주
                       </td>
 
-                      {/* 3열: 평균 매수가 (원화 + 외화) */}
+                      {/* 3열: 평균 매수가 */}
                       <td className="px-6 py-2 text-right">
                         <div className="flex flex-col items-end justify-center">
-                          <span className="text-sm font-bold text-slate-800 tabular-nums">
-                            {formatCurrency(item.avgBuyPrice)}원
-                          </span>
-                          {!item.isKRW && item.foreignAvgBuyPrice > 0 && (
-                            <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                          {showOverseasAmount ? (
+                            <span className="text-sm font-bold text-slate-800 tabular-nums">
                               {formatForeignAmount(item.foreignAvgBuyPrice, item.currency)}
                             </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* 4열: 평균 매도가 (원화 + 외화) */}
-                      <td className="px-6 py-2 text-right">
-                        <div className="flex flex-col items-end justify-center">
-                          <span className="text-sm font-bold text-slate-800 tabular-nums">
-                            {formatCurrency(item.avgSellPrice)}원
-                          </span>
-                          {!item.isKRW && item.foreignAvgSellPrice > 0 && (
-                            <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
-                              {formatForeignAmount(item.foreignAvgSellPrice, item.currency)}
+                          ) : !item.isKRW && item.foreignAvgBuyPrice > 0 ? (
+                            <>
+                              <span className="text-sm font-bold text-slate-800 tabular-nums">
+                                {formatForeignAmount(item.foreignAvgBuyPrice, item.currency)}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                                {formatCurrency(item.avgBuyPrice)}원
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-sm font-bold text-slate-800 tabular-nums">
+                              {formatCurrency(item.avgBuyPrice)}원
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* 5열: 실현손익 (금액 + 수익률) */}
+                      {/* 4열: 평균 매도가 */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          {showOverseasAmount ? (
+                            <span className="text-sm font-bold text-slate-800 tabular-nums">
+                              {formatForeignAmount(item.foreignAvgSellPrice, item.currency)}
+                            </span>
+                          ) : !item.isKRW && item.foreignAvgSellPrice > 0 ? (
+                            <>
+                              <span className="text-sm font-bold text-slate-800 tabular-nums">
+                                {formatForeignAmount(item.foreignAvgSellPrice, item.currency)}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                                {formatCurrency(item.avgSellPrice)}원
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-sm font-bold text-slate-800 tabular-nums">
+                              {formatCurrency(item.avgSellPrice)}원
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 5열: 실현손익 (해외 탭: 외화금액+외화수익률 / 전체 및 국내 탭: 원화금액+원화수익률) */}
                       <td className="px-6 py-2 text-right">
                         <div className="flex flex-col items-end justify-center">
                           <span className={`text-sm font-bold tabular-nums ${
                             isPureProfit ? 'text-red-600' : isPureLoss ? 'text-blue-600' : 'text-slate-800'
                           }`}>
-                            {item.realizedProfit > 0 ? '+' : ''}{formatCurrency(item.realizedProfit)}원
+                            {showOverseasAmount
+                              ? formatForeignAmount(item.foreignRealizedProfit, item.currency, true)
+                              : `${item.realizedProfit > 0 ? '+' : ''}${formatCurrency(item.realizedProfit)}원`}
                           </span>
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className={`text-[11px] font-extrabold tabular-nums ${
                               isPureProfit ? 'text-red-600' : isPureLoss ? 'text-blue-600' : 'text-slate-500'
                             }`}>
-                              ({item.profitRate > 0 ? '+' : ''}{item.profitRate.toFixed(2)}%)
+                              ({showOverseasAmount
+                                ? `${fProfitRate > 0 ? '+' : ''}${fProfitRate.toFixed(2)}%`
+                                : `${kProfitRate > 0 ? '+' : ''}${kProfitRate.toFixed(2)}%`})
                             </span>
-                            {!item.isKRW && item.foreignRealizedProfit !== 0 && (
-                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-                                • {formatForeignAmount(item.foreignRealizedProfit, item.currency, true)}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </td>
 
-                      {/* 6열: 배당금 (원화 + 외화) */}
+                      {/* 6열: 배당금 (해외 탭: 외화 배당금 / 전체 및 국내 탭: 원화 배당금) */}
                       <td className="px-6 py-2 text-right">
                         <div className="flex flex-col items-end justify-center">
-                          <span className={`text-sm font-bold tabular-nums ${
-                            item.dividend > 0 ? 'text-emerald-600' : 'text-slate-400'
-                          }`}>
-                            {item.dividend > 0 ? `+${formatCurrency(item.dividend)}원` : '0원'}
-                          </span>
-                          {!item.isKRW && item.foreignDividend > 0 && (
-                            <span className="text-[11px] font-semibold text-emerald-600/80 tabular-nums mt-0.5">
-                              +{formatForeignAmount(item.foreignDividend, item.currency)}
+                          {showOverseasAmount ? (
+                            <span className={`text-sm font-bold tabular-nums ${
+                              item.foreignDividend > 0 ? 'text-emerald-600' : 'text-slate-400'
+                            }`}>
+                              {item.foreignDividend > 0
+                                ? `+${formatForeignAmount(item.foreignDividend, item.currency)}`
+                                : formatForeignAmount(0, item.currency)}
+                            </span>
+                          ) : (
+                            <span className={`text-sm font-bold tabular-nums ${
+                              item.dividend > 0 ? 'text-emerald-600' : 'text-slate-400'
+                            }`}>
+                              {item.dividend > 0 ? `+${formatCurrency(item.dividend)}원` : '0원'}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* 7열: 총 실현손익 (손익+배당 하이라이트) */}
+                      {/* 7열: 총 실현손익 (해외 탭: 외화금액+외화총수익률 / 전체 및 국내 탭: 원화금액+원화총수익률) */}
                       <td className="px-6 py-2 text-right bg-slate-50/30">
                         <div className="flex flex-col items-end justify-center">
                           <span className={`text-base font-black tabular-nums tracking-tight ${
                             isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-800'
                           }`}>
-                            {item.totalRealizedProfit > 0 ? '+' : ''}{formatCurrency(item.totalRealizedProfit)}원
+                            {showOverseasAmount
+                              ? formatForeignAmount(item.foreignTotalRealizedProfit, item.currency, true)
+                              : `${item.totalRealizedProfit > 0 ? '+' : ''}${formatCurrency(item.totalRealizedProfit)}원`}
                           </span>
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className={`text-xs font-black tabular-nums ${
                               isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-500'
                             }`}>
-                              ({item.realizedRate > 0 ? '+' : ''}{item.realizedRate.toFixed(2)}%)
+                              ({showOverseasAmount
+                                ? `${fTotalRate > 0 ? '+' : ''}${fTotalRate.toFixed(2)}%`
+                                : `${kTotalRate > 0 ? '+' : ''}${kTotalRate.toFixed(2)}%`})
                             </span>
-                            {!item.isKRW && item.foreignTotalRealizedProfit !== 0 && (
-                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-                                • {formatForeignAmount(item.foreignTotalRealizedProfit, item.currency, true)}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -849,7 +1067,7 @@ export default function TradesPnLPage() {
 
         {/* 페이지네이션 컨트롤 */}
         {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-center gap-2">
+          <div className="mt-1 flex items-center justify-center gap-2">
             <button
               onClick={() => setCurrentPage(1)}
               disabled={currentPage === 1}

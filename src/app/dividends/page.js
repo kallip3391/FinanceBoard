@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { ChevronDown, Sprout, Calendar, TrendingUp, CheckCircle, X } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { ChevronDown, Sprout, Calendar, CheckCircle, X } from "lucide-react";
 import {
    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend
 } from 'recharts';
@@ -9,6 +9,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
 import { useAnimatedModal, useAnimatedDataModal } from "@/hooks/useAnimatedModal";
+
+const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
 
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
@@ -71,10 +73,318 @@ const formatStockCode = (code) => {
   return str;
 };
 
+const getTopRoundedPath = (x, y, width, height, radius = 3) => {
+  if (width <= 0 || height <= 0) return '';
+  const r = Math.min(radius, width / 2, height);
+  return `M${x},${y + height} L${x},${y + r} A${r},${r} 0 0 1 ${x + r},${y} L${x + width - r},${y} A${r},${r} 0 0 1 ${x + width},${y + r} L${x + width},${y + height} Z`;
+};
+
+function AnimatedCounter({ value, duration = 850 }) {
+  const [displayValue, setDisplayValue] = useState(0);
+  const prevValueRef = useRef(0);
+
+  useEffect(() => {
+    const endVal = Number(value) || 0;
+    const startVal = Number(prevValueRef.current) || 0;
+
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      // easeOutQuart: 1 - Math.pow(1 - progress, 4)
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const current = Math.round(startVal + (endVal - startVal) * easeProgress);
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endVal);
+        prevValueRef.current = endVal;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [value, duration]);
+
+  const safeVal = Number.isFinite(displayValue) ? displayValue : (Number(value) || 0);
+
+  return <>{formatCurrency(safeVal)}</>;
+}
+
+const DividendChartSection = React.memo(function DividendChartSection({
+  filteredChartData,
+  selectedPeriod,
+  selectedYear,
+  filteredChartTotal,
+  onPeriodChange
+}) {
+  const [chartReady, setChartReady] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setChartReady(true);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="glass-card p-6 min-h-[400px] mb-8 overflow-hidden">
+      <div className="flex justify-end items-center mb-6">
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex gap-2">
+            {['1년', '3년', '5년', '10년'].map((p) => (
+              <button
+                key={p}
+                onClick={() => onPeriodChange(p)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                  selectedPeriod === p
+                    ? 'bg-brand text-white shadow-md shadow-brand/20'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-sm'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 pr-1">
+            <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">TOTAL</span>
+            <span className="text-2xl font-black text-emerald-600 tabular-nums tracking-tighter inline-flex items-baseline animate-total-pop">
+              <AnimatedCounter value={filteredChartTotal} duration={850} />
+              <span className="text-base font-bold ml-1 text-emerald-600">원</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes totalCountPop {
+          0% { transform: scale(0.96); opacity: 0.6; }
+          50% { transform: scale(1.02); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-total-pop {
+          animation: totalCountPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes chartFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes chartRiseUp {
+          0% { clip-path: inset(100% 0 0 0); }
+          100% { clip-path: inset(0 0 0 0); }
+        }
+        .anim-xaxis { animation: chartFadeIn 0.5s ease-out forwards; }
+        .anim-yaxis { animation: chartFadeIn 0.5s ease-out forwards; }
+        .chart-bar-krw { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both; }
+        .chart-bar-overseas { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both; }
+        .chart-bar-overseas-instant { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both; }
+      `}</style>
+
+      <div 
+        key={`chart-view-${selectedPeriod}-${selectedYear}`}
+        className="h-[300px] min-w-0"
+      >
+        {chartReady ? (
+          <ResponsiveContainer width="100%" height={300} minWidth={0}>
+            <BarChart 
+              data={filteredChartData} 
+              barCategoryGap={filteredChartData.length > 80 ? "6%" : filteredChartData.length > 48 ? "10%" : filteredChartData.length > 24 ? "18%" : "25%"}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <Legend 
+                verticalAlign="top" 
+                align="right" 
+                iconType="circle" 
+                wrapperStyle={{ paddingBottom: '20px', fontSize: '12px', fontWeight: 'bold' }} 
+              />
+              <XAxis
+                className="anim-xaxis"
+                xAxisId="month"
+                type={filteredChartData.length <= 1 ? "category" : "number"}
+                dataKey={filteredChartData.length <= 1 ? "month" : "idx"}
+                domain={filteredChartData.length <= 1 ? undefined : [-0.5, filteredChartData.length - 0.5]}
+                ticks={filteredChartData.length <= 1 ? undefined : filteredChartData.map(d => d.idx)}
+                axisLine={false}
+                tickLine={false}
+                interval={0}
+                tick={(props) => {
+                  const { x, y, payload } = props;
+                  const idx = payload.value;
+                  const current = filteredChartData[idx];
+                  if (!current) return null;
+                  const [year, month] = current.month.split('.');
+                  const yearGroup = filteredChartData.filter(d => d.month.split('.')[0] === year);
+                  const midIdx = Math.floor((yearGroup[0].idx + yearGroup[yearGroup.length - 1].idx) / 2);
+                  const showYear = idx === midIdx;
+
+                  // 밀집도에 따른 월 표시 (가독성 보호: 10년 120개 조회 시 6/12월, 5년 60개 조회 시 분기별)
+                  const totalBars = filteredChartData.length;
+                  const mNum = parseInt(month, 10);
+                  const isDense = totalBars > 24;
+                  const isVeryDense = totalBars > 48;
+                  const isUltraDense = totalBars > 80;
+                  const showMonthLabel = isUltraDense
+                    ? (mNum === 6 || mNum === 12)
+                    : isVeryDense
+                      ? (mNum === 3 || mNum === 6 || mNum === 9 || mNum === 12)
+                      : isDense
+                        ? (mNum % 2 === 1 || mNum === 12)
+                        : true;
+
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      {showMonthLabel && (
+                        <text x={0} y={15} textAnchor="middle" fill="#64748b" fontSize={isDense ? 10 : 12} fontWeight={500}>
+                          {`${mNum}월`}
+                        </text>
+                      )}
+                      {showYear && (
+                        <text x={0} y={42} textAnchor="middle" fill="#334155" fontSize={13} fontWeight="bold">
+                          {`20${year}년`}
+                        </text>
+                      )}
+                    </g>
+                  );
+                }}
+                height={50}
+              />
+              <YAxis
+                className="anim-yaxis"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#64748b', fontSize: 13, fontWeight: 500 }}
+                tickFormatter={(v) => v >= 10000 ? `${v / 10000}만` : v}
+              />
+              <Tooltip
+                cursor={{ fill: '#f8fafc' }}
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    const hasKRW = data.KRW > 0;
+                    const hasOVERSEAS = data.OVERSEAS > 0;
+                    
+                    return (
+                      <div className="bg-white/90 backdrop-blur-md p-4 border border-slate-100 rounded-2xl shadow-xl min-w-[200px]">
+                        <p className="text-sm font-black text-slate-800 mb-3 border-b border-slate-100 pb-2 flex items-center gap-2">
+                          <Calendar size={14} className="text-brand stroke-[3px]" />
+                          {(() => {
+                            const [y, m] = data.month.split('.');
+                            return `${y.length === 2 ? '20' + y : y}년 ${parseInt(m)}월`;
+                          })()}
+                        </p>
+                        <div className="space-y-2 mb-3">
+                          {hasKRW && (
+                            <div className="flex justify-between items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
+                                <span className="text-xs font-bold text-slate-600">국내</span>
+                              </div>
+                              <span className="text-sm font-black text-slate-800">{formatCurrency(data.KRW)}</span>
+                            </div>
+                          )}
+                          {hasOVERSEAS && (
+                            <div className="flex justify-between items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#f59e0b' }}></div>
+                                <span className="text-xs font-bold text-slate-600">해외</span>
+                              </div>
+                              <span className="text-sm font-black text-slate-800">{formatCurrency(data.OVERSEAS)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+                          <span className="text-xs font-bold text-slate-500">월 총합</span>
+                          <span className="text-base font-black text-emerald-600">{formatCurrency(data.total)}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              {filteredChartData.map((d, idx) => {
+                if (idx > 0 && d.month.split('.')[0] !== filteredChartData[idx - 1].month.split('.')[0]) {
+                  return (
+                    <ReferenceLine
+                      xAxisId="month"
+                      key={`ref-${idx}`}
+                      x={idx - 0.5}
+                      stroke="#94a3b8"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                    />
+                  );
+                }
+                return null;
+              })}
+              <Bar name="국내" dataKey="KRW" fill="#3b82f6" barSize={0} opacity={0} isAnimationActive={false} />
+              <Bar name="해외" dataKey="OVERSEAS" fill="#f59e0b" barSize={0} opacity={0} isAnimationActive={false} />
+
+              <Bar 
+                xAxisId="month" 
+                dataKey="total" 
+                isAnimationActive={false}
+                legendType="none"
+                shape={(props) => {
+                  const { x, y, width, height, payload } = props;
+                  if (!payload || payload.total <= 0) return null;
+
+                  const krwH = (payload.KRW / payload.total) * height || 0;
+                  const overseasH = (payload.OVERSEAS / payload.total) * height || 0;
+                  const hasKRW = payload.KRW > 0;
+                  const hasOVERSEAS = payload.OVERSEAS > 0;
+                  
+                  return (
+                    <g>
+                      {hasKRW && (
+                        hasOVERSEAS ? (
+                          <rect 
+                            className="chart-bar-krw"
+                            x={x} y={y + (height - krwH)} 
+                            width={width} height={krwH + 0.5} 
+                            fill="#3b82f6"
+                          />
+                        ) : (
+                          <path
+                            className="chart-bar-krw"
+                            d={getTopRoundedPath(x, y + (height - krwH), width, krwH, 3)}
+                            fill="#3b82f6"
+                          />
+                        )
+                      )}
+                      {hasOVERSEAS && (
+                        <path 
+                          className={hasKRW ? "chart-bar-overseas" : "chart-bar-overseas-instant"}
+                          d={getTopRoundedPath(x, y + (height - krwH - overseasH), width, overseasH, 3)}
+                          fill="#f59e0b"
+                        />
+                      )}
+                    </g>
+                  );
+                }}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="w-full h-[300px] flex items-center justify-center">
+            <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export default function DividendsPage() {
   const { user } = useAuth();
   const { monthlyDividendSummary, isDividendsLoading: loading, dividendTransactions } = useAssets();
-  const [chartReady, setChartReady] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('1년');
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
@@ -131,7 +441,7 @@ export default function DividendsPage() {
   const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
 
   // 데이터 집계 및 차트 가공
-  const { filteredChartData, groupedData, totalDividends, availableYears, filteredChartTotal } = useMemo(() => {
+  const { filteredChartData, groupedData, availableYears, filteredChartTotal } = useMemo(() => {
     let totalObj = 0;
     const grouped = {};
     const monthlyMap = {};
@@ -203,9 +513,6 @@ export default function DividendsPage() {
 
     // 차트 표시 연도 목록 산출
     const targetYearNum = parseInt(selectedYear, 10) || (sortedAvailableYears[0] ? parseInt(sortedAvailableYears[0], 10) : new Date().getFullYear());
-    const yearsWithData = sortedAvailableYears.map(Number).sort((a, b) => a - b);
-    const latestYearWithData = yearsWithData.length > 0 ? yearsWithData[yearsWithData.length - 1] : targetYearNum;
-    const earliestYearWithData = yearsWithData.length > 0 ? yearsWithData[0] : targetYearNum;
 
     let yearsToDisplay = [];
     if (selectedPeriod === '1년') {
@@ -290,54 +597,26 @@ export default function DividendsPage() {
     return all12MonthsData.filter(m => m.hasData);
   }, [all12MonthsData]);
 
-  const [isChanging, setIsChanging] = useState(false);
-  const [isRevealing, setIsRevealing] = useState(false);
+  const handlePeriodChange = useCallback((p) => {
+    setSelectedPeriod(p);
+  }, []);
 
+  // 보유 데이터 연도 목록이 로드되었을 때 현재 선택 연도에 데이터가 없으면 최신 연도로 자동 동기화
   useEffect(() => {
-    if (!chartReady) {
-      const timer = setTimeout(() => {
-        setChartReady(true);
-        setIsRevealing(true);
-        setTimeout(() => setIsRevealing(false), 3000);
-      }, 150);
-      return () => clearTimeout(timer);
+    if (availableYears && availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
     }
-  }, [chartReady]);
+  }, [availableYears, selectedYear]);
 
-  const handlePeriodChange = (p) => {
-    if (p === selectedPeriod) return;
-    setIsChanging(true);
-    setIsRevealing(false);
-    
-    setTimeout(() => {
-      setSelectedPeriod(p);
-      setTimeout(() => {
-        setIsChanging(false);
-        setIsRevealing(true);
-        setTimeout(() => setIsRevealing(false), 3000);
-      }, 50);
-    }, 200);
-  };
-
-  const handleYearChange = (y) => {
+  const handleYearChange = useCallback((y) => {
     if (y === selectedYear) {
       setIsYearDropdownOpen(false);
       return;
     }
-    setIsChanging(true);
-    setIsRevealing(false);
     setIsYearDropdownOpen(false);
-
-    setTimeout(() => {
-      setSelectedYear(y);
-      setSelectedPeriod('1년');
-      setTimeout(() => {
-        setIsChanging(false);
-        setIsRevealing(true);
-        setTimeout(() => setIsRevealing(false), 3000);
-      }, 50);
-    }, 200);
-  };
+    setSelectedYear(y);
+    setSelectedPeriod('1년');
+  }, [selectedYear]);
 
   return (
     <>
@@ -389,256 +668,14 @@ export default function DividendsPage() {
         {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
         {user && !loading && (
           <>
-            {/* Bar Chart Section (공간을 미리 확보하여 레이아웃 밀림 방지) */}
-            <div className="glass-card p-6 min-h-[400px] mb-8 overflow-hidden">
-              <div className="flex justify-end items-center mb-6">
-                <div className="flex flex-col items-end gap-3">
-                  <div className="flex gap-2">
-                    {['1년', '3년', '5년', '10년'].map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => handlePeriodChange(p)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                          selectedPeriod === p
-                            ? 'bg-brand text-white shadow-md shadow-brand/20'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-sm'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-2 pr-1">
-                    <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">TOTAL</span>
-                    <span className="text-2xl font-black text-brand-dark tabular-nums tracking-tighter">
-                      {formatCurrency(filteredChartTotal)}
-                      <span className="text-base font-bold ml-1 text-brand">원</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <style>{`
-                @media (min-width: 768px) {
-                  .md-panel {
-                    min-height: auto !important;
-                    padding-bottom: 1.25rem !important;
-                  }
-                }
-                @keyframes chartFadeIn {
-                  from { opacity: 0; }
-                  to { opacity: 1; }
-                }
-                @keyframes chartRiseUp {
-                  from { clip-path: inset(100% 0 0 0); }
-                  to { clip-path: inset(0 0 0 0); }
-                }
-                .anim-xaxis { animation: chartFadeIn 0.5s ease-out forwards; opacity: 0; }
-                .anim-yaxis { animation: chartFadeIn 0.5s ease-out 0.5s forwards; opacity: 0; }
-                .rev-bars-ghost { animation: chartRiseUp 0.6s ease-out 0.2s forwards; clip-path: inset(100% 0 0 0); }
-                .rev-bars-krw { animation: chartRiseUp 0.9s ease-out 0.8s forwards; clip-path: inset(100% 0 0 0); }
-                .rev-bars-overseas { animation: chartRiseUp 0.9s ease-out 1.7s forwards; clip-path: inset(100% 0 0 0); }
-                .rev-bars-overseas-instant { animation: chartRiseUp 0.9s ease-out 1.7s forwards; clip-path: inset(100% 0 0 0); }
-                .vis-bars-ghost { clip-path: inset(0 0 0 0); fill: #f3f4f6; }
-                .vis-bars-krw { clip-path: inset(0 0 0 0); fill: #3b82f6; }
-                .vis-bars-overseas { clip-path: inset(0 0 0 0); fill: #f59e0b; }
-              `}</style>
-
-              <div 
-                key={`${selectedPeriod}-${selectedYear}`}
-                className="h-[300px] min-w-0"
-                style={{ 
-                  opacity: isChanging ? 0 : 1,
-                  transition: isChanging ? 'none' : 'opacity 0.2s ease-in'
-                }}
-              >
-                {chartReady ? (
-                  <ResponsiveContainer width="100%" height={300} minWidth={0}>
-                    <BarChart 
-                      data={filteredChartData} 
-                      barCategoryGap={filteredChartData.length > 80 ? "6%" : filteredChartData.length > 48 ? "10%" : filteredChartData.length > 24 ? "18%" : "25%"}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <Legend 
-                        verticalAlign="top" 
-                        align="right" 
-                        iconType="circle" 
-                        wrapperStyle={{ paddingBottom: '20px', fontSize: '12px', fontWeight: 'bold' }} 
-                      />
-                      <XAxis
-                        className="anim-xaxis"
-                        xAxisId="month"
-                        type={filteredChartData.length <= 1 ? "category" : "number"}
-                        dataKey={filteredChartData.length <= 1 ? "month" : "idx"}
-                        domain={filteredChartData.length <= 1 ? undefined : [-0.5, filteredChartData.length - 0.5]}
-                        ticks={filteredChartData.length <= 1 ? undefined : filteredChartData.map(d => d.idx)}
-                        axisLine={false}
-                        tickLine={false}
-                        interval={0}
-                        tick={(props) => {
-                          const { x, y, payload } = props;
-                          const idx = payload.value;
-                          const current = filteredChartData[idx];
-                          if (!current) return null;
-                          const [year, month] = current.month.split('.');
-                          const yearGroup = filteredChartData.filter(d => d.month.split('.')[0] === year);
-                          const midIdx = Math.floor((yearGroup[0].idx + yearGroup[yearGroup.length - 1].idx) / 2);
-                          const showYear = idx === midIdx;
-
-                          // 밀집도에 따른 월 표시 (가독성 보호: 10년 120개 조회 시 6/12월, 5년 60개 조회 시 분기별)
-                          const totalBars = filteredChartData.length;
-                          const mNum = parseInt(month, 10);
-                          const isDense = totalBars > 24;
-                          const isVeryDense = totalBars > 48;
-                          const isUltraDense = totalBars > 80;
-                          const showMonthLabel = isUltraDense
-                            ? (mNum === 6 || mNum === 12)
-                            : isVeryDense
-                              ? (mNum === 3 || mNum === 6 || mNum === 9 || mNum === 12)
-                              : isDense
-                                ? (mNum % 2 === 1 || mNum === 12)
-                                : true;
-
-                          return (
-                            <g transform={`translate(${x},${y})`}>
-                              {showMonthLabel && (
-                                <text x={0} y={15} textAnchor="middle" fill="#64748b" fontSize={isDense ? 10 : 12} fontWeight={500}>
-                                  {`${mNum}월`}
-                                </text>
-                              )}
-                              {showYear && (
-                                <text x={0} y={42} textAnchor="middle" fill="#334155" fontSize={13} fontWeight="bold">
-                                  {`20${year}년`}
-                                </text>
-                              )}
-                            </g>
-                          );
-                        }}
-                        height={50}
-                      />
-                      <YAxis
-                        className="anim-yaxis"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#64748b', fontSize: 13, fontWeight: 500 }}
-                        tickFormatter={(v) => v >= 10000 ? `${v / 10000}만` : v}
-                      />
-                      <Tooltip
-                        cursor={{ fill: '#f8fafc' }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            const hasKRW = data.KRW > 0;
-                            const hasOVERSEAS = data.OVERSEAS > 0;
-                            
-                            return (
-                              <div className="bg-white/90 backdrop-blur-md p-4 border border-slate-100 rounded-2xl shadow-xl min-w-[200px]">
-                                <p className="text-sm font-black text-slate-800 mb-3 border-b border-slate-100 pb-2 flex items-center gap-2">
-                                  <Calendar size={14} className="text-brand stroke-[3px]" />
-                                  {(() => {
-                                    const [y, m] = data.month.split('.');
-                                    return `${y}년 ${parseInt(m)}월`;
-                                  })()}
-                                </p>
-                                <div className="space-y-2 mb-3">
-                                  {hasKRW && (
-                                    <div className="flex justify-between items-center gap-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#3b82f6' }}></div>
-                                        <span className="text-xs font-bold text-slate-600">국내</span>
-                                      </div>
-                                      <span className="text-sm font-black text-slate-800">{formatCurrency(data.KRW)}</span>
-                                    </div>
-                                  )}
-                                  {hasOVERSEAS && (
-                                    <div className="flex justify-between items-center gap-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#f59e0b' }}></div>
-                                        <span className="text-xs font-bold text-slate-600">해외</span>
-                                      </div>
-                                      <span className="text-sm font-black text-slate-800">{formatCurrency(data.OVERSEAS)}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-                                  <span className="text-xs font-bold text-slate-500">월 총합</span>
-                                  <span className="text-base font-black text-brand-dark">{formatCurrency(data.total)}</span>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      {filteredChartData.map((d, idx) => {
-                        if (idx > 0 && d.month.split('.')[0] !== filteredChartData[idx - 1].month.split('.')[0]) {
-                          return (
-                            <ReferenceLine
-                              xAxisId="month"
-                              key={`ref-${idx}`}
-                              x={idx - 0.5}
-                              stroke="#94a3b8"
-                              strokeWidth={1}
-                              strokeDasharray="4 4"
-                            />
-                          );
-                        }
-                        return null;
-                      })}
-                      <Bar name="국내" dataKey="KRW" fill="#3b82f6" barSize={0} opacity={0} isAnimationActive={false} />
-                      <Bar name="해외" dataKey="OVERSEAS" fill="#f59e0b" barSize={0} opacity={0} isAnimationActive={false} />
-
-                      <Bar 
-                        xAxisId="month" 
-                        dataKey="total" 
-                        isAnimationActive={false}
-                        legendType="none"
-                        shape={(props) => {
-                          const { x, y, width, height, payload } = props;
-                          if (!payload || payload.total <= 0) return null;
-
-                          const krwH = (payload.KRW / payload.total) * height || 0;
-                          const overseasH = (payload.OVERSEAS / payload.total) * height || 0;
-                          const hasKRW = payload.KRW > 0;
-                          
-                          return (
-                            <g>
-                              <rect 
-                                className={isRevealing ? "rev-bars-ghost" : "vis-bars-ghost"}
-                                x={x} y={y} 
-                                width={width} height={height} 
-                                fill="#f3f4f6" rx={4} ry={4}
-                              />
-                              {payload.KRW > 0 && (
-                                <rect 
-                                  className={isRevealing ? "rev-bars-krw" : "vis-bars-krw"}
-                                  x={x} y={y + (height - krwH)} 
-                                  width={width} height={krwH + 0.5} 
-                                  fill="#3b82f6"
-                                />
-                              )}
-                              {payload.OVERSEAS > 0 && (
-                                <rect 
-                                  className={isRevealing ? (hasKRW ? "rev-bars-overseas" : "rev-bars-overseas-instant") : "vis-bars-overseas"}
-                                  x={x} y={y + (height - krwH - overseasH)} 
-                                  width={width} height={overseasH} 
-                                  fill="#f59e0b" 
-                                />
-                              )}
-                            </g>
-                          );
-                        }}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="w-full h-[300px] flex items-center justify-center">
-                    <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Bar Chart Section */}
+            <DividendChartSection
+              filteredChartData={filteredChartData}
+              selectedPeriod={selectedPeriod}
+              selectedYear={selectedYear}
+              filteredChartTotal={filteredChartTotal}
+              onPeriodChange={handlePeriodChange}
+            />
 
             {/* 카드형 헤더 및 연도 선택 섹션 */}
             <div className="flex justify-between items-center mb-6">
@@ -1010,7 +1047,7 @@ export default function DividendsPage() {
                       {monthModalData.mNum}월 배당 종목
                     </h3>
                     <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
-                      {monthModalData.items.length}개 종목
+                      {monthModalData.items.length}종목
                     </span>
                   </div>
                 </div>
@@ -1238,7 +1275,7 @@ export default function DividendsPage() {
                             <div className="flex items-center gap-2">
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
                               <span className="text-base font-black text-slate-800 tracking-tight">{m.mNum}월</span>
-                              <span className="text-xs font-bold text-slate-500">{m.items.length}개 종목</span>
+                              <span className="text-xs font-bold text-slate-500">{m.items.length}종목</span>
                             </div>
                             <div className="flex items-baseline gap-1">
                               <span className="text-[11px] font-bold text-slate-400">합계</span>

@@ -55,8 +55,6 @@ export default function TopNav({ onMenuClick }) {
             <TrendingUp size={16} />
             <span className="whitespace-nowrap text-sm">FINANCE BOARD</span>
           </div>
-
-          <div className="h-5 w-px bg-slate-200 mx-1 shrink-0 desktop-only"></div>
         </div>
 
         {/* 우측: 인증 버튼 + 자산요약(데스크톱만) */}
@@ -121,7 +119,7 @@ export default function TopNav({ onMenuClick }) {
                   )}
                 </div>
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-sm shrink-0 ${summary.totalProfit > 0 ? 'bg-red-50 text-red-600 border-red-100' : (summary.totalProfit < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-200')}`}>
-                  <span>수익 <span className="font-bold ml-1">{formatCurrency(summary.totalProfit)} ({summary.avgProfitRate.toFixed(2)}%)</span></span>
+                  <span>손익 <span className="font-bold ml-1">{formatCurrency(summary.totalProfit)} ({summary.avgProfitRate.toFixed(2)}%)</span></span>
                 </div>
               </>
             )}
