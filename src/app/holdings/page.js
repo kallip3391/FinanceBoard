@@ -1,9 +1,24 @@
 "use client";
 
-import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
-import { LayoutDashboard, List, Globe, LayoutList, PieChart as PieChartIcon } from "lucide-react";
+import {
+  LayoutDashboard,
+  List,
+  Globe,
+  LayoutList,
+  PieChart as PieChartIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronDown,
+  ArrowUpDown,
+  Check,
+  Coins,
+  Wallet
+} from "lucide-react";
 import MobileDashboard from "@/app/components/mobile/MobileDashboard";
 import {
   AreaChart,
@@ -19,6 +34,140 @@ import {
   ReferenceLine
 } from "recharts";
 
+// ── 종목 로고 컴포넌트 ──
+function StockLogo({ code, name, isKRW }) {
+  const [hasError, setHasError] = useState(false);
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+
+  const isETF = (name || '').toUpperCase().includes('ETF') ||
+                /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
+
+  if (!logoUrl || hasError) {
+    const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
+
+    return (
+      <div
+        className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold shrink-0 ${
+          isETF
+            ? 'bg-purple-100 text-purple-700 text-[10px]'
+            : isKRW
+              ? 'bg-blue-100/80 text-blue-600 text-xs'
+              : 'bg-amber-100/80 text-amber-700 text-xs'
+        }`}
+      >
+        {displayText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center bg-slate-100/60">
+      <img
+        src={logoUrl}
+        alt={name || cleanCode}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-lg"
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+const formatStockCode = (code) => {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(6, "0");
+  }
+  return str;
+};
+
+const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
+  if (val === undefined || val === null || isNaN(val)) return '-';
+  const num = Number(val);
+  const sym = currency === 'USD' ? '$' : (currency === 'EUR' ? '€' : (currency === 'JPY' ? '¥' : '$'));
+  const isPos = num > 0;
+  const isNeg = num < 0;
+  const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (showSign) {
+    if (isPos) return `+${sym} ${absNum}`;
+    if (isNeg) return `-${sym} ${absNum}`;
+    return `${sym} 0.00`;
+  }
+  return `${sym} ${absNum}`;
+};
+
+// ── 상단 요약 카드 숫자 롤링 카운터 (배당금/매매손익 차트와 동일한 easeOutQuart 800ms 효과) ──
+function AnimatedTradeCounter({
+  value,
+  isForeign = false,
+  showSign = false,
+  duration = 800
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+  const prevIsForeignRef = useRef(isForeign);
+
+  useEffect(() => {
+    const endVal = Number(value) || 0;
+    // 통화 단위가 변경된 경우(KRW <-> USD) 0부터 롤링 시작
+    const startVal = prevIsForeignRef.current !== isForeign
+      ? 0
+      : (Number(prevValueRef.current) || 0);
+
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const current = startVal + (endVal - startVal) * easeProgress;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endVal);
+        prevValueRef.current = endVal;
+        prevIsForeignRef.current = isForeign;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [value, isForeign, duration]);
+
+  const safeVal = Number.isFinite(displayValue) ? displayValue : (Number(value) || 0);
+
+  if (isForeign) {
+    return <>{formatForeignAmount(safeVal, 'USD', showSign)}</>;
+  }
+
+  const rounded = Math.round(safeVal);
+  return (
+    <>
+      {showSign && rounded > 0 ? '+' : ''}
+      {new Intl.NumberFormat('ko-KR').format(rounded)}
+    </>
+  );
+}
+
+const SORT_OPTIONS = [
+  { value: "region", label: "지역순" },
+  { value: "totalProfit_desc", label: "총손익 높은순" },
+  { value: "totalProfit_asc", label: "총손익 낮은순" },
+  { value: "profit_desc", label: "평가손익 높은순" },
+  { value: "profit_asc", label: "평가손익 낮은순" },
+  { value: "rate_desc", label: "수익률 높은순" },
+  { value: "rate_asc", label: "수익률 낮은순" },
+  { value: "eval_desc", label: "평가금액 높은순" },
+  { value: "name_asc", label: "종목명 가나다순" },
+];
+
 const emptySubscribe = () => () => {};
 
 export default function HoldingsPage() {
@@ -26,14 +175,40 @@ export default function HoldingsPage() {
   const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData, domesticTransactions, overseasTransactions } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
+  const [holdingTab, setHoldingTab] = useState("stock"); // "stock" | "account"
   const [stockViewMode, setStockViewMode] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("stockViewMode") || "card" : "card"));
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [chartReady, setChartReady] = useState(false);
   const [currentStockPage, setCurrentStockPage] = useState(1);
-  const [currentAccPage, setCurrentAccPage] = useState(1);
   const [loadedPeriods, setLoadedPeriods] = useState(new Set(['3개월', '6개월', '1년', '3년']));
+  const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
+  const [sortBy, setSortBy] = useState("region");
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
+
   const STOCKS_PER_PAGE = 6;
-  const LIST_PER_PAGE = 8;
+  const LIST_PER_PAGE = 9;
+
+  // 드롭다운 외부 클릭 및 ESC 키 처리
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && isSortDropdownOpen) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSortDropdownOpen]);
 
   // 컴포넌트 마운트 후 레이아웃 안정화 시점에 차트 렌더링 활성화 (ResponsiveContainer 크기 계산 오류 방지)
   useEffect(() => {
@@ -43,23 +218,10 @@ export default function HoldingsPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 계좌별 합계 계산
-  const accountHoldings = selectedAccount ? (holdingsByAccount[selectedAccount] || []) : [];
-  const accSummary = accountHoldings.reduce((acc, h) => {
-    acc.totalEval += h.evaluationAmountKRW;
-    acc.totalCost += h.totalCostKRW;
-    acc.totalDiv += h.dividend;
-    return acc;
-  }, { totalEval: 0, totalCost: 0, totalDiv: 0 });
-  const accProfit = accSummary.totalEval - accSummary.totalCost;
-  const accProfitRate = accSummary.totalCost > 0 ? (accSummary.totalEval / accSummary.totalCost - 1) * 100 : 0;
-  const accTotalReturn = accSummary.totalCost > 0 ? ((accSummary.totalEval + accSummary.totalDiv) / accSummary.totalCost - 1) * 100 : 0;
-
   useEffect(() => {
     if (isClient) {
       localStorage.setItem('stockViewMode', stockViewMode);
       setCurrentStockPage(1);
-      setCurrentAccPage(1);
     }
   }, [stockViewMode, isClient]);
 
@@ -70,13 +232,125 @@ export default function HoldingsPage() {
     }
   }, [user]);
 
+  // 종목별 / 계좌별 보유현황 필터 & 정렬 & 페이지네이션 계산
+  const filteredHoldings = useMemo(() => {
+    let list = holdingTab === "account"
+      ? (selectedAccount ? (holdingsByAccount[selectedAccount] || []) : [])
+      : (holdings || []);
+
+    if (currencyFilter === "KRW") {
+      list = list.filter(h => h.currency === "KRW");
+    } else if (currencyFilter === "OVERSEAS") {
+      list = list.filter(h => h.currency !== "KRW");
+    }
+    return list;
+  }, [holdingTab, holdings, holdingsByAccount, selectedAccount, currencyFilter]);
+
+  const holdingsSummary = useMemo(() => {
+    let totalEvalKRW = 0;
+    let totalCostKRW = 0;
+    let totalProfitKRW = 0;
+    let totalDivKRW = 0;
+
+    let foreignTotalProfitUSD = 0;
+    let foreignDivUSD = 0;
+    let foreignCostUSD = 0;
+    let foreignEvalUSD = 0;
+
+    filteredHoldings.forEach(h => {
+      totalEvalKRW += (h.evaluationAmountKRW || 0);
+      totalCostKRW += (h.totalCostKRW || 0);
+      totalProfitKRW += (h.profitAmountKRW || 0);
+      totalDivKRW += (h.dividend || 0);
+
+      if (h.currency !== 'KRW') {
+        const curPrice = h.currentPrice || h.purchasePrice || 0;
+        const buyPrice = h.purchasePrice || 0;
+        const qty = h.totalQuantity || 0;
+        const costUSD = buyPrice * qty;
+        const evalUSD = curPrice * qty;
+        const profitUSD = evalUSD - costUSD;
+        foreignCostUSD += costUSD;
+        foreignEvalUSD += evalUSD;
+        foreignTotalProfitUSD += profitUSD;
+        foreignDivUSD += (h.foreignDividend || 0);
+      }
+    });
+
+    const isOverseas = currencyFilter === "OVERSEAS";
+
+    const totalProfitRate = totalCostKRW > 0 ? (totalProfitKRW / totalCostKRW) * 100 : 0;
+    const totalReturnRate = totalCostKRW > 0 ? ((totalProfitKRW + totalDivKRW) / totalCostKRW) * 100 : 0;
+
+    const foreignProfitRate = foreignCostUSD > 0 ? (foreignTotalProfitUSD / foreignCostUSD) * 100 : 0;
+    const foreignReturnRate = foreignCostUSD > 0 ? ((foreignTotalProfitUSD + foreignDivUSD) / foreignCostUSD) * 100 : 0;
+
+    return {
+      count: filteredHoldings.length,
+      totalEvalKRW,
+      totalCostKRW,
+      totalProfitKRW,
+      totalDivKRW,
+      totalSumProfitKRW: totalProfitKRW + totalDivKRW,
+      totalProfitRate,
+      totalReturnRate,
+      foreignCostUSD,
+      foreignEvalUSD,
+      foreignProfitUSD: foreignTotalProfitUSD,
+      foreignDivUSD,
+      foreignSumProfitUSD: foreignTotalProfitUSD + foreignDivUSD,
+      foreignProfitRate,
+      foreignReturnRate,
+      isOverseas
+    };
+  }, [filteredHoldings, currencyFilter]);
+
+  const sortedHoldings = useMemo(() => {
+    let list = [...filteredHoldings];
+    list.sort((a, b) => {
+      const aTotalProfit = (a.profitAmountKRW || 0) + (a.dividend || 0);
+      const bTotalProfit = (b.profitAmountKRW || 0) + (b.dividend || 0);
+      const aRate = parseFloat(a.returnRate) || 0;
+      const bRate = parseFloat(b.returnRate) || 0;
+
+      if (sortBy === "region") {
+        const aIsKRW = a.currency === "KRW" ? 0 : 1;
+        const bIsKRW = b.currency === "KRW" ? 0 : 1;
+        if (aIsKRW !== bIsKRW) {
+          return aIsKRW - bIsKRW; // 국내(KRW) 우선, 해외 나중
+        }
+        return bTotalProfit - aTotalProfit; // 동일 지역 내 총손익 높은순
+      }
+      if (sortBy === "totalProfit_desc") return bTotalProfit - aTotalProfit;
+      if (sortBy === "totalProfit_asc") return aTotalProfit - bTotalProfit;
+      if (sortBy === "profit_desc") return (b.profitAmountKRW || 0) - (a.profitAmountKRW || 0);
+      if (sortBy === "profit_asc") return (a.profitAmountKRW || 0) - (b.profitAmountKRW || 0);
+      if (sortBy === "rate_desc") return bRate - aRate;
+      if (sortBy === "rate_asc") return aRate - bRate;
+      if (sortBy === "eval_desc") return (b.evaluationAmountKRW || 0) - (a.evaluationAmountKRW || 0);
+      if (sortBy === "name_asc") return (a.name || "").localeCompare(b.name || "", 'ko');
+      return 0;
+    });
+    return list;
+  }, [filteredHoldings, sortBy]);
+
+  const ITEMS_PER_PAGE = stockViewMode === 'card' ? STOCKS_PER_PAGE : LIST_PER_PAGE;
+  const totalStockPages = Math.max(1, Math.ceil(sortedHoldings.length / ITEMS_PER_PAGE));
+  const paginatedHoldings = useMemo(() => {
+    const start = (currentStockPage - 1) * ITEMS_PER_PAGE;
+    return sortedHoldings.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedHoldings, currentStockPage, ITEMS_PER_PAGE]);
+
+  useEffect(() => {
+    setCurrentStockPage(1);
+  }, [currencyFilter, sortBy, stockViewMode, holdingTab, selectedAccount]);
+
   // 대시보드 진입 시 별도의 refreshAssets() 호출 불필요 (이미 Context에서 처리됨)
 
   useEffect(() => {
     if (Object.keys(holdingsByAccount || {}).length > 0 && (!selectedAccount || !holdingsByAccount[selectedAccount])) {
       setSelectedAccount(Object.keys(holdingsByAccount)[0]);
     }
-    setCurrentAccPage(1);
   }, [holdingsByAccount, selectedAccount]);
 
   // 기간 변경 시 필요한 데이터 추가 로드 (하이브리드 방식)
@@ -122,7 +396,6 @@ export default function HoldingsPage() {
   
   // 최초 로딩이거나 DB 조회 후 로딩 완료된 시점에는 '그리기' 방식(Key 변경), 그 외에는 '모핑' 방식(Key 고정)
   const topChartKey = isFirstLoad && isTrendLoading ? 'loading' : (isFirstLoad ? `draw-${selectedPeriod}` : 'cached');
-  const animDuration = isFirstLoad ? (isLongPeriod ? 2000 : 2000) : 2000;
 
   const sectorData = useMemo(() => {
     return holdings.reduce((acc, h) => {
@@ -309,6 +582,7 @@ export default function HoldingsPage() {
           { date: todayStr, invest: cost, eval: evalAmt, profitRate: rate }
         ];
       } else {
+        // eslint-disable-next-line react-hooks/purity
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         effectiveTrendData = [
           { date: yesterday, invest: cost, eval: cost, profitRate: 0 },
@@ -392,7 +666,7 @@ export default function HoldingsPage() {
     const lastIdx = finalChartData.length - 1;
 
     finalChartData.forEach((d, idx) => {
-      const [y, m, day] = d.date.split('-').map(Number);
+      const [, m, day] = d.date.split('-').map(Number);
       
       let isVisible = false;
       switch (selectedPeriod) {
@@ -494,7 +768,6 @@ export default function HoldingsPage() {
     if (active && payload && payload.length) {
       const orderConfig = { "투자금액": 1, "평가금액": 2, "수익": 3 };
       const sortedPayload = [...payload].sort((a, b) => (orderConfig[a.name] || 99) - (orderConfig[b.name] || 99));
-      const profitEntry = sortedPayload.find(p => p.name === "수익" && p.payload);
       
       return (
         <div className="bg-white/90 backdrop-blur-md p-3 border border-slate-100 rounded-xl shadow-xl min-w-[180px]">
@@ -502,7 +775,7 @@ export default function HoldingsPage() {
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
           </div>
           <div className="space-y-1.5">
-            {payload.map((entry, index) => (
+            {sortedPayload.map((entry, index) => (
               <div key={index} className="flex items-center justify-between gap-8">
                 <div className="flex items-center gap-2.5">
                   <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: entry.color }}></div>
@@ -815,155 +1088,711 @@ export default function HoldingsPage() {
       )}
 
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-6">
-          <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">종목별 보유현황</h2>
-          {user && (
-            <div className="flex gap-2">
-              <button onClick={() => setStockViewMode("card")} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${stockViewMode === 'card' ? 'bg-brand text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 shadow-sm'}`}><LayoutDashboard size={16} /> 카드형</button>
-              <button onClick={() => setStockViewMode("table")} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${stockViewMode === 'table' ? 'bg-brand text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 shadow-sm'}`}><List size={16} /> 리스트형</button>
-            </div>
-          )}
+        {/* Header Section */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">
+            {holdingTab === "account" ? "계좌별 보유현황" : "종목별 보유현황"}
+          </h2>
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => {
+                setHoldingTab("stock");
+                setCurrentStockPage(1);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                holdingTab === "stock"
+                  ? "bg-white text-slate-800 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              종목별
+            </button>
+            <button
+              onClick={() => {
+                setHoldingTab("account");
+                setCurrentStockPage(1);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                holdingTab === "account"
+                  ? "bg-white text-slate-800 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              계좌별
+            </button>
+          </div>
         </div>
 
-        <div className="glass-card p-6">
-          {stockViewMode === "card" ? (
-            <div className="flex flex-col gap-6">
-              {user && summary.totalEvaluation > 0 && (
-                <div className="bg-brand/5 p-5 rounded-2xl border-2 border-brand/20 shadow-sm animate-summary-pop">
-                  <div className="flex items-center justify-between mb-4 border-b border-brand/10 pb-2"><span className="text-brand font-bold uppercase tracking-wider text-lg">현황</span></div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div className="flex flex-col items-center">
-                      <div className="text-sm text-slate-500 mb-1">평가액</div>
-                      <div className="inline-flex flex-col items-end">
-                        <div className="text-[21px] font-black tabular-nums text-slate-900">{formatCurrency(summary.totalEvaluation, 'KRW')}</div>
-                        <div className={`text-[15px] font-black tabular-nums ${summary.totalProfit > 0 ? "text-red-500" : "text-blue-500"}`}>({formatCurrency(summary.totalProfit, 'KRW')})</div>
-                      </div>
-                    </div>
-                    <div><div className="text-sm text-slate-500 mb-1">수익률</div><div className={`text-xl font-black ${(summary?.avgProfitRate || 0) > 0 ? "text-red-600" : "text-blue-600"}`}>{(summary?.avgProfitRate ?? 0).toFixed(2)}%</div></div>
-                    <div><div className="text-sm text-slate-500 mb-1">배당금</div><div className="text-xl font-black text-emerald-600">{formatCurrency(summary?.totalDividend ?? 0, 'KRW')}</div></div>
-                    <div><div className="text-sm text-slate-500 mb-1">총 수익률</div><div className={`text-xl font-black ${(summary?.avgTotalReturn || 0) > 0 ? "text-red-600" : "text-blue-600"}`}>{(summary?.avgTotalReturn ?? 0).toFixed(2)}%</div></div>
+        {/* 상단 4대 핵심 요약 카드 (통합 합계) */}
+        {user && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+            {/* 1. 총 손익 (손익 + 배당) */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-slate-500">총 손익</span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                  (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) > 0 
+                    ? 'bg-red-50 text-red-600' 
+                    : (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) < 0 
+                      ? 'bg-blue-50 text-blue-600' 
+                      : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {(holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) > 0 ? '+' : ''}
+                  {(holdingsSummary.isOverseas ? holdingsSummary.foreignReturnRate : holdingsSummary.totalReturnRate).toFixed(2)}%
+                </span>
+              </div>
+              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
+                  (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) > 0 
+                    ? 'text-red-600' 
+                    : (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) < 0 
+                      ? 'text-blue-600' 
+                      : 'text-slate-800'
+                }`}>
+                  <AnimatedTradeCounter
+                    value={holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW}
+                    isForeign={holdingsSummary.isOverseas}
+                    showSign={true}
+                    duration={800}
+                  />
+                </span>
+                {!holdingsSummary.isOverseas && (
+                  <span className="text-xs font-bold text-slate-400">원</span>
+                )}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                <span>평가손익 + 배당금 합계</span>
+                <span className="font-semibold text-slate-500">총 수익률</span>
+              </div>
+              <div className={`absolute top-0 left-0 w-1 h-full ${
+                (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) > 0 
+                  ? 'bg-red-500' 
+                  : (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) < 0 
+                    ? 'bg-blue-500' 
+                    : 'bg-slate-300'
+              }`}></div>
+            </div>
+
+            {/* 2. 평가손익 */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-slate-500">평가손익</span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                  (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) > 0 
+                    ? 'bg-red-50 text-red-600' 
+                    : (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) < 0 
+                      ? 'bg-blue-50 text-blue-600' 
+                      : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {(holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) > 0 ? '+' : ''}
+                  {(holdingsSummary.isOverseas ? holdingsSummary.foreignProfitRate : holdingsSummary.totalProfitRate).toFixed(2)}%
+                </span>
+              </div>
+              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
+                  (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) > 0 
+                    ? 'text-red-600' 
+                    : (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) < 0 
+                      ? 'text-blue-600' 
+                      : 'text-slate-800'
+                }`}>
+                  <AnimatedTradeCounter
+                    value={holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW}
+                    isForeign={holdingsSummary.isOverseas}
+                    showSign={true}
+                    duration={800}
+                  />
+                </span>
+                {!holdingsSummary.isOverseas && (
+                  <span className="text-xs font-bold text-slate-400">원</span>
+                )}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                <span>평가금액 - 매수금액 합계</span>
+                <span className="font-semibold text-slate-500">수익률</span>
+              </div>
+              <div className={`absolute top-0 left-0 w-1 h-full ${
+                (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) > 0 
+                  ? 'bg-red-500' 
+                  : (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) < 0 
+                    ? 'bg-blue-500' 
+                    : 'bg-slate-300'
+              }`}></div>
+            </div>
+
+            {/* 3. 누적 배당금 */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-slate-500">누적 배당금</span>
+                <Coins size={16} className="text-emerald-500" />
+              </div>
+              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                <span className="text-2xl font-black text-emerald-600 tabular-nums tracking-tight cursor-default select-none">
+                  <AnimatedTradeCounter
+                    value={holdingsSummary.isOverseas ? holdingsSummary.foreignDivUSD : holdingsSummary.totalDivKRW}
+                    isForeign={holdingsSummary.isOverseas}
+                    showSign={true}
+                    duration={800}
+                  />
+                </span>
+                {!holdingsSummary.isOverseas && (
+                  <span className="text-xs font-bold text-slate-400">원</span>
+                )}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                <span>보유기간 배당금</span>
+                <span className="font-semibold text-slate-500">배당 수익</span>
+              </div>
+              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+            </div>
+
+            {/* 4. 총 매수금액 */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-xs font-bold text-slate-500">총 매수금액</span>
+                <Wallet size={16} className="text-slate-400" />
+              </div>
+              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                <span className="text-2xl font-black text-slate-800 tabular-nums tracking-tight cursor-default select-none">
+                  <AnimatedTradeCounter
+                    value={holdingsSummary.isOverseas ? holdingsSummary.foreignCostUSD : holdingsSummary.totalCostKRW}
+                    isForeign={holdingsSummary.isOverseas}
+                    showSign={false}
+                    duration={800}
+                  />
+                </span>
+                {!holdingsSummary.isOverseas && (
+                  <span className="text-xs font-bold text-slate-400">원</span>
+                )}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                <span>수량 × 평균매수가 합계</span>
+                <span className="font-semibold text-slate-500">투자원금</span>
+              </div>
+              <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
+            </div>
+          </div>
+        )}
+
+        {/* 컨트롤 & 필터 바 */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-1">
+          {/* 좌측: 카드형 / 리스트형 뷰모드 토글 */}
+          <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
+            <button
+              onClick={() => setStockViewMode("card")}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                stockViewMode === 'card' 
+                  ? 'bg-white text-slate-800 shadow-xs' 
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <LayoutDashboard size={14} />
+              <span>카드형</span>
+            </button>
+            <button
+              onClick={() => setStockViewMode("table")}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                stockViewMode === 'table' 
+                  ? 'bg-white text-slate-800 shadow-xs' 
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <List size={14} />
+              <span>리스트형</span>
+            </button>
+          </div>
+
+          {/* 중간: 계좌 목록 (계좌별 탭 선택 시 노출) */}
+          {holdingTab === "account" && Object.keys(holdingsByAccount || {}).length > 0 && (
+            <div className="flex bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
+              {Object.keys(holdingsByAccount).map((acc) => (
+                <button
+                  key={acc}
+                  onClick={() => {
+                    setSelectedAccount(acc);
+                    setCurrentStockPage(1);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    selectedAccount === acc
+                      ? 'bg-white text-slate-800 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {acc}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 우측: 전체/국내/해외 탭 + 정렬 드롭다운 */}
+          <div className="flex items-center gap-3 w-full md:w-auto justify-end shrink-0">
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setCurrencyFilter("ALL")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                전체
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("KRW")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
+                }`}
+              >
+                국내
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("OVERSEAS")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
+                }`}
+              >
+                해외
+              </button>
+            </div>
+
+            {/* 정렬 드롭다운 */}
+            <div className="relative" ref={sortDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsSortDropdownOpen((prev) => !prev)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs select-none ${
+                  isSortDropdownOpen
+                    ? 'bg-blue-50/50 border-brand ring-2 ring-brand/10 text-brand shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60 hover:text-slate-900'
+                }`}
+              >
+                <ArrowUpDown size={13} className={isSortDropdownOpen ? 'text-brand' : 'text-slate-400'} />
+                <span className="tracking-tight">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label || "정렬 기준"}</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${
+                    isSortDropdownOpen ? 'rotate-180 text-brand' : 'text-slate-400'
+                  }`}
+                />
+              </button>
+
+              {isSortDropdownOpen && (
+                <div className="absolute top-full right-0 mt-2 w-44 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
+                  <div className="space-y-0.5">
+                    {SORT_OPTIONS.map((opt) => {
+                      const isSelected = sortBy === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setSortBy(opt.value);
+                            setIsSortDropdownOpen(false);
+                          }}
+                          className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all text-left flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-brand/10 text-brand font-black'
+                              : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {isSelected && <Check size={14} className="text-brand shrink-0" strokeWidth={2.5} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
-              <div key={`stock-grid-${currentStockPage}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {holdings.slice((currentStockPage - 1) * STOCKS_PER_PAGE, currentStockPage * STOCKS_PER_PAGE).map((h, i) => {
-                  const s = getCurrencyStyle(h.currency);
-                  return (
-                    <div key={i} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[210px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
-                      <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
-                      <div className="flex justify-between items-start gap-4">
-                         <div className="flex-1 min-w-0 flex items-start gap-2">
-                           <span className={`shrink-0 mt-0.5 text-[10px] font-black px-1.5 py-0.5 rounded ${s.light} ${s.text}`}>{h.currency}</span>
-                           <div className="flex-1 min-w-0">
-                             <div className="font-bold text-slate-800 truncate mb-0.5">{h.name}</div>
-                             <div className="text-[12px] text-slate-400 font-mono truncate">{h.code}</div>
-                           </div>
-                         </div>
-                         <div className="text-right shrink-0">
-                           <div className="text-lg font-bold text-slate-800 whitespace-nowrap">{h.currentPrice ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}` : '-'}</div><div className="text-xs text-slate-500">현재가</div>
-                         </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div>
-                        <div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div>
-                        <div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {(() => {
-                  const cnt = holdings.slice((currentStockPage - 1) * STOCKS_PER_PAGE, currentStockPage * STOCKS_PER_PAGE).length;
-                  if (cnt > 0 && cnt < STOCKS_PER_PAGE) return [...Array(STOCKS_PER_PAGE - cnt)].map((_, i) => <div key={i} className={`relative bg-white rounded-2xl border border-slate-200 h-[210px] opacity-0 animate-page-slide stagger-${cnt + i + 1} overflow-hidden`}><div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-300"></div></div>);
-                  return null;
-                })()}
-              </div>
-              {holdings.length > STOCKS_PER_PAGE && (
-                <div className="flex items-center justify-center gap-6 mt-2">
-                  <button onClick={() => setCurrentStockPage(p => Math.max(1, p - 1))} disabled={currentStockPage === 1} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentStockPage === 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-                  <div className="flex items-center gap-1.5 font-bold"><span className="text-brand">{currentStockPage}</span><span className="text-slate-300">/</span><span className="text-slate-400">{Math.ceil(holdings.length / STOCKS_PER_PAGE)}</span></div>
-                  <button onClick={() => setCurrentStockPage(p => Math.min(Math.ceil(holdings.length / STOCKS_PER_PAGE), p + 1))} disabled={currentStockPage >= Math.ceil(holdings.length / STOCKS_PER_PAGE)} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentStockPage >= Math.ceil(holdings.length / STOCKS_PER_PAGE) ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
-                </div>
-              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white">
-              <table className="w-full border-collapse">
-                <thead><tr className="bg-slate-50/50 border-b border-slate-200"><th className="px-4 py-4 text-center text-sm font-semibold text-slate-500 w-[300px]">종목명</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수량</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">매수가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">현재가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액&nbsp;&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액(원)&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수익률&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">배당금&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">총수익률&nbsp;</th></tr></thead>
-                <tbody key={`stock-list-${currentStockPage}`} className="divide-y divide-slate-50">
-                  {user && holdings.length > 0 && <tr className="bg-brand/5 border-b-2 border-brand/10 font-bold"><td colSpan="5" className="px-4 py-3 text-center text-sm text-brand">합계</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-[15px] font-bold tabular-nums text-slate-900">{formatCurrency(summary?.totalEvaluation ?? 0, 'KRW')}</span><span className={`text-[12px] mt-0.5 tabular-nums font-bold ${(summary?.totalProfit || 0) > 0 ? "text-red-500" : (((summary?.totalProfit || 0) < 0) ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(summary?.totalProfit ?? 0, 'KRW')})</span></div></td><td className={`px-3 py-3 text-right text-sm ${(summary?.avgProfitRate || 0) > 0 ? "text-red-600" : (((summary?.avgProfitRate || 0) < 0) ? "text-blue-600" : "text-slate-400")}`}>{(summary?.avgProfitRate ?? 0).toFixed(2)}%</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700">{formatCurrency(summary?.totalDividend ?? 0, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm ${(summary?.avgTotalReturn || 0) > 0 ? "text-red-600" : (((summary?.avgTotalReturn || 0) < 0) ? "text-blue-600" : "text-slate-400")}`}>{(summary?.avgTotalReturn ?? 0).toFixed(2)}%</td></tr>}
-                  {holdings.slice((currentStockPage - 1) * LIST_PER_PAGE, currentStockPage * LIST_PER_PAGE).map((h, i) => (
-                    <tr key={i} className={`h-[70px] hover:bg-slate-50/80 transition-colors opacity-0 animate-row-fade stagger-${i + 1}`}><td className="px-4 py-2"><div className="flex items-center gap-2 min-h-[52px]"><div className={`w-[2px] h-9 rounded-full flex-shrink-0 ${getCurrencyStyle(h.currency).accent}`}></div><div className="flex flex-col justify-center min-w-0 max-w-[280px]"><span className="text-sm text-slate-900 font-semibold leading-tight line-clamp-2 break-all">{h.name}</span><span className="text-[12px] text-slate-400 font-mono mt-0.5 truncate">{h.code}</span></div></div></td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{formatCurrency(h.totalQuantity, 'QTY')}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.currentPrice || h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{(h.totalQuantity * (h.currentPrice || h.purchasePrice)) > 0 ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.totalQuantity * (h.currentPrice || h.purchasePrice), h.currency)}` : '-'}</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-sm font-bold tabular-nums text-slate-900">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</span>{h.evaluationAmountKRW > 0 && <span className={`text-[11px] tabular-nums font-bold ${h.profitAmountKRW > 0 ? "text-red-500" : (h.profitAmountKRW < 0 ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(h.profitAmountKRW, 'KRW')})</span>}</div></td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.returnRate) > 0 ? "text-red-600" : (parseFloat(h.returnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.returnRate) === 0 ? "0.00%" : `${parseFloat(h.returnRate).toFixed(2)}%`}</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(h.dividend, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.totalReturnRate) > 0 ? "text-red-600" : (parseFloat(h.totalReturnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.totalReturnRate) === 0 ? "0.00%" : `${parseFloat(h.totalReturnRate).toFixed(2)}%`}</td></tr>
+          </div>
+        </div>
+
+        {/* 메인 뷰: 카드형 / 리스트형 */}
+        {stockViewMode === "card" ? (
+          <div className="flex flex-col gap-6">
+            <div key={`stock-grid-${holdingTab}-${selectedAccount}-${currentStockPage}-${currencyFilter}-${sortBy}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {paginatedHoldings.map((h, i) => {
+                const s = getCurrencyStyle(h.currency);
+                const isKRW = h.currency === 'KRW';
+                return (
+                  <div key={`stock-card-${h.code || ''}-${h.name || ''}-${i}`} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[210px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
+                    <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
+                    <div className="flex justify-between items-start gap-4">
+                       <div className="flex-1 min-w-0 flex items-start gap-2">
+                         <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
+                         <div className="flex-1 min-w-0">
+                           <div className="font-bold text-slate-800 truncate mb-0.5" title={h.name}>{h.name}</div>
+                           <div className="text-[12px] text-slate-400 font-mono truncate">{formatStockCode(h.code)}</div>
+                         </div>
+                       </div>
+                       <div className="text-right shrink-0">
+                         <div className="text-lg font-bold text-slate-800 whitespace-nowrap">{h.currentPrice ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}` : '-'}</div><div className="text-xs text-slate-500">현재가</div>
+                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div>
+                      <div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div>
+                      <div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 페이지네이션 */}
+            {totalStockPages > 1 && (
+              <div className="mt-1 flex items-center justify-center gap-2 select-none">
+                <button
+                  onClick={() => setCurrentStockPage(1)}
+                  disabled={currentStockPage === 1}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage === 1
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronsLeft size={18} />
+                </button>
+                <button
+                  onClick={() => setCurrentStockPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentStockPage === 1}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage === 1
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronLeft size={18} />
+                </button>
+
+                <div className="flex items-center gap-1.5 mx-1">
+                  {Array.from({ length: totalStockPages }, (_, idx) => idx + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentStockPage(pageNum)}
+                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                        currentStockPage === pageNum
+                          ? 'bg-brand text-white shadow-md shadow-brand/20'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
                   ))}
+                </div>
+
+                <button
+                  onClick={() => setCurrentStockPage(prev => Math.min(totalStockPages, prev + 1))}
+                  disabled={currentStockPage >= totalStockPages}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage >= totalStockPages
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronRight size={18} />
+                </button>
+                <button
+                  onClick={() => setCurrentStockPage(totalStockPages)}
+                  disabled={currentStockPage >= totalStockPages}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage >= totalStockPages
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronsRight size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-3">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                    <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">종목</th>
+                    <th className="px-4 py-4 text-center text-sm font-semibold text-slate-500">수량</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매수가</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">현재가</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평가손익</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">배당금</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">총 손익</th>
+                  </tr>
+                </thead>
+                <tbody key={`holdings-list-${holdingTab}-${selectedAccount}-${currentStockPage}-${currencyFilter}-${sortBy}`} className="divide-y divide-slate-50">
+                  {paginatedHoldings.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-6 py-16 text-center text-slate-400 text-sm font-medium">
+                        조회된 보유 종목이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedHoldings.map((h, i) => {
+                      const isKRW = h.currency === 'KRW';
+                      const showOverseasAmount = currencyFilter === "OVERSEAS";
+
+                      const buyPrice = Number(h.purchasePrice) || 0;
+                      const currentPrice = Number(h.currentPrice || h.purchasePrice) || 0;
+                      const qty = Number(h.totalQuantity) || 0;
+                      const exRate = Number(h.exchangeRate) || 1;
+
+                      // 원화 환산 가격
+                      const buyPriceKRW = Math.round(isKRW ? buyPrice : buyPrice * exRate);
+                      const currentPriceKRW = Math.round(isKRW ? currentPrice : currentPrice * exRate);
+
+                      // 외화 손익 계산
+                      const foreignCost = buyPrice * qty;
+                      const foreignEval = currentPrice * qty;
+                      const foreignProfit = foreignEval - foreignCost;
+                      const foreignDiv = Number(h.foreignDividend) || 0;
+                      const foreignTotalProfit = foreignProfit + foreignDiv;
+
+                      // 수익률
+                      const profitRate = parseFloat(h.returnRate) || 0;
+                      const totalReturnRate = parseFloat(h.totalReturnRate) || 0;
+                      const foreignProfitRate = foreignCost > 0 ? (foreignProfit / foreignCost) * 100 : 0;
+                      const foreignTotalReturnRate = foreignCost > 0 ? (foreignTotalProfit / foreignCost) * 100 : 0;
+
+                      const isProfit = (h.profitAmountKRW || 0) > 0;
+                      const isLoss = (h.profitAmountKRW || 0) < 0;
+                      const totalProfitVal = (h.profitAmountKRW || 0) + (h.dividend || 0);
+                      const isTotalProfit = totalProfitVal > 0;
+                      const isTotalLoss = totalProfitVal < 0;
+
+                      return (
+                        <tr
+                          key={`stock-row-${h.code || ''}-${h.name || ''}-${i}`}
+                          className="h-[72px] hover:bg-slate-50/80 transition-colors opacity-0 animate-row-fade"
+                          style={{ animationDelay: `${i * 35}ms` }}
+                        >
+                          {/* 1열: 종목 */}
+                          <td className="px-6 py-2">
+                            <div className="flex items-center gap-3 min-h-[52px]">
+                              <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
+                              <div className="flex flex-col justify-center max-w-[240px]">
+                                <p className="text-sm text-slate-900 font-bold leading-tight truncate" title={h.name}>
+                                  {h.name}
+                                </p>
+                                <div className="flex items-center gap-1 mt-1">
+                                  <span className="font-mono text-slate-400 font-medium text-[11px] w-[62px] shrink-0 truncate">
+                                    {formatStockCode(h.code)}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
+                                      isKRW
+                                        ? "bg-blue-50 text-blue-600 border-blue-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200"
+                                    }`}
+                                  >
+                                    {isKRW ? "국내" : "해외"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2열: 수량 */}
+                          <td className="px-4 py-2.5 text-center">
+                            <span className="text-sm font-bold text-slate-700 tabular-nums">
+                              {formatCurrency(qty, 'QTY')}주
+                            </span>
+                          </td>
+
+                          {/* 3열: 평균 매수가 */}
+                          <td className="px-6 py-2.5 text-right">
+                            <div className="flex flex-col items-end justify-center">
+                              {showOverseasAmount ? (
+                                <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                  {formatForeignAmount(buyPrice, h.currency)}
+                                </span>
+                              ) : (
+                                <>
+                                  {!isKRW ? (
+                                    <>
+                                      <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                        {formatForeignAmount(buyPrice, h.currency)}
+                                      </span>
+                                      <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                                        {formatCurrency(buyPriceKRW)}원
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                      {formatCurrency(buyPrice)}원
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 4열: 현재가 */}
+                          <td className="px-6 py-2.5 text-right">
+                            <div className="flex flex-col items-end justify-center">
+                              {showOverseasAmount ? (
+                                <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                  {formatForeignAmount(currentPrice, h.currency)}
+                                </span>
+                              ) : (
+                                <>
+                                  {!isKRW ? (
+                                    <>
+                                      <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                        {formatForeignAmount(currentPrice, h.currency)}
+                                      </span>
+                                      <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                                        {formatCurrency(currentPriceKRW)}원
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="text-sm font-bold text-slate-700 tabular-nums">
+                                      {formatCurrency(currentPrice)}원
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 5열: 평가손익 */}
+                          <td className="px-6 py-2.5 text-right">
+                            <div className="flex flex-col items-end justify-center">
+                              <span className={`text-sm font-bold tabular-nums ${
+                                isProfit ? 'text-red-600' : isLoss ? 'text-blue-600' : 'text-slate-600'
+                              }`}>
+                                {showOverseasAmount
+                                  ? formatForeignAmount(foreignProfit, h.currency, true)
+                                  : `${isProfit ? '+' : ''}${formatCurrency(h.profitAmountKRW)}원`}
+                              </span>
+                              <span className={`text-[11px] font-semibold tabular-nums mt-0.5 ${
+                                isProfit ? 'text-red-600/80' : isLoss ? 'text-blue-600/80' : 'text-slate-400'
+                              }`}>
+                                ({showOverseasAmount
+                                  ? `${foreignProfitRate > 0 ? '+' : ''}${foreignProfitRate.toFixed(2)}%`
+                                  : `${profitRate > 0 ? '+' : ''}${profitRate.toFixed(2)}%`})
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* 6열: 배당금 */}
+                          <td className="px-6 py-2.5 text-right">
+                            <div className="flex flex-col items-end justify-center">
+                              {showOverseasAmount ? (
+                                <span className={`text-sm font-bold tabular-nums ${
+                                  foreignDiv > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                }`}>
+                                  {foreignDiv > 0
+                                    ? `+${formatForeignAmount(foreignDiv, h.currency)}`
+                                    : formatForeignAmount(0, h.currency)}
+                                </span>
+                              ) : (
+                                <span className={`text-sm font-bold tabular-nums ${
+                                  (h.dividend || 0) > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                }`}>
+                                  {(h.dividend || 0) > 0 ? `+${formatCurrency(h.dividend)}원` : '0원'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 7열: 총 손익 */}
+                          <td className="px-6 py-2.5 text-right bg-slate-50/30">
+                            <div className="flex flex-col items-end justify-center">
+                              <span className={`text-base font-black tabular-nums tracking-tight ${
+                                isTotalProfit ? 'text-red-600' : isTotalLoss ? 'text-blue-600' : 'text-slate-800'
+                              }`}>
+                                {showOverseasAmount
+                                  ? formatForeignAmount(foreignTotalProfit, h.currency, true)
+                                  : `${isTotalProfit ? '+' : ''}${formatCurrency(totalProfitVal)}원`}
+                              </span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`text-xs font-black tabular-nums ${
+                                  isTotalProfit ? 'text-red-600' : isTotalLoss ? 'text-blue-600' : 'text-slate-500'
+                                }`}>
+                                  ({showOverseasAmount
+                                    ? `${foreignTotalReturnRate > 0 ? '+' : ''}${foreignTotalReturnRate.toFixed(2)}%`
+                                    : `${totalReturnRate > 0 ? '+' : ''}${totalReturnRate.toFixed(2)}%`})
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
-              {holdings.length > LIST_PER_PAGE && (
-                <div className="flex items-center justify-center gap-6 py-4 border-t border-slate-50">
-                  <button onClick={() => setCurrentStockPage(p => Math.max(1, p - 1))} disabled={currentStockPage === 1} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentStockPage === 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-                  <div className="flex items-center gap-1.5 font-bold"><span className="text-brand">{currentStockPage}</span><span className="text-slate-300">/</span><span className="text-slate-400">{Math.ceil(holdings.length / LIST_PER_PAGE)}</span></div>
-                  <button onClick={() => setCurrentStockPage(p => Math.min(Math.ceil(holdings.length / LIST_PER_PAGE), p + 1))} disabled={currentStockPage >= Math.ceil(holdings.length / LIST_PER_PAGE)} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentStockPage >= Math.ceil(holdings.length / LIST_PER_PAGE) ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
-                </div>
-              )}
             </div>
-          )}
-        </div>
-      </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">계좌별 보유현황</h2>
-          <div className="flex flex-wrap gap-2 justify-end pr-6">{Object.keys(holdingsByAccount).map(acc => <button key={acc} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${selectedAccount === acc ? "bg-brand text-white shadow-md shadow-brand/20" : "bg-white text-slate-600 border border-slate-200 hover:border-brand/30 hover:bg-brand/5 shadow-sm"}`} onClick={() => setSelectedAccount(acc)}>{acc}</button>)}</div>
-        </div>
-        <div className="glass-card p-6">
-          {stockViewMode === "card" ? (
-            <div className="flex flex-col gap-6">
-              {accSummary.totalEval > 0 && <div key={`summary-${selectedAccount}`} className="bg-brand/5 p-5 rounded-2xl border-2 border-brand/20 shadow-sm animate-summary-pop"><div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center"><div className="flex flex-col items-center"><div className="text-sm text-slate-500 mb-1">평가액</div><div className="inline-flex flex-col items-end"><div className="text-[21px] font-black tabular-nums text-slate-900">{formatCurrency(accSummary.totalEval, 'KRW')}</div><div className={`text-[15px] font-black tabular-nums ${accProfit > 0 ? "text-red-500" : "text-blue-500"}`}>({formatCurrency(accProfit, 'KRW')})</div></div></div><div><div className="text-sm text-slate-500 mb-1">수익률</div><div className={`text-xl font-black ${accProfitRate > 0 ? "text-red-600" : "text-blue-600"}`}>{accProfitRate.toFixed(2)}%</div></div><div><div className="text-sm text-slate-500 mb-1">배당금</div><div className="text-xl font-black text-emerald-600">{formatCurrency(accSummary.totalDiv, 'KRW')}</div></div><div><div className="text-sm text-slate-500 mb-1">총 수익률</div><div className={`text-xl font-black ${accTotalReturn > 0 ? "text-red-600" : "text-blue-600"}`}>{accTotalReturn.toFixed(2)}%</div></div></div></div>}
-              <div key={`acc-grid-${selectedAccount}-${currentAccPage}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {accountHoldings.slice((currentAccPage - 1) * STOCKS_PER_PAGE, currentAccPage * STOCKS_PER_PAGE).map((h, i) => {
-                  const s = getCurrencyStyle(h.currency);
-                  return (
-                    <div key={i} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[210px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
-                      <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
-                      <div className="flex justify-between items-start gap-4"><div className="flex-1 min-w-0 flex items-start gap-2"><span className={`shrink-0 mt-0.5 text-[10px] font-black px-1.5 py-0.5 rounded ${s.light} ${s.text}`}>{h.currency}</span><div className="flex-1 min-w-0"><div className="font-bold text-slate-800 truncate mb-0.5">{h.name}</div><div className="text-[12px] text-slate-400 font-mono truncate">{h.code}</div></div></div><div className="text-right shrink-0"><div className="text-lg font-bold text-slate-800 whitespace-nowrap">{h.currentPrice ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}` : '-'}</div><div className="text-xs text-slate-500">현재가</div></div></div>
-                      <div className="space-y-2"><div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div><div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div><div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div></div>
-                    </div>
-                  );
-                })}
-                {(() => {
-                  const cnt = accountHoldings.slice((currentAccPage - 1) * STOCKS_PER_PAGE, currentAccPage * STOCKS_PER_PAGE).length;
-                  if (cnt > 0 && cnt < STOCKS_PER_PAGE) return [...Array(STOCKS_PER_PAGE - cnt)].map((_, i) => <div key={i} className={`relative bg-white rounded-2xl border border-slate-200 h-[210px] opacity-0 animate-page-slide stagger-${cnt + i + 1} overflow-hidden`}><div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-300"></div></div>);
-                  return null;
-                })()}
-              </div>
-              {accountHoldings.length > STOCKS_PER_PAGE && (
-                <div className="flex items-center justify-center gap-6 mt-2">
-                  <button onClick={() => setCurrentAccPage(p => Math.max(1, p - 1))} disabled={currentAccPage === 1} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentAccPage === 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-                  <div className="flex items-center gap-1.5 font-bold"><span className="text-brand">{currentAccPage}</span><span className="text-slate-300">/</span><span className="text-slate-400">{Math.ceil(accountHoldings.length / STOCKS_PER_PAGE)}</span></div>
-                  <button onClick={() => setCurrentAccPage(p => Math.min(Math.ceil(accountHoldings.length / STOCKS_PER_PAGE), p + 1))} disabled={currentAccPage >= Math.ceil(accountHoldings.length / STOCKS_PER_PAGE)} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentAccPage >= Math.ceil(accountHoldings.length / STOCKS_PER_PAGE) ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white">
-              <table className="w-full border-collapse">
-                <thead><tr className="bg-slate-50/50 border-b border-slate-200"><th className="px-4 py-4 text-center text-sm font-semibold text-slate-500 w-[300px]">종목명</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수량</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">매수가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">현재가&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액&nbsp;&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">평가액(원)&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">수익률&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">배당금&nbsp;&nbsp;</th><th className="px-3 py-4 text-right text-sm font-semibold text-slate-500">총수익률&nbsp;</th></tr></thead>
-                <tbody key={`acc-list-${selectedAccount}-${currentAccPage}`} className="divide-y divide-slate-50">
-                  {accountHoldings.length > 0 && <tr className="bg-brand/5 border-b-2 border-brand/10 font-bold"><td colSpan="5" className="px-4 py-3 text-center text-sm text-brand">합계</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-[15px] font-bold tabular-nums text-slate-900">{formatCurrency(accSummary.totalEval, 'KRW')}</span><span className={`text-[12px] mt-0.5 tabular-nums font-bold ${accProfit > 0 ? "text-red-500" : (accProfit < 0 ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(accProfit, 'KRW')})</span></div></td><td className={`px-3 py-3 text-right text-sm ${accProfitRate > 0 ? "text-red-600" : (accProfitRate < 0 ? "text-blue-600" : "text-slate-400")}`}>{accProfitRate.toFixed(2)}%</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700">{formatCurrency(accSummary.totalDiv, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm ${accTotalReturn > 0 ? "text-red-600" : (accTotalReturn < 0 ? "text-blue-600" : "text-slate-400")}`}>{accTotalReturn.toFixed(2)}%</td></tr>}
-                  {accountHoldings.slice((currentAccPage - 1) * LIST_PER_PAGE, currentAccPage * LIST_PER_PAGE).map((h, i) => (
-                    <tr key={i} className={`h-[70px] hover:bg-slate-50/80 transition-colors opacity-0 animate-row-fade stagger-${i + 1}`}><td className="px-4 py-2"><div className="flex items-center gap-2 min-h-[52px]"><div className={`w-[2px] h-9 rounded-full flex-shrink-0 ${getCurrencyStyle(h.currency).accent}`}></div><div className="flex flex-col justify-center min-w-0 max-w-[280px]"><span className="text-sm text-slate-900 font-semibold leading-tight line-clamp-2 break-all">{h.name}</span><span className="text-[12px] text-slate-400 font-mono mt-0.5 truncate">{h.code}</span></div></div></td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{formatCurrency(h.totalQuantity, 'QTY')}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{getCurrencySymbol(h.currency)}{formatCurrency(h.currentPrice || h.purchasePrice, h.currency)}</td><td className="px-3 py-3 text-right text-sm font-medium text-slate-600 whitespace-nowrap">{(h.totalQuantity * (h.currentPrice || h.purchasePrice)) > 0 ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.totalQuantity * (h.currentPrice || h.purchasePrice), h.currency)}` : '-'}</td><td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col text-right"><span className="text-sm font-bold tabular-nums text-slate-900">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</span>{h.evaluationAmountKRW > 0 && <span className={`text-[11px] tabular-nums font-bold ${h.profitAmountKRW > 0 ? "text-red-500" : (h.profitAmountKRW < 0 ? "text-blue-500" : "text-slate-400")}`}>({formatCurrency(h.profitAmountKRW, 'KRW')})</span>}</div></td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.returnRate) > 0 ? "text-red-600" : (parseFloat(h.returnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.returnRate) === 0 ? "0.00%" : `${parseFloat(h.returnRate).toFixed(2)}%`}</td><td className="px-3 py-3 text-right text-sm font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(h.dividend, 'KRW')}</td><td className={`px-3 py-3 text-right text-sm font-bold ${parseFloat(h.totalReturnRate) > 0 ? "text-red-600" : (parseFloat(h.totalReturnRate) < 0 ? "text-blue-600" : "text-slate-400")}`}>{parseFloat(h.totalReturnRate) === 0 ? "0.00%" : `${parseFloat(h.totalReturnRate).toFixed(2)}%`}</td></tr>
+            {/* 페이지네이션 */}
+            {totalStockPages > 1 && (
+              <div className="mt-1 flex items-center justify-center gap-2 select-none">
+                <button
+                  onClick={() => setCurrentStockPage(1)}
+                  disabled={currentStockPage === 1}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage === 1
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronsLeft size={18} />
+                </button>
+                <button
+                  onClick={() => setCurrentStockPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentStockPage === 1}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage === 1
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronLeft size={18} />
+                </button>
+
+                <div className="flex items-center gap-1.5 mx-1">
+                  {Array.from({ length: totalStockPages }, (_, idx) => idx + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentStockPage(pageNum)}
+                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                        currentStockPage === pageNum
+                          ? 'bg-brand text-white shadow-md shadow-brand/20'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-              {accountHoldings.length > LIST_PER_PAGE && (
-                <div className="flex items-center justify-center gap-6 py-4 border-t border-slate-50">
-                  <button onClick={() => setCurrentAccPage(p => Math.max(1, p - 1))} disabled={currentAccPage === 1} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentAccPage === 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
-                  <div className="flex items-center gap-1.5 font-bold"><span className="text-brand">{currentAccPage}</span><span className="text-slate-300">/</span><span className="text-slate-400">{Math.ceil(accountHoldings.length / LIST_PER_PAGE)}</span></div>
-                  <button onClick={() => setCurrentAccPage(p => Math.min(Math.ceil(accountHoldings.length / LIST_PER_PAGE), p + 1))} disabled={currentAccPage >= Math.ceil(accountHoldings.length / LIST_PER_PAGE)} className={`flex items-center justify-center w-10 h-10 rounded-xl ${currentAccPage >= Math.ceil(accountHoldings.length / LIST_PER_PAGE) ? 'text-slate-200 cursor-not-allowed' : 'text-slate-500 hover:bg-brand/8'}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                <button
+                  onClick={() => setCurrentStockPage(prev => Math.min(totalStockPages, prev + 1))}
+                  disabled={currentStockPage >= totalStockPages}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage >= totalStockPages
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronRight size={18} />
+                </button>
+                <button
+                  onClick={() => setCurrentStockPage(totalStockPages)}
+                  disabled={currentStockPage >= totalStockPages}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    currentStockPage >= totalStockPages
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer active:scale-95'
+                  }`}
+                >
+                  <ChevronsRight size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </>
       ) : null}

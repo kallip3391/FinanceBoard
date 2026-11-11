@@ -118,10 +118,10 @@ export const GUEST_DOMESTIC_TRANSACTIONS = [
     currency: 'KRW',
     security_id: 'sec-kr-6',
     stock_name: 'KODEX 미국배당커버드콜액티브',
-    stock_code: '458730',
+    stock_code: '441640',
     stock: 'KODEX 미국배당커버드콜액티브',
-    stockCode: '458730',
-    security: { name: 'KODEX 미국배당커버드콜액티브', code: '458730', sector: '국내', currency: 'KRW' }
+    stockCode: '441640',
+    security: { name: 'KODEX 미국배당커버드콜액티브', code: '441640', sector: '국내', currency: 'KRW' }
   },
   {
     id: 'tx-kr-7',
@@ -439,10 +439,10 @@ export const GUEST_DIVIDEND_TRANSACTIONS = [
     currency: 'KRW',
     security_id: 'sec-kr-6',
     stock_name: 'KODEX 미국배당커버드콜액티브',
-    stock_code: '458730',
+    stock_code: '441640',
     stock: 'KODEX 미국배당커버드콜액티브',
-    stockCode: '458730',
-    security: { name: 'KODEX 미국배당커버드콜액티브', code: '458730', sector: '국내', currency: 'KRW' }
+    stockCode: '441640',
+    security: { name: 'KODEX 미국배당커버드콜액티브', code: '441640', sector: '국내', currency: 'KRW' }
   },
   {
     id: 'tx-div-kr-5',
@@ -726,7 +726,7 @@ export const GUEST_HOLDINGS = [
   {
     security_id: 'sec-kr-6',
     name: 'KODEX 미국배당커버드콜액티브',
-    code: '458730',
+    code: '441640',
     currency: 'KRW',
     currency_order: 1,
     sector: '국내',
@@ -1033,7 +1033,7 @@ export const GUEST_MONTHLY_DIVIDENDS = [
   { record_month: '2026-08', security_name: '맥쿼리인프라', security_code: '088980', currency: 'KRW', dividend_count: 1, total_dividend: 140000 },
 
   // 2026-07: 국내 1종목 + 해외 1종목 (JEPI)
-  { record_month: '2026-07', security_name: 'KODEX 미국배당커버드콜액티브', security_code: '458730', currency: 'KRW', dividend_count: 1, total_dividend: 220000 },
+  { record_month: '2026-07', security_name: 'KODEX 미국배당커버드콜액티브', security_code: '441640', currency: 'KRW', dividend_count: 1, total_dividend: 220000 },
   { record_month: '2026-07', security_name: 'JPMorgan Equity Premium Income', security_code: 'JEPI', currency: 'USD', dividend_count: 1, total_dividend: 190000, dividend_amount: 140.74 },
 
   // 2026-06: 국내 1종목 + 해외 1종목 (Realty Income)
