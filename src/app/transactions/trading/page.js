@@ -1421,6 +1421,26 @@ export default function TransactionsPage() {
 
   const handleEdit = (tx) => {
     const [year, month, day] = tx.date.includes('-') ? tx.date.split('-') : ['20' + tx.date.split('/')[0], tx.date.split('/')[1], tx.date.split('/')[2]];
+    const txCurrency = tx.currency || tx.security?.currency || 'KRW';
+    const isOverseas = txCurrency !== 'KRW';
+
+    const numPrice = tx.price !== undefined && tx.price !== null && tx.price !== ''
+      ? Number(String(tx.price).replace(/,/g, ''))
+      : NaN;
+    const formattedPrice = !isNaN(numPrice)
+      ? (isOverseas
+          ? numPrice.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : numPrice.toLocaleString('ko-KR'))
+      : (tx.price?.toString() || '');
+
+    const numAmount = tx.amount !== undefined && tx.amount !== null && tx.amount !== ''
+      ? Number(String(tx.amount).replace(/,/g, ''))
+      : NaN;
+    const formattedAmount = !isNaN(numAmount)
+      ? (isOverseas
+          ? numAmount.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : numAmount.toLocaleString('ko-KR'))
+      : (tx.amount?.toString() || '');
 
     setEditingId(tx.id);
     setFormData({
@@ -1433,9 +1453,9 @@ export default function TransactionsPage() {
       security_id: tx.security_id || '',
       type: tx.trade_type === TRADE_TYPES.BUY || tx.trade_type === 'BUY' || tx.type === '매수' ? '매수' : '매도',
       quantity: typeof tx.quantity === 'number' ? tx.quantity.toLocaleString('ko-KR') : (tx.quantity?.toString() || ''),
-      price: typeof tx.price === 'number' ? tx.price.toLocaleString('ko-KR') : (tx.price?.toString() || ''),
-      amount: typeof tx.amount === 'number' ? tx.amount.toLocaleString('ko-KR') : (tx.amount?.toString() || ''),
-      currency: tx.currency || 'KRW',
+      price: formattedPrice,
+      amount: formattedAmount,
+      currency: txCurrency,
       exchangeRate: tx.exchange_rate ? tx.exchange_rate.toString() : '',
       totalKRW: tx.exchange_total_rate ? tx.exchange_total_rate.toLocaleString('ko-KR') : '',
       exchange_code: tx.security?.exchange_code || ''
