@@ -22,7 +22,6 @@ export default function ClientLayout({ children }) {
         const authorizedPaths = [
           "/holdings",
           "/transactions/trading",
-          "/transactions/overseas",
           "/transactions/dividends",
           "/dividends",
           "/trades",

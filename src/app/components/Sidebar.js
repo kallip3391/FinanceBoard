@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, Globe, ArrowLeftRight, Coins, Briefcase } from "lucide-react";
+import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, ArrowLeftRight, Coins, Briefcase } from "lucide-react";
 
 export default function Sidebar({ isOpen, onClose }) {
   const pathname = usePathname();
@@ -28,8 +28,7 @@ export default function Sidebar({ isOpen, onClose }) {
       isOpen: isTransactionsOpen,
       toggle: () => setIsTransactionsOpen(!isTransactionsOpen),
       sublinks: [
-        { name: "국내", href: "/transactions/trading", icon: <ArrowLeftRight size={14} /> },
-        { name: "해외", href: "/transactions/overseas", icon: <Globe size={14} /> },
+        { name: "매매", href: "/transactions/trading", icon: <ArrowLeftRight size={14} /> },
         { name: "배당", href: "/transactions/dividends", icon: <Coins size={14} /> }
       ]
     },

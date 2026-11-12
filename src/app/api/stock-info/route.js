@@ -89,7 +89,7 @@ export async function GET(request) {
     }
 
     // 2. Fallback to Yahoo Search API - localized for KR
-    const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${code}${!overseasOnly ? '&region=KR&lang=ko-KR' : ''}`;
+    const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(searchTerm)}${!overseasOnly ? '&region=KR&lang=ko-KR' : ''}`;
     try {
       const searchResponse = await fetch(searchUrl, { headers });
       if (searchResponse.ok) {

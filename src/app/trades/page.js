@@ -13,11 +13,13 @@ import {
   CheckCircle2,
   ChevronDown,
   ArrowUpDown,
-  Check
+  Check,
+  RotateCcw
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { TransactionManager } from "@/lib/transactionManager";
 import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
+import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 // ── 종목 로고 컴포넌트 ──
 function StockLogo({ code, name, isKRW }) {
@@ -436,6 +438,19 @@ export default function TradesPnLPage() {
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const sortDropdownRef = useRef(null);
 
+  // 검색 패널 접힘/펼침 상태 (최초 로딩 시 기본 접힘 상태)
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const { mounted: isFilterPanelMounted, isClosing: isFilterPanelClosing } = useAnimatedModal(isFilterPanelOpen, 220);
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (isFilterPanelOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [isFilterPanelOpen]);
+
   // 드롭다운 외부 클릭 및 ESC 키 처리
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -635,20 +650,23 @@ export default function TradesPnLPage() {
               <Briefcase size={20} strokeWidth={2.5} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">매매손익 현황</h1>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-2xl font-bold text-slate-800">매매손익 현황</h1>
+                {user && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <CheckCircle2 size={13} className="text-blue-500" />
+                    <span>총 <span className="font-bold text-slate-800">{summary.count} 종목</span></span>
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-slate-400 font-medium mt-0.5">체결 완료된 매매 내역의 실현손익 및 누적 배당금을 종합 분석합니다.</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {!user ? (
+            {!user && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
                 로그인 후 보유 자산을 확인할 수 있습니다.
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                <CheckCircle2 size={15} className="text-blue-500" />
-                <span>총 {summary.count} 종목 매매</span>
               </div>
             )}
           </div>
@@ -666,35 +684,22 @@ export default function TradesPnLPage() {
         {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
         {user && !isLoading && (
           <>
-        {/* 상단 4대 핵심 요약 카드 (Glass Card) */}
+        {/* 상단 4대 핵심 요약 카드 (Glass Card) - 총매수금액, 실현손익, 누적배당금, 총실현손익 순서 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* 1. 총 실현손익 (손익 + 배당) */}
+          {/* 1. 총 매수금액 */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">총 실현손익</span>
-              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
-                  ? 'bg-red-50 text-red-600' 
-                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
-                    ? 'bg-blue-50 text-blue-600' 
-                    : 'bg-slate-100 text-slate-600'
-              }`}>
-                {(currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 ? '+' : ''}
-                {(currencyFilter === "OVERSEAS" ? summary.foreignTotalRate : summary.totalRate).toFixed(2)}%
-              </span>
+              <span className="text-xs font-bold text-slate-500">총 매수금액</span>
+              <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                <Wallet size={12} strokeWidth={2.5} />
+              </div>
             </div>
             <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-              <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
-                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
-                  ? 'text-red-600' 
-                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
-                    ? 'text-blue-600' 
-                    : 'text-slate-800'
-              }`}>
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
                 <AnimatedTradeCounter
-                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit}
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignBuyCost : summary.sumBuyCost}
                   isForeign={currencyFilter === "OVERSEAS"}
-                  showSign={true}
+                  showSign={false}
                   duration={800}
                 />
               </span>
@@ -703,10 +708,10 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>매매손익 + 배당금 합계</span>
-              <span className="font-semibold text-slate-500">총 수익률</span>
+              <span>수량 × 평균매수가 합계</span>
+              <span className="font-semibold text-slate-500">투자원금</span>
             </div>
-            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
           </div>
 
           {/* 2. 순수 실현손익 */}
@@ -747,7 +752,13 @@ export default function TradesPnLPage() {
               <span>매도금액 - 매수금액 합계</span>
               <span className="font-semibold text-slate-500">순수익률</span>
             </div>
-            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+            <div className={`absolute top-0 left-0 w-1 h-full ${
+              (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) > 0
+                ? 'bg-red-500'
+                : (currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit) < 0
+                  ? 'bg-blue-500'
+                  : 'bg-slate-300'
+            }`}></div>
           </div>
 
           {/* 3. 누적 배당금 */}
@@ -778,20 +789,33 @@ export default function TradesPnLPage() {
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
           </div>
 
-          {/* 4. 총 매수금액 */}
+          {/* 4. 총 실현손익 (손익 + 배당) */}
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">총 매수금액</span>
-              <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
-                <Wallet size={12} strokeWidth={2.5} />
-              </div>
+              <span className="text-xs font-bold text-slate-500">총 실현손익</span>
+              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
+                  ? 'bg-red-50 text-red-600' 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'bg-slate-100 text-slate-600'
+              }`}>
+                {(currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 ? '+' : ''}
+                {(currencyFilter === "OVERSEAS" ? summary.foreignTotalRate : summary.totalRate).toFixed(2)}%
+              </span>
             </div>
             <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+              <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
+                (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0 
+                  ? 'text-red-600' 
+                  : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0 
+                    ? 'text-blue-600' 
+                    : 'text-slate-800'
+              }`}>
                 <AnimatedTradeCounter
-                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignBuyCost : summary.sumBuyCost}
+                  value={currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit}
                   isForeign={currencyFilter === "OVERSEAS"}
-                  showSign={false}
+                  showSign={true}
                   duration={800}
                 />
               </span>
@@ -800,39 +824,100 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>수량 × 평균매수가 합계</span>
-              <span className="font-semibold text-slate-500">투자원금</span>
+              <span>매매손익 + 배당금 합계</span>
+              <span className="font-semibold text-slate-500">총 수익률</span>
             </div>
-            <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
+            <div className={`absolute top-0 left-0 w-1 h-full ${
+              (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) > 0
+                ? 'bg-red-500'
+                : (currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit) < 0
+                  ? 'bg-blue-500'
+                  : 'bg-slate-300'
+            }`}></div>
           </div>
         </div>
 
         {/* 필터 및 검색 바 */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          {/* 검색 입력 */}
-          <div className="relative w-full md:w-80">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="종목명 또는 종목코드 검색"
-              className="w-full pl-9 pr-4 py-2 rounded-xl text-sm border border-slate-200 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all placeholder:text-slate-400"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600"
+        <div className="bg-white border border-slate-100 rounded-2xl p-3 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+          {/* 좌측 그룹: 검색창 열기/닫기 토글 버튼 + 검색 입력창 */}
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsFilterPanelOpen(prev => !prev)}
+              className={`h-9 w-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer relative shrink-0 ${
+                isFilterPanelOpen
+                  ? 'bg-indigo-500 border-indigo-500 text-white shadow-xs ring-2 ring-indigo-200'
+                  : 'bg-indigo-50/90 border-indigo-200/90 text-indigo-600 hover:bg-indigo-100 hover:border-indigo-300 shadow-2xs'
+              }`}
+              title={isFilterPanelOpen ? "검색창 접기" : "검색창 열기"}
+            >
+              <ChevronLeft
+                size={16}
+                strokeWidth={2.5}
+                className={`transition-transform duration-300 ${
+                  isFilterPanelOpen ? 'text-white' : 'rotate-180 text-current'
+                }`}
+              />
+              {searchQuery && !isFilterPanelOpen && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-white"></span>
+              )}
+            </button>
+
+            {/* 열렸을 때 표시되는 검색창 (나타날 때와 사라질 때 애니메이션 적용) */}
+            {isFilterPanelMounted && (
+              <div
+                className={`flex items-center gap-2 transition-opacity duration-200 ${
+                  isFilterPanelClosing ? 'animate-fade-out' : 'animate-fade-in'
+                }`}
               >
-                ✕
-              </button>
+                <div className="relative w-64 md:w-72 shrink-0">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="종목명 또는 종목코드 검색"
+                    className="w-full h-9 pl-9 pr-7 rounded-xl text-xs text-slate-700 placeholder-slate-400 font-medium border border-slate-200 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* 검색 초기화 버튼 (회오리 아이콘 RotateCcw) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    if (searchInputRef.current) {
+                      searchInputRef.current.focus();
+                    }
+                  }}
+                  className={`h-9 w-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    searchQuery
+                      ? 'bg-blue-50 border-blue-300 text-brand hover:bg-blue-100 hover:border-blue-400 shadow-xs ring-2 ring-blue-100'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50 shadow-2xs'
+                  }`}
+                  title="검색 조건 초기화"
+                >
+                  <RotateCcw size={14} strokeWidth={2.2} />
+                </button>
+              </div>
             )}
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
             {/* 국내/해외 탭 필터 */}
-            <div className="flex bg-slate-100 p-1 rounded-xl">
+            <div className="flex bg-slate-100 p-0.5 rounded-xl h-9 items-center">
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("ALL")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
@@ -841,6 +926,7 @@ export default function TradesPnLPage() {
                 전체
               </button>
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("KRW")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
@@ -849,6 +935,7 @@ export default function TradesPnLPage() {
                 국내
               </button>
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("OVERSEAS")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
@@ -863,7 +950,7 @@ export default function TradesPnLPage() {
               <button
                 type="button"
                 onClick={() => setIsSortDropdownOpen((prev) => !prev)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs select-none ${
+                className={`h-9 flex items-center gap-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs select-none ${
                   isSortDropdownOpen
                     ? 'bg-blue-50/50 border-brand ring-2 ring-brand/10 text-brand shadow-xs'
                     : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60 hover:text-slate-900'
@@ -1105,7 +1192,14 @@ export default function TradesPnLPage() {
                       </td>
                     </tr>
                   );
-                })
+                }).concat(
+                  paginatedList.length > 0 && paginatedList.length < ITEMS_PER_PAGE ?
+                    [...Array(ITEMS_PER_PAGE - paginatedList.length)].map((_, i) => (
+                      <tr key={`empty-${i}`} className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedList.length + i + 1}`}>
+                        <td colSpan="7" className="px-6 py-2"><div className="min-h-[52px]">&nbsp;</div></td>
+                      </tr>
+                    )) : []
+                )
               )}
             </tbody>
           </table>

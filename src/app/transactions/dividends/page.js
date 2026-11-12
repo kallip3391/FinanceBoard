@@ -1,15 +1,214 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 
-import { Edit2, Trash2, Filter, RotateCcw, Plus, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronDown, Coins, Search, PlusCircle } from "lucide-react";
+import { Edit2, Trash2, Filter, RotateCcw, Plus, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronDown, Coins, Search, PlusCircle, Wallet, TrendingUp, Scale, CheckCircle2, ArrowUpDown, Globe, ArrowLeftRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES, CURRENCIES } from "@/lib/transactionManager";
+import { GUEST_DIVIDEND_TRANSACTIONS } from "@/lib/guestMockData";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
 import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
+
+// ── 종목 한글 매핑 ──
+const STOCK_KR_NAMES = {
+  'AAPL': '애플',
+  'MSFT': '마이크로소프트',
+  'NVDA': '엔비디아',
+  'GOOGL': '알파벳 A',
+  'TSLA': '테슬라',
+};
+
+// ── 정렬 옵션 ──
+const SORT_OPTIONS = [
+  { value: "latest", label: "최신순" },
+  { value: "oldest", label: "과거순" },
+  { value: "amount_desc", label: "배당금 높은순" },
+  { value: "amount_asc", label: "배당금 낮은순" },
+  { value: "name_asc", label: "종목명 가나다순" },
+];
+
+// ── 종목 로고 컴포넌트 ──
+function StockLogo({ code, name, isKRW }) {
+  const [hasError, setHasError] = useState(false);
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+
+  const isETF = (name || '').toUpperCase().includes('ETF') ||
+                /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
+
+  if (!logoUrl || hasError) {
+    const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
+
+    return (
+      <div
+        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+          isETF
+            ? 'bg-purple-100 text-purple-700 text-[10px]'
+            : isKRW
+              ? 'bg-blue-100/80 text-blue-600 text-xs'
+              : 'bg-amber-100/80 text-amber-700 text-xs'
+        }`}
+      >
+        {displayText}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-9 h-9 rounded-xl shrink-0 overflow-hidden flex items-center justify-center bg-slate-100/60 shadow-2xs">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={logoUrl}
+        alt={name || cleanCode}
+        onError={() => setHasError(true)}
+        className="w-full h-full object-cover rounded-xl"
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+// ── 통화 기호 헬퍼 ──
+const getCurrencySymbol = (currency) => {
+  switch (currency) {
+    case 'USD': return '$';
+    case 'EUR': return '€';
+    case 'JPY': return '¥';
+    case 'CNY': return '¥';
+    case 'GBP': return '£';
+    case 'HKD': return 'HK$';
+    default: return currency ? `${currency} ` : '$';
+  }
+};
+
+const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
+  if (val === undefined || val === null) return showSign ? '+0.00' : '0.00';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return '-';
+  const sym = getCurrencySymbol(currency);
+  const isPos = num > 0;
+  const isNeg = num < 0;
+  const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (showSign) {
+    if (isPos) return `+${sym} ${absNum}`;
+    if (isNeg) return `-${sym} ${absNum}`;
+    return `${sym} 0.00`;
+  }
+  return `${sym} ${absNum}`;
+};
+
+const formatStockCode = (code) => {
+  if (!code) return "";
+  const str = String(code).trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(6, "0");
+  }
+  return str;
+};
+
+// ── 상단 요약 카드 숫자 롤링 카운터 ──
+function AnimatedDividendCounter({
+  value,
+  isForeign = false,
+  showSign = false,
+  duration = 800,
+  isRate = false,
+  decimals = 0,
+  isCount = false
+}) {
+  const [displayValue, setDisplayValue] = useState(0);
+  const prevValueRef = useRef(0);
+  const prevIsForeignRef = useRef(isForeign);
+  const hasAnimatedInitialRef = useRef(false);
+
+  useEffect(() => {
+    const endVal = Number(value) || 0;
+    const isForeignChanged = prevIsForeignRef.current !== isForeign;
+    const shouldStartFromZero = !hasAnimatedInitialRef.current || isForeignChanged;
+    const startVal = shouldStartFromZero ? 0 : (Number(prevValueRef.current) || 0);
+
+    if (endVal === 0 && startVal === 0) {
+      prevValueRef.current = 0;
+      prevIsForeignRef.current = isForeign;
+      return;
+    }
+
+    hasAnimatedInitialRef.current = true;
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const current = startVal + (endVal - startVal) * easeProgress;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        setDisplayValue(endVal);
+        prevValueRef.current = endVal;
+        prevIsForeignRef.current = isForeign;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [value, isForeign, duration]);
+
+  const safeVal = Number.isFinite(displayValue) ? displayValue : (Number(value) || 0);
+
+  if (isRate || decimals > 0) {
+    const fractionDigits = isRate ? 2 : decimals;
+    return (
+      <>
+        {showSign && safeVal > 0 ? '+' : ''}
+        {new Intl.NumberFormat('ko-KR', {
+          minimumFractionDigits: fractionDigits,
+          maximumFractionDigits: fractionDigits
+        }).format(safeVal)}
+      </>
+    );
+  }
+
+  if (isForeign) {
+    return <>{formatForeignAmount(safeVal, 'USD', showSign)}</>;
+  }
+
+  const rounded = Math.round(safeVal);
+  return (
+    <>
+      {showSign && rounded > 0 ? '+' : ''}
+      {new Intl.NumberFormat('ko-KR').format(rounded)}
+    </>
+  );
+}
+
+// 상단 카드 서브텍스트용 원화/외화 간결 포맷터
+const formatSubKRW = (num) => {
+  const val = Number(num) || 0;
+  const abs = Math.abs(val);
+  if (abs >= 100000000) {
+    const eok = Math.floor(abs / 100000000);
+    const man = Math.round((abs % 100000000) / 10000);
+    return man > 0 ? `${eok}억 ${man.toLocaleString('ko-KR')}만원` : `${eok}억원`;
+  }
+  if (abs >= 10000) {
+    return `${Math.round(abs / 10000).toLocaleString('ko-KR')}만원`;
+  }
+  return `${Math.round(abs).toLocaleString('ko-KR')}원`;
+};
+
+const formatSubUSD = (num) => {
+  const val = Number(num) || 0;
+  return `$ ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 
 
@@ -104,7 +303,7 @@ export default function TransactionsPage() {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'error', focusRef: null });
   const [stockDeleteConfirm, setStockDeleteConfirm] = useState({ isOpen: false, id: null, name: '' });
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 9;
 
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
   const [searchedStocks, setSearchedStocks] = useState([]);
@@ -244,6 +443,29 @@ export default function TransactionsPage() {
     security_id: ''
   });
 
+  const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
+  const [sortBy, setSortBy] = useState("latest");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [exchangeRates, setExchangeRates] = useState({ USD: 1350, JPY: 9, EUR: 1450 });
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
+
+  // 툴바 접힘/펼침 필터 패널 상태
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const { mounted: isFilterPanelMounted, isClosing: isFilterPanelClosing } = useAnimatedModal(isFilterPanelOpen, 220);
+
+  const [inputDateFrom, setInputDateFrom] = useState('');
+  const [inputDateTo, setInputDateTo] = useState('');
+  const [dateFromError, setDateFromError] = useState('');
+  const [dateToError, setDateToError] = useState('');
+  const [isToolbarFromCalendarOpen, setIsToolbarFromCalendarOpen] = useState(false);
+  const [isToolbarToCalendarOpen, setIsToolbarToCalendarOpen] = useState(false);
+  const toolbarDateFromRef = useRef(null);
+  const toolbarDateFromBtnRef = useRef(null);
+  const toolbarDateToRef = useRef(null);
+  const toolbarDateToBtnRef = useRef(null);
+  const toolbarDateToInputRef = useRef(null);
+
   const [isFilterFromCalendarOpen, setIsFilterFromCalendarOpen] = useState(false);
   const [isFilterToCalendarOpen, setIsFilterToCalendarOpen] = useState(false);
   const [isFilterTypeDropdownOpen, setIsFilterTypeDropdownOpen] = useState(false);
@@ -257,23 +479,211 @@ export default function TransactionsPage() {
   const filterStockDropdownRef = useRef(null);
   const filterStockListRef = useRef(null);
 
+  // 툴바 날짜 입력 포맷터 (YYYY - MM - DD)
+  const formatToolbarDate = (dateStr) => {
+    if (!dateStr) return '';
+    const clean = dateStr.replace(/[^0-9]/g, '');
+    if (clean.length === 8) {
+      return `${clean.substring(0, 4)} - ${clean.substring(4, 6)} - ${clean.substring(6, 8)}`;
+    }
+    return dateStr;
+  };
+
+  // activeFilters 날짜와 inputDate 동기화
+  useEffect(() => {
+    setInputDateFrom(activeFilters.dateFrom ? formatToolbarDate(activeFilters.dateFrom) : '');
+    if (!activeFilters.dateFrom) setDateFromError('');
+  }, [activeFilters.dateFrom]);
+
+  useEffect(() => {
+    setInputDateTo(activeFilters.dateTo ? formatToolbarDate(activeFilters.dateTo) : '');
+    if (!activeFilters.dateTo) setDateToError('');
+  }, [activeFilters.dateTo]);
+
+  // 날짜 입력 변경 (숫자만, 최대 8자리)
+  const handleDateInputChange = (val, type) => {
+    const clean = val.replace(/[^0-9]/g, '').slice(0, 8);
+    if (type === 'from') {
+      setInputDateFrom(clean);
+      if (dateFromError) setDateFromError('');
+      if (clean.length === 8) {
+        const y = parseInt(clean.substring(0, 4), 10);
+        const m = parseInt(clean.substring(4, 6), 10);
+        const d = parseInt(clean.substring(6, 8), 10);
+        const isValid = y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+        if (isValid) {
+          const isoFormatted = `${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`;
+          const displayFormatted = `${clean.substring(0, 4)} - ${clean.substring(4, 6)} - ${clean.substring(6, 8)}`;
+          setInputDateFrom(displayFormatted);
+          setActiveFilters(prev => ({ ...prev, dateFrom: isoFormatted }));
+          setCurrentPage(1);
+          setTimeout(() => {
+            toolbarDateToInputRef.current?.focus();
+          }, 10);
+        }
+      }
+    } else {
+      setInputDateTo(clean);
+      if (dateToError) setDateToError('');
+      if (clean.length === 8) {
+        const y = parseInt(clean.substring(0, 4), 10);
+        const m = parseInt(clean.substring(4, 6), 10);
+        const d = parseInt(clean.substring(6, 8), 10);
+        const isValid = y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+        if (isValid) {
+          const isoFormatted = `${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`;
+          const displayFormatted = `${clean.substring(0, 4)} - ${clean.substring(4, 6)} - ${clean.substring(6, 8)}`;
+          setInputDateTo(displayFormatted);
+          setActiveFilters(prev => ({ ...prev, dateTo: isoFormatted }));
+          setCurrentPage(1);
+        }
+      }
+    }
+  };
+
+  // 포커스 시: 기존 날짜가 있으면 하이픈 제거 후 숫자만 표시
+  const handleDateInputFocus = (type, e) => {
+    if (type === 'from') {
+      const clean = (inputDateFrom || '').replace(/[^0-9]/g, '');
+      setInputDateFrom(clean);
+    } else {
+      const clean = (inputDateTo || '').replace(/[^0-9]/g, '');
+      setInputDateTo(clean);
+    }
+    e.target.select?.();
+  };
+
+  // 커밋 (블러, 엔터, 탭): 8자리 포맷팅 및 조회
+  const handleDateInputCommit = (type) => {
+    setIsToolbarFromCalendarOpen(false);
+    setIsToolbarToCalendarOpen(false);
+    const rawVal = (type === 'from' ? inputDateFrom : inputDateTo) || '';
+    const clean = rawVal.replace(/[^0-9]/g, '');
+
+    if (!clean) {
+      if (type === 'from') {
+        setInputDateFrom('');
+        setDateFromError('');
+        setActiveFilters(prev => ({ ...prev, dateFrom: '' }));
+      } else {
+        setInputDateTo('');
+        setDateToError('');
+        setActiveFilters(prev => ({ ...prev, dateTo: '' }));
+      }
+      setCurrentPage(1);
+      return;
+    }
+
+    if (clean.length === 8) {
+      const y = parseInt(clean.substring(0, 4), 10);
+      const m = parseInt(clean.substring(4, 6), 10);
+      const d = parseInt(clean.substring(6, 8), 10);
+
+      const isValid = y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+      if (isValid) {
+        const isoFormatted = `${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`;
+        const displayFormatted = `${clean.substring(0, 4)} - ${clean.substring(4, 6)} - ${clean.substring(6, 8)}`;
+        if (type === 'from') {
+          setInputDateFrom(displayFormatted);
+          setDateFromError('');
+          setActiveFilters(prev => ({ ...prev, dateFrom: isoFormatted }));
+          setTimeout(() => {
+            toolbarDateToInputRef.current?.focus();
+          }, 10);
+        } else {
+          setInputDateTo(displayFormatted);
+          setDateToError('');
+          setActiveFilters(prev => ({ ...prev, dateTo: isoFormatted }));
+        }
+        setCurrentPage(1);
+        return;
+      } else {
+        if (type === 'from') {
+          setInputDateFrom(clean);
+          setDateFromError('올바른 날짜를 입력해주세요.');
+        } else {
+          setInputDateTo(clean);
+          setDateToError('올바른 날짜를 입력해주세요.');
+        }
+        return;
+      }
+    }
+
+    if (type === 'from') {
+      setInputDateFrom(clean);
+      setDateFromError('8자리 숫자로 입력해주세요 (예: 20261112)');
+    } else {
+      setInputDateTo(clean);
+      setDateToError('8자리 숫자로 입력해주세요 (예: 20261112)');
+    }
+  };
+
+  const handleDateInputKeyDown = (e, type) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleDateInputCommit(type);
+      if (type === 'from') {
+        toolbarDateToInputRef.current?.focus();
+      } else {
+        e.target.blur();
+      }
+    } else if (e.key === 'Tab') {
+      if (type === 'from' && !e.shiftKey) {
+        e.preventDefault();
+        handleDateInputCommit(type);
+        toolbarDateToInputRef.current?.focus();
+      } else {
+        handleDateInputCommit(type);
+      }
+    }
+  };
+
+  const handleClearDateAndSearch = () => {
+    setInputDateFrom('');
+    setInputDateTo('');
+    setDateFromError('');
+    setDateToError('');
+    setSearchQuery('');
+    setIsToolbarFromCalendarOpen(false);
+    setIsToolbarToCalendarOpen(false);
+    setIsSortDropdownOpen(false);
+    setActiveFilters(prev => ({ ...prev, dateFrom: '', dateTo: '', stockName: '', security_id: '' }));
+    setCurrentPage(1);
+  };
+
+  // 배당내역 통합 (게스트 모드 포함)
+  const allTransactions = useMemo(() => {
+    if (!user) return [];
+    const dt = dividendTransactions || [];
+    return dt;
+  }, [user, dividendTransactions]);
+
   // 전역 상태가 변경되면 로컬 필터링용 데이터 업데이트
   useEffect(() => {
-    if (user) {
-      setTransactions(dividendTransactions || []);
-      setLoading(isTransactionsLoading);
-    } else {
-      setTransactions([]);
-      setLoading(false);
-    }
-  }, [user, dividendTransactions, isTransactionsLoading]);
+    setTransactions(allTransactions);
+    setLoading(isTransactionsLoading);
+  }, [allTransactions, isTransactionsLoading]);
 
-  // 사용자 데이터 로드 - 불필요한 중복 요청 제거
+  // 사용자 데이터 로드
   useEffect(() => {
     if (user && dividendTransactions.length === 0) {
       refreshTransactions();
     }
   }, [user]);
+
+  // 환율 조회
+  useEffect(() => {
+    TransactionManager.getLatestExchangeRates()
+      .then(rates => {
+        if (rates) setExchangeRates(prev => ({ ...prev, ...rates }));
+      })
+      .catch(err => console.error("환율 로드 오류:", err));
+  }, []);
+
+  // 검색/필터 변경 시 페이지 1로 리셋
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, currencyFilter, sortBy, activeFilters.dateFrom, activeFilters.dateTo, activeFilters.type]);
 
   // 모달 키보드 이벤트 핸들러 (확인창 엔터/스페이스, 삭제창 엔터/ESC, 취소 ESC)
   useEffect(() => {
@@ -462,6 +872,15 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     const handleClickOutsideFilter = (event) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(event.target)) {
+        setIsSortDropdownOpen(false);
+      }
+      if (toolbarDateFromRef.current && !toolbarDateFromRef.current.contains(event.target) && (!toolbarDateFromBtnRef.current || !toolbarDateFromBtnRef.current.contains(event.target))) {
+        setIsToolbarFromCalendarOpen(false);
+      }
+      if (toolbarDateToRef.current && !toolbarDateToRef.current.contains(event.target) && (!toolbarDateToBtnRef.current || !toolbarDateToBtnRef.current.contains(event.target))) {
+        setIsToolbarToCalendarOpen(false);
+      }
       if (isFilterFromCalendarOpen && filterFromCalendarRef.current && !filterFromCalendarRef.current.contains(event.target) && (!filterDateFromRef.current || !filterDateFromRef.current.contains(event.target))) {
         setIsFilterFromCalendarOpen(false);
       }
@@ -475,11 +894,22 @@ export default function TransactionsPage() {
         setIsFilterStockDropdownOpen(false);
       }
     };
+
+    const handleKeyDownGlobal = (event) => {
+      if (event.key === 'Escape') {
+        setIsToolbarFromCalendarOpen(false);
+        setIsToolbarToCalendarOpen(false);
+        setIsSortDropdownOpen(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutsideFilter);
+    document.addEventListener('keydown', handleKeyDownGlobal);
     return () => {
       document.removeEventListener('mousedown', handleClickOutsideFilter);
+      document.removeEventListener('keydown', handleKeyDownGlobal);
     };
-  }, [isFilterFromCalendarOpen, isFilterToCalendarOpen, isFilterTypeDropdownOpen, isFilterStockDropdownOpen]);
+  }, []);
 
   const showAlert = (title, message, type = 'error', focusRef = null) => {
     setAlertModal({ isOpen: true, title, message, type, focusRef });
@@ -1032,34 +1462,149 @@ export default function TransactionsPage() {
     }
   };
 
-  const filteredTransactions = (transactions || []).filter(tx => {
-    // 1. 통화 필터
-    if (activeFilters.type !== '전체') {
-      const typeStr = tx.currency || 'KRW';
-      if (typeStr !== activeFilters.type) return false;
-    }
-    
-    // 2. 종목명 필터
-    if (activeFilters.security_id) {
-      if (tx.security_id !== activeFilters.security_id) return false;
-    } else if (activeFilters.stockName) {
-      const sName = (tx.security?.name || tx.stock_name || tx.stock || '').toUpperCase();
-      const sCode = (tx.security?.code || tx.stock_code || tx.stockCode || '').toUpperCase();
-      const search = activeFilters.stockName.toUpperCase();
-      if (!sName.includes(search) && !sCode.includes(search)) return false;
-    }
-    
-    // 2. 기간 필터 (시작일)
-    if (activeFilters.dateFrom && tx.date < activeFilters.dateFrom) return false;
-    
-    // 3. 기간 필터 (종료일)
-    if (activeFilters.dateTo && tx.date > activeFilters.dateTo) return false;
-    
-    return true;
-  });
+  const filteredTransactions = useMemo(() => {
+    const list = (transactions || []).filter(tx => {
+      const isKRW = (tx.currency || 'KRW') === 'KRW';
+
+      // 1. 통화 세그먼트 필터 (ALL, KRW, OVERSEAS)
+      if (currencyFilter === 'KRW' && !isKRW) return false;
+      if (currencyFilter === 'OVERSEAS' && isKRW) return false;
+
+      // 2. 모달 필터 통화 (기존 activeFilters.type)
+      if (activeFilters.type !== '전체') {
+        const typeStr = tx.currency || 'KRW';
+        if (typeStr !== activeFilters.type) return false;
+      }
+
+      // 3. 종목 검색어 필터 (툴바 searchQuery + activeFilters.stockName)
+      const sName = (tx.security?.name || tx.stock_name || tx.stock || '');
+      const sCode = (tx.security?.code || tx.stock_code || tx.stockCode || '');
+      const displayName = STOCK_KR_NAMES[sCode] || sName;
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toUpperCase();
+        const matchName = sName.toUpperCase().includes(q) || displayName.toUpperCase().includes(q);
+        const matchCode = sCode.toUpperCase().includes(q);
+        if (!matchName && !matchCode) return false;
+      }
+
+      if (activeFilters.security_id) {
+        if (tx.security_id !== activeFilters.security_id) return false;
+      } else if (activeFilters.stockName) {
+        const q = activeFilters.stockName.toUpperCase();
+        const matchName = sName.toUpperCase().includes(q) || displayName.toUpperCase().includes(q);
+        const matchCode = sCode.toUpperCase().includes(q);
+        if (!matchName && !matchCode) return false;
+      }
+
+      // 4. 기간 필터 (시작일 / 종료일)
+      const txDay = (tx.date || '').substring(0, 10);
+      if (activeFilters.dateFrom && (!txDay || txDay < activeFilters.dateFrom)) return false;
+      if (activeFilters.dateTo && (!txDay || txDay > activeFilters.dateTo)) return false;
+
+      return true;
+    });
+
+    // 정렬 로직 적용
+    return [...list].sort((a, b) => {
+      const isKRWA = (a.currency || 'KRW') === 'KRW';
+      const isKRWB = (b.currency || 'KRW') === 'KRW';
+      const rateA = Number(a.exchange_rate || (exchangeRates && exchangeRates[a.currency]) || 1350);
+      const rateB = Number(b.exchange_rate || (exchangeRates && exchangeRates[b.currency]) || 1350);
+      const amtA = isKRWA
+        ? Number(a.total_dividend || a.dividend_amount || 0)
+        : Number(a.total_dividend || Math.round(Number(a.dividend_amount || 0) * rateA));
+      const amtB = isKRWB
+        ? Number(b.total_dividend || b.dividend_amount || 0)
+        : Number(b.total_dividend || Math.round(Number(b.dividend_amount || 0) * rateB));
+      const nameA = a.security?.name || a.stock_name || a.stock || '';
+      const nameB = b.security?.name || b.stock_name || b.stock || '';
+
+      switch (sortBy) {
+        case 'oldest':
+          return (a.date || '').localeCompare(b.date || '');
+        case 'amount_desc':
+          return amtB - amtA;
+        case 'amount_asc':
+          return amtA - amtB;
+        case 'name_asc':
+          return nameA.localeCompare(nameB, 'ko');
+        case 'latest':
+        default:
+          return (b.date || '').localeCompare(a.date || '');
+      }
+    });
+  }, [transactions, currencyFilter, activeFilters, searchQuery, sortBy, exchangeRates]);
+
+  const summary = useMemo(() => {
+    let targetTxs = filteredTransactions;
+
+    let dividendAmountKRW = 0;
+    let countKRW = 0;
+    const uniqueStocksKRW = new Set();
+
+    let dividendAmountForeign = 0;
+    let dividendAmountForeignKRW = 0;
+    let countForeign = 0;
+    const uniqueStocksForeign = new Set();
+
+    const uniqueStocksAll = new Set();
+
+    targetTxs.forEach(tx => {
+      const isKRW = (tx.currency || 'KRW') === 'KRW';
+      const rate = Number(tx.exchange_rate || (exchangeRates && exchangeRates[tx.currency]) || 1350);
+      const originalAmt = Number(tx.dividend_amount) || 0;
+      const amtKRW = isKRW
+        ? (Number(tx.total_dividend) || originalAmt)
+        : (Number(tx.total_dividend) || Math.round(originalAmt * rate));
+      const amtForeign = isKRW ? 0 : (originalAmt || (amtKRW / rate));
+      const stockId = tx.security_id || tx.stock_code || tx.stock_name || tx.stock || '';
+
+      if (stockId) uniqueStocksAll.add(stockId);
+
+      if (isKRW) {
+        dividendAmountKRW += amtKRW;
+        countKRW += 1;
+        if (stockId) uniqueStocksKRW.add(stockId);
+      } else {
+        dividendAmountForeign += amtForeign;
+        dividendAmountForeignKRW += amtKRW;
+        countForeign += 1;
+        if (stockId) uniqueStocksForeign.add(stockId);
+      }
+    });
+
+    const totalDividendAllKRW = dividendAmountKRW + dividendAmountForeignKRW;
+    const totalCountAll = countKRW + countForeign;
+    const avgPerCountKRW = countKRW > 0 ? Math.round(dividendAmountKRW / countKRW) : 0;
+    const avgPerCountForeign = countForeign > 0 ? (dividendAmountForeign / countForeign) : 0;
+    const avgRateForeign = dividendAmountForeign > 0
+      ? (dividendAmountForeignKRW / dividendAmountForeign)
+      : (Number(exchangeRates?.USD) || 1350);
+
+    return {
+      totalDividendAllKRW,
+      totalCountAll,
+      uniqueStocksAllCount: uniqueStocksAll.size,
+
+      // 국내
+      dividendAmountKRW,
+      countKRW,
+      uniqueStocksKRWCount: uniqueStocksKRW.size,
+      avgPerCountKRW,
+
+      // 해외
+      dividendAmountForeign,
+      dividendAmountForeignKRW,
+      countForeign,
+      uniqueStocksForeignCount: uniqueStocksForeign.size,
+      avgRateForeign,
+      avgPerCountForeign,
+    };
+  }, [filteredTransactions, exchangeRates]);
 
   // Pagination Logic
-  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE));
   const PAGES_PER_BLOCK = 10;
   const currentBlock = Math.floor((currentPage - 1) / PAGES_PER_BLOCK);
   const startPage = currentBlock * PAGES_PER_BLOCK + 1;
@@ -1071,6 +1616,13 @@ export default function TransactionsPage() {
   );
 
   const isFilterActive = activeFilters.dateFrom || activeFilters.dateTo || activeFilters.stockName || activeFilters.security_id || activeFilters.type !== '전체';
+  const isToolbarFilterActive = Boolean(
+    inputDateFrom ||
+    inputDateTo ||
+    activeFilters.dateFrom ||
+    activeFilters.dateTo ||
+    searchQuery.trim()
+  );
 
   return (
     <div className="animate-fade-in text-slate-900">
@@ -1127,252 +1679,802 @@ export default function TransactionsPage() {
       </div>
 
       {/* Desktop Transaction View */}
-      <div className="desktop-only flex-col w-full">
+      <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl border border-amber-100/50 shadow-sm">
-            <Coins size={20} strokeWidth={2.5} />
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl border border-amber-100/50 shadow-sm">
+              <Coins size={20} strokeWidth={2.5} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-2xl font-bold text-slate-800">거래 내역</h1>
+                {user && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <CheckCircle2 size={13} className="text-slate-400" />
+                    <span>총 <span className="font-bold text-slate-800">{filteredTransactions.length}건</span></span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 font-medium mt-0.5">국내 · 해외 주식 배당 내역</p>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-baseline gap-2">
-            배당 <span className="text-slate-400 text-lg font-normal">({filteredTransactions.length}건)</span>
-          </h1>
-        </div>
 
-        {/* 로그인 상태 확인 */}
-        {!user && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
-            로그인 후 보유 자산을 확인할 수 있습니다.
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        {user && (
-          <div className="flex flex-wrap gap-2">
-            {isFilterActive && (
-              <button 
-                onClick={() => {
-                  const initial = {
-                    dateFrom: '',
-                    dateTo: '',
-                    type: '전체',
-                    stockName: '',
-                    stockCode: '',
-                    security_id: ''
-                  };
-                  setActiveFilters(initial);
-                  setTempFilters(initial);
-                  setCurrentPage(1);
-                  showAlert("필터 초기화", "모든 필터 조건이 초기화되었습니다.", "success");
-                }}
-                className="flex items-center gap-2 bg-white text-slate-500 hover:bg-slate-50 border border-slate-200 shadow-md px-4 py-2.5 rounded-xl font-medium transition-all focus:outline-none cursor-pointer"
+          {/* Action Buttons & Badges */}
+          <div className="flex items-center gap-4">
+            {!user ? (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
+                로그인 후 보유 자산을 확인할 수 있습니다.
+              </div>
+            ) : (
+              <button
+                onClick={() => toggleModal()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition-all bg-brand hover:bg-brand-dark text-white cursor-pointer"
               >
-                <RotateCcw size={18} />
-                필터 초기화
+                <Plus size={15} strokeWidth={2.5} />
+                <span>등록</span>
               </button>
             )}
-            <button 
-              onClick={() => {
-                if (!activeFilters.dateFrom && !activeFilters.dateTo) {
-                   const todayStr = new Date().toLocaleDateString('en-CA');
-                   const oneMonthAgo = new Date();
-                   oneMonthAgo.setMonth(new Date().getMonth() - 1);
-                   setTempFilters({
-                     ...activeFilters,
-                     dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
-                     dateTo: todayStr
-                   });
-                   setSelectedQuickPeriod('1개월');
-                } else {
-                   setTempFilters({ ...activeFilters });
-                   setSelectedQuickPeriod(null);
-                }
-                setIsFilterModalOpen(true);
-              }}
-              className={`flex items-center gap-2 border shadow-md px-4 py-2.5 rounded-xl font-semibold transition-all focus:outline-none cursor-pointer ${
-                isFilterActive 
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600" 
-                  : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100"
-              }`}
-            >
-              <Filter size={18} />
-              필터
-            </button>
-            <button
-              onClick={() => toggleModal()}
-              className="inline-flex items-center gap-1 whitespace-nowrap px-4 py-2.5 rounded-xl font-bold shadow-md transition-all border bg-amber-400 text-white hover:bg-amber-500 border-amber-300 cursor-pointer focus:outline-none"
-            >
-              등록
-            </button>
+          </div>
+        </div>
+
+        {/* 로딩 화면 */}
+        {user && loading && (
+          <div className="glass-card py-24 flex flex-col items-center justify-center gap-3 mb-6">
+            <div className="w-9 h-9 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <span className="font-bold text-slate-700 text-base">배당 내역을 불러오는 중...</span>
+            <span className="text-sm text-slate-400">잠시만 기다려주세요</span>
           </div>
         )}
-      </div>
 
-      {/* Table Container */}
-      {user && (
-        <>
-        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50 border-b border-slate-100">
-              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">배당일</th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">계좌</th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">종목</th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">통화</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">배당금&nbsp;&nbsp;&nbsp;</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">배당금(원)&nbsp;&nbsp;&nbsp;</th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">옵션</th>
-            </tr>
-          </thead>
-          <tbody key={`dividends-tx-${currentPage}`} className="divide-y divide-slate-50">
-            {loading ? (
-              <tr>
-                <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-8 h-8 border-2 border-slate-200 border-t-amber-400 rounded-full animate-spin"></div>
-                    <span>배당내역을 불러오는 중...</span>
-                  </div>
-                </td>
-              </tr>
-            ) : paginatedTransactions.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center gap-2">
-                    <span>{user ? '등록된 배당내역이 없습니다.' : '로그인 후 배당내역을 확인할 수 있습니다.'}</span>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              paginatedTransactions.map((tx, i) => (
-                <tr key={tx.id} className={`h-[72px] hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${i + 1}`}>
-                  <td className="px-6 py-2 text-sm text-slate-500 text-center">{formatDisplayDate(tx.date)}</td>
-                  <td className="px-6 py-2 text-sm text-slate-700 font-medium text-center">
-                    {accountNameById[tx.account_id] || tx.account || ''}
-                  </td>
-                  <td className="px-6 py-2">
-                    <div className="flex items-center gap-3 min-h-[52px]">
-                      <div className={`w-[2px] h-9 rounded-full flex-shrink-0 ${getCurrencyStyle(tx.currency || 'KRW').accent}`}></div>
-                      <div className="flex flex-col justify-center max-w-[280px]">
-                        <span className="text-sm text-slate-900 font-semibold leading-tight line-clamp-2 break-all">{tx.security?.name || tx.stock_name || tx.stock || '-'}</span>
-                        <span className="text-[12px] text-slate-400 font-mono mt-0.5">{tx.security?.code || tx.stock_code || tx.stockCode || ''}</span>
-                      </div>
+        {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
+        {user && !loading && (
+          <>
+        {/* 상단 4대 핵심 요약 카드 (Glass Card) - 추천 A안 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* 카드 1 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">
+                {currencyFilter === "OVERSEAS" ? "외화 총 배당금" : "총 배당금"}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                  {currencyFilter === "ALL" && `총 ${summary.totalCountAll}건`}
+                  {currencyFilter === "KRW" && `국내 ${summary.countKRW}건`}
+                  {currencyFilter === "OVERSEAS" && `해외 ${summary.countForeign}건`}
+                </span>
+                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Coins size={12} strokeWidth={2.5} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                <AnimatedDividendCounter
+                  key={`card1-${currencyFilter}`}
+                  value={
+                    currencyFilter === "ALL"
+                      ? summary.totalDividendAllKRW
+                      : (currencyFilter === "OVERSEAS" ? summary.dividendAmountForeign : summary.dividendAmountKRW)
+                  }
+                  isForeign={currencyFilter === "OVERSEAS"}
+                  showSign={false}
+                  duration={800}
+                />
+              </span>
+              {currencyFilter !== "OVERSEAS" && (
+                <span className="text-xs font-bold text-slate-400">원</span>
+              )}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>
+                {currencyFilter === "ALL" && (
+                  <>국내 {formatSubKRW(summary.dividendAmountKRW)} · 해외 {formatSubUSD(summary.dividendAmountForeign)}</>
+                )}
+                {currencyFilter === "KRW" && (
+                  <>국내 주식 배당금</>
+                )}
+                {currencyFilter === "OVERSEAS" && (
+                  <>약 {formatSubKRW(summary.dividendAmountForeignKRW)} 환산</>
+                )}
+              </span>
+              <span className="font-semibold text-slate-500">
+                {currencyFilter === "ALL" && "조회기간 합계"}
+                {currencyFilter === "KRW" && "국내 배당금 합계"}
+                {currencyFilter === "OVERSEAS" && "외화 배당 합산"}
+              </span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+          </div>
+
+          {/* 카드 2 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">
+                {currencyFilter === "ALL" && "국내 배당금"}
+                {currencyFilter === "KRW" && "수령 건수"}
+                {currencyFilter === "OVERSEAS" && "배당 평균환율"}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+                  {currencyFilter === "ALL" && `국내 ${summary.countKRW}건`}
+                  {currencyFilter === "KRW" && `총 ${summary.countKRW}건 기준`}
+                  {currencyFilter === "OVERSEAS" && "USD / KRW"}
+                </span>
+                <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  {currencyFilter === "OVERSEAS" ? <Scale size={12} strokeWidth={2.5} /> : <TrendingUp size={12} strokeWidth={2.5} />}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                {currencyFilter === "ALL" && (
+                  <AnimatedDividendCounter
+                    key="card2-all"
+                    value={summary.dividendAmountKRW}
+                    isForeign={false}
+                    showSign={false}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "KRW" && (
+                  <AnimatedDividendCounter
+                    key="card2-krw"
+                    value={summary.countKRW}
+                    isCount={true}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "OVERSEAS" && (
+                  <AnimatedDividendCounter
+                    key="card2-overseas"
+                    value={summary.avgRateForeign}
+                    isRate={true}
+                    duration={800}
+                  />
+                )}
+              </span>
+              {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">원</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">건</span>}
+              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">원</span>}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>
+                {currencyFilter === "ALL" && "원화(KRW) 배당"}
+                {currencyFilter === "KRW" && "국내 배당 수령 횟수"}
+                {currencyFilter === "OVERSEAS" && "가중평균 거래환율"}
+              </span>
+              <span className="font-semibold text-slate-500">
+                {currencyFilter === "ALL" && "국내 배당금"}
+                {currencyFilter === "KRW" && "수령 건수"}
+                {currencyFilter === "OVERSEAS" && `총 ${summary.countForeign}건 기준`}
+              </span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+          </div>
+
+          {/* 카드 3 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">
+                {currencyFilter === "ALL" && "해외 배당금"}
+                {currencyFilter === "KRW" && "배당 종목 수"}
+                {currencyFilter === "OVERSEAS" && "수령 현황"}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                  {currencyFilter === "ALL" && `$ ${summary.dividendAmountForeign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  {currencyFilter === "KRW" && "지급 종목"}
+                  {currencyFilter === "OVERSEAS" && `총 ${summary.uniqueStocksForeignCount}개 종목`}
+                </span>
+                <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <Globe size={12} strokeWidth={2.5} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                {currencyFilter === "ALL" && (
+                  <AnimatedDividendCounter
+                    key="card3-all"
+                    value={summary.dividendAmountForeignKRW}
+                    isForeign={false}
+                    showSign={false}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "KRW" && (
+                  <AnimatedDividendCounter
+                    key="card3-krw"
+                    value={summary.uniqueStocksKRWCount}
+                    isCount={true}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "OVERSEAS" && (
+                  <AnimatedDividendCounter
+                    key="card3-overseas"
+                    value={summary.countForeign}
+                    isCount={true}
+                    duration={800}
+                  />
+                )}
+              </span>
+              {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">원</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">개 종목</span>}
+              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">건</span>}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>
+                {currencyFilter === "ALL" && "외화(USD) 배당 환산"}
+                {currencyFilter === "KRW" && "배당 지급 종목"}
+                {currencyFilter === "OVERSEAS" && "해외 배당 수령 횟수"}
+              </span>
+              <span className="font-semibold text-slate-500">
+                {currencyFilter === "ALL" && "해외 배당금"}
+                {currencyFilter === "KRW" && "보유 종목 배당"}
+                {currencyFilter === "OVERSEAS" && `총 ${summary.uniqueStocksForeignCount}개 종목 기준`}
+              </span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+          </div>
+
+          {/* 카드 4 */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-slate-500">
+                {currencyFilter === "ALL" && "수령 현황"}
+                {currencyFilter === "KRW" && "건당 평균 배당금"}
+                {currencyFilter === "OVERSEAS" && "외화 건당 평균 배당금"}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                  {currencyFilter === "ALL" && `총 ${summary.uniqueStocksAllCount}개 종목`}
+                  {currencyFilter === "KRW" && "건당 평균"}
+                  {currencyFilter === "OVERSEAS" && "건당 평균"}
+                </span>
+                <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <CheckCircle2 size={12} strokeWidth={2.5} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                {currencyFilter === "ALL" && (
+                  <AnimatedDividendCounter
+                    key="card4-all"
+                    value={summary.totalCountAll}
+                    isCount={true}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "KRW" && (
+                  <AnimatedDividendCounter
+                    key="card4-krw"
+                    value={summary.avgPerCountKRW}
+                    isForeign={false}
+                    duration={800}
+                  />
+                )}
+                {currencyFilter === "OVERSEAS" && (
+                  <AnimatedDividendCounter
+                    key="card4-overseas"
+                    value={summary.avgPerCountForeign}
+                    isForeign={true}
+                    duration={800}
+                  />
+                )}
+              </span>
+              {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">건</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">원</span>}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+              <span>
+                {currencyFilter === "ALL" && `국내 ${summary.countKRW}건 · 해외 ${summary.countForeign}건`}
+                {currencyFilter === "KRW" && "1회 수령 평균액"}
+                {currencyFilter === "OVERSEAS" && "1회 수령 외화평균"}
+              </span>
+              <span className="font-semibold text-slate-500">
+                {currencyFilter === "ALL" && `총 ${summary.uniqueStocksAllCount}개 종목 기준`}
+                {currencyFilter === "KRW" && "국내 평균 배당금"}
+                {currencyFilter === "OVERSEAS" && "해외 평균 배당금"}
+              </span>
+            </div>
+            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+          </div>
+        </div>
+
+        {/* 컨트롤 툴바: 날짜 범위 / 검색창 / 통화 탭 / 정렬 */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-3.5 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3 relative z-30">
+          {/* 좌측 그룹: 필터 접힘/펼침 버튼 + 상세 필터 인라인 영역 */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsFilterPanelOpen(prev => !prev)}
+              className={`h-9 w-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 select-none relative ${
+                isFilterPanelOpen
+                  ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600 shadow-xs ring-2 ring-amber-200'
+                  : isToolbarFilterActive
+                    ? 'bg-amber-500 border-amber-500 text-white shadow-xs ring-2 ring-amber-200'
+                    : 'bg-amber-50/90 border-amber-200/90 text-amber-600 hover:bg-amber-100 hover:border-amber-300 shadow-2xs'
+              }`}
+              title={isFilterPanelOpen ? "상세 필터 접기" : "상세 필터 펼치기"}
+            >
+              <ChevronLeft
+                size={16}
+                strokeWidth={2.5}
+                className={`transition-transform duration-300 ${
+                  isFilterPanelOpen ? 'text-white' : 'rotate-180 text-current'
+                }`}
+              />
+              {isToolbarFilterActive && !isFilterPanelOpen && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
+              )}
+            </button>
+
+            {/* 접힘/펼침 상세 필터 영역 */}
+            {isFilterPanelMounted && (
+              <div
+                className={`flex flex-wrap items-center gap-3 transition-opacity duration-200 ${
+                  isFilterPanelClosing ? 'animate-fade-out' : 'animate-fade-in'
+                }`}
+              >
+                {/* 날짜 범위 선택 */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* 시작일 */}
+                  <div className="relative z-30" ref={toolbarDateFromRef}>
+                    <div className="h-9 flex items-center gap-1 border border-slate-200 rounded-xl px-2.5 bg-white shadow-2xs hover:border-slate-300 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10 transition-all">
+                      <input
+                        type="text"
+                        value={inputDateFrom}
+                        onChange={(e) => handleDateInputChange(e.target.value, 'from')}
+                        onFocus={(e) => handleDateInputFocus('from', e)}
+                        onBlur={() => handleDateInputCommit('from')}
+                        onKeyDown={(e) => handleDateInputKeyDown(e, 'from')}
+                        placeholder="YYYY-MM-DD"
+                        maxLength={14}
+                        className="w-[82px] text-xs text-slate-700 placeholder-slate-400 font-bold tabular-nums focus:outline-none bg-transparent tracking-tight text-center"
+                      />
+                      <button
+                        type="button"
+                        ref={toolbarDateFromBtnRef}
+                        onClick={() => {
+                          setIsToolbarToCalendarOpen(false);
+                          setIsToolbarFromCalendarOpen(prev => !prev);
+                        }}
+                        className="p-0.5 text-slate-400 hover:text-brand transition-colors cursor-pointer shrink-0"
+                        title="달력으로 시작일 선택"
+                      >
+                        <Calendar size={14} />
+                      </button>
                     </div>
-                  </td>
-                  <td className="px-6 py-2 text-center">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getCurrencyBadgeStyles(tx.currency || 'KRW')}`}>
-                      {tx.currency || 'KRW'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-2 text-sm font-medium text-slate-600 text-right">
-                    {typeof tx.dividend_amount === 'number' ?
-                      (tx.currency === 'KRW' ?
-                        '' :
-                        `${getCurrencySymbol(tx.currency)} ${tx.dividend_amount.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`) :
-                      tx.dividend_amount
-                    }&nbsp;&nbsp;&nbsp;
-                  </td>
-                  <td className="px-6 py-2 text-sm font-bold text-slate-900 text-right">
-                    {typeof tx.total_dividend === 'number' ? tx.total_dividend.toLocaleString('ko-KR') : tx.total_dividend}&nbsp;&nbsp;&nbsp;
-                  </td>
-                  <td className="px-6 py-2 text-center">
-                    <div className="flex items-center justify-center gap-2 transition-all">
-                      <button
-                        onClick={() => handleEdit(tx)}
-                        className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                        title="수정"
+
+                    {dateFromError && (
+                      <div className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-rose-200 text-rose-600 shadow-lg rounded-xl px-2.5 py-1.5 text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap animate-slide-up">
+                        <span>{dateFromError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setDateFromError('')}
+                          className="text-slate-400 hover:text-slate-600 p-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="닫기"
+                        >
+                          <X size={12} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    )}
+
+                    {isToolbarFromCalendarOpen && (
+                      <div
+                        className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 w-[245px]"
+                        style={{ backgroundColor: '#ffffff' }}
                       >
-                        <Edit2 size={16} />
-                      </button>
+                        <CalendarUI
+                          initialYear={activeFilters.dateFrom && activeFilters.dateFrom.includes('-') ? parseInt(activeFilters.dateFrom.substring(0, 4)) : new Date().getFullYear()}
+                          initialMonth={activeFilters.dateFrom && activeFilters.dateFrom.includes('-') ? parseInt(activeFilters.dateFrom.substring(5, 7)) : (new Date().getMonth() + 1)}
+                          onSelect={(y, m, d) => {
+                            const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+                            setActiveFilters(prev => ({ ...prev, dateFrom: formatted }));
+                            setInputDateFrom(formatToolbarDate(formatted));
+                            setDateFromError('');
+                            setIsToolbarFromCalendarOpen(false);
+                            setCurrentPage(1);
+                            setTimeout(() => {
+                              toolbarDateToInputRef.current?.focus();
+                            }, 50);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="text-slate-400 text-xs font-bold tabular-nums">~</span>
+
+                  {/* 종료일 */}
+                  <div className="relative z-30" ref={toolbarDateToRef}>
+                    <div className="h-9 flex items-center gap-1 border border-slate-200 rounded-xl px-2.5 bg-white shadow-2xs hover:border-slate-300 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10 transition-all">
+                      <input
+                        ref={toolbarDateToInputRef}
+                        type="text"
+                        value={inputDateTo}
+                        onChange={(e) => handleDateInputChange(e.target.value, 'to')}
+                        onFocus={(e) => handleDateInputFocus('to', e)}
+                        onBlur={() => handleDateInputCommit('to')}
+                        onKeyDown={(e) => handleDateInputKeyDown(e, 'to')}
+                        placeholder="YYYY-MM-DD"
+                        maxLength={14}
+                        className="w-[82px] text-xs text-slate-700 placeholder-slate-400 font-bold tabular-nums focus:outline-none bg-transparent tracking-tight text-center"
+                      />
                       <button
-                        onClick={() => handleDelete(tx.id)}
-                        className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="삭제"
+                        type="button"
+                        ref={toolbarDateToBtnRef}
+                        onClick={() => {
+                          setIsToolbarFromCalendarOpen(false);
+                          setIsToolbarToCalendarOpen(prev => !prev);
+                        }}
+                        className="p-0.5 text-slate-400 hover:text-brand transition-colors cursor-pointer shrink-0"
+                        title="달력으로 종료일 선택"
                       >
-                        <Trash2 size={16} />
+                        <Calendar size={14} />
                       </button>
+                    </div>
+
+                    {dateToError && (
+                      <div className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-rose-200 text-rose-600 shadow-lg rounded-xl px-2.5 py-1.5 text-[11px] font-semibold flex items-center gap-1.5 whitespace-nowrap animate-slide-up">
+                        <span>{dateToError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setDateToError('')}
+                          className="text-slate-400 hover:text-slate-600 p-0.5 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="닫기"
+                        >
+                          <X size={12} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    )}
+
+                    {isToolbarToCalendarOpen && (
+                      <div
+                        className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 w-[245px]"
+                        style={{ backgroundColor: '#ffffff' }}
+                      >
+                        <CalendarUI
+                          initialYear={activeFilters.dateTo && activeFilters.dateTo.includes('-') ? parseInt(activeFilters.dateTo.substring(0, 4)) : new Date().getFullYear()}
+                          initialMonth={activeFilters.dateTo && activeFilters.dateTo.includes('-') ? parseInt(activeFilters.dateTo.substring(5, 7)) : (new Date().getMonth() + 1)}
+                          onSelect={(y, m, d) => {
+                            const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+                            setActiveFilters(prev => ({ ...prev, dateTo: formatted }));
+                            setInputDateTo(formatToolbarDate(formatted));
+                            setDateToError('');
+                            setIsToolbarToCalendarOpen(false);
+                            setCurrentPage(1);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 종목명 또는 종목코드 검색 */}
+                <div className="relative w-64 md:w-72 shrink-0">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="종목명 또는 종목코드 검색"
+                    className="w-full h-9 pl-9 pr-7 rounded-xl text-xs text-slate-700 placeholder-slate-400 font-medium border border-slate-200 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* 필터 초기화 버튼 */}
+                <button
+                  type="button"
+                  onClick={handleClearDateAndSearch}
+                  className={`h-9 w-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    isToolbarFilterActive
+                      ? 'bg-blue-50 border-blue-300 text-brand hover:bg-blue-100 hover:border-blue-400 shadow-xs ring-2 ring-blue-100'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50 shadow-2xs'
+                  }`}
+                  title="검색 조건 초기화"
+                >
+                  <RotateCcw size={14} strokeWidth={2.2} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 우측 그룹: 통화 탭 + 정렬 드롭다운 */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
+            <div className="flex bg-slate-100 p-0.5 rounded-xl h-9 items-center">
+              <button
+                onClick={() => setCurrencyFilter("ALL")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                전체
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("KRW")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
+                }`}
+              >
+                국내
+              </button>
+              <button
+                onClick={() => setCurrencyFilter("OVERSEAS")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
+                }`}
+              >
+                해외
+              </button>
+            </div>
+
+            {/* 정렬 드롭다운 */}
+            <div className="relative" ref={sortDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsSortDropdownOpen((prev) => !prev)}
+                className={`h-9 flex items-center gap-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs select-none ${
+                  isSortDropdownOpen
+                    ? 'bg-blue-50/50 border-brand ring-2 ring-brand/10 text-brand shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60 hover:text-slate-900'
+                }`}
+              >
+                <ArrowUpDown size={13} className={isSortDropdownOpen ? 'text-brand' : 'text-slate-400'} />
+                <span className="tracking-tight">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label || "정렬 기준"}</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${
+                    isSortDropdownOpen ? 'rotate-180 text-brand' : 'text-slate-400'
+                  }`}
+                />
+              </button>
+
+              {isSortDropdownOpen && (
+                <div className="absolute top-full right-0 mt-2 w-44 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
+                  <div className="space-y-0.5">
+                    {SORT_OPTIONS.map((opt) => {
+                      const isSelected = sortBy === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setSortBy(opt.value);
+                            setIsSortDropdownOpen(false);
+                          }}
+                          className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all text-left flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-brand/10 text-brand font-black'
+                              : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {isSelected && <Check size={14} className="text-brand shrink-0" strokeWidth={2.5} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Table Container */}
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-3">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">종목</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">배당일</th>
+                <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">배당금&nbsp;&nbsp;&nbsp;</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">계좌</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">옵션</th>
+              </tr>
+            </thead>
+            <tbody key={`dividends-tx-${currentPage}-${currencyFilter}-${sortBy}`} className="divide-y divide-slate-50">
+              {loading ? (
+                <tr>
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-8 h-8 border-2 border-slate-200 border-t-brand rounded-full animate-spin"></div>
+                      <span>배당내역을 불러오는 중...</span>
                     </div>
                   </td>
                 </tr>
-              )).concat(
-                paginatedTransactions.length > 0 && paginatedTransactions.length < ITEMS_PER_PAGE ?
-                  [...Array(ITEMS_PER_PAGE - paginatedTransactions.length)].map((_, i) => (
-                    <tr key={`empty-${i}`} className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedTransactions.length + i + 1}`}>
-                      <td colSpan="7" className="px-6 py-2"><div className="min-h-[52px]">&nbsp;</div></td>
+              ) : paginatedTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <span>{user ? '등록된 배당내역이 없습니다.' : '로그인 후 배당내역을 확인할 수 있습니다.'}</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedTransactions.map((tx, i) => {
+                  const isKRW = (tx.currency || 'KRW') === 'KRW';
+                  const code = tx.stock_code || tx.security?.code || tx.stockCode || '';
+                  const rawName = tx.stock_name || tx.security?.name || tx.stock || '';
+                  const displayName = STOCK_KR_NAMES[code] || rawName;
+                  const rate = Number(tx.exchange_rate || (exchangeRates && exchangeRates[tx.currency]) || 1350);
+                  const originalAmt = Number(tx.dividend_amount) || 0;
+                  const amountKRW = isKRW
+                    ? (Number(tx.total_dividend) || originalAmt)
+                    : (Number(tx.total_dividend) || Math.round(originalAmt * rate));
+                  const foreignAmount = isKRW ? 0 : (originalAmt || (amountKRW / rate));
+
+                  return (
+                    <tr key={tx.id || `div-tx-${i}`} className={`h-[72px] hover:bg-slate-50/80 transition-colors group opacity-0 animate-row-fade stagger-${(i % 9) + 1}`}>
+                      {/* 1. 종목 */}
+                      <td className="px-6 py-2">
+                        <div className="flex items-center gap-3 min-h-[52px]">
+                          <StockLogo code={code} name={displayName} isKRW={isKRW} />
+                          <div className="flex flex-col justify-center max-w-[240px]">
+                            <p className="text-sm text-slate-900 font-bold leading-tight truncate">
+                              {displayName}
+                            </p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="font-mono text-slate-400 font-medium text-[11px] w-[62px] shrink-0 truncate">
+                                {formatStockCode(code)}
+                              </span>
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
+                                  isKRW
+                                    ? "bg-blue-50 text-blue-600 border-blue-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}
+                              >
+                                {isKRW ? "국내" : "해외"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 2. 배당일 */}
+                      <td className="px-6 py-2 text-center text-sm font-bold text-slate-700 tabular-nums">
+                        {formatDisplayDate(tx.date)}
+                      </td>
+
+                      {/* 3. 배당금 */}
+                      <td className="px-6 py-2 text-right">
+                        <div className="flex flex-col items-end justify-center">
+                          {isKRW ? (
+                            <span className="text-sm font-bold text-slate-900 tabular-nums">
+                              {amountKRW.toLocaleString('ko-KR')}원
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-sm font-bold text-slate-900 tabular-nums">
+                                {formatForeignAmount(foreignAmount, tx.currency || 'USD')}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400 tabular-nums mt-0.5">
+                                {amountKRW.toLocaleString('ko-KR')}원
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 4. 계좌 */}
+                      <td className="px-6 py-2 text-center text-sm font-medium text-slate-700">
+                        {accountNameById[tx.account_id] || tx.account || ''}
+                      </td>
+
+                      {/* 5. 옵션 */}
+                      <td className="px-6 py-2 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleEdit(tx)}
+                            className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="수정"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(tx.id)}
+                            className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="삭제"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  )) : []
-              )
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 10))}
-            disabled={currentPage === 1}
-            className={`p-2 rounded-xl transition-all ${currentPage === 1
-              ? 'text-slate-200 cursor-not-allowed opacity-30'
-              : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
-              }`}
-            title="10페이지 앞으로"
-          >
-            <ChevronsLeft size={20} />
-          </button>
-
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className={`p-2 rounded-xl transition-all ${currentPage === 1
-              ? 'text-slate-200 cursor-not-allowed opacity-50'
-              : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
-              }`}
-          >
-            <ChevronLeft size={20} />
-          </button>
-
-          <div className="flex items-center gap-1">
-            {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map((pageNum) => (
-              <button
-                key={pageNum}
-                onClick={() => setCurrentPage(pageNum)}
-                className={`w-10 h-10 rounded-xl text-sm font-bold transition-all cursor-pointer ${currentPage === pageNum
-                  ? 'bg-brand text-white shadow-lg shadow-brand/20'
-                  : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-              >
-                {pageNum}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-            className={`p-2 rounded-xl transition-all ${currentPage === totalPages
-              ? 'text-slate-300 cursor-not-allowed opacity-50'
-              : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
-              }`}
-          >
-            <ChevronRight size={20} />
-          </button>
-
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 10))}
-            disabled={currentPage > totalPages - 1} // Can't jump if already near the end
-            className={`p-2 rounded-xl transition-all ${currentPage > totalPages - 1
-              ? 'text-slate-200 cursor-not-allowed opacity-30'
-              : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
-              }`}
-            title="10페이지 뒤로"
-          >
-            <ChevronsRight size={20} />
-          </button>
+                  );
+                }).concat(
+                  paginatedTransactions.length > 0 && paginatedTransactions.length < ITEMS_PER_PAGE ?
+                    [...Array(ITEMS_PER_PAGE - paginatedTransactions.length)].map((_, i) => (
+                      <tr key={`empty-${i}`} className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedTransactions.length + i + 1}`}>
+                        <td colSpan="5" className="px-6 py-2"><div className="min-h-[52px]">&nbsp;</div></td>
+                      </tr>
+                    )) : []
+                )
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
-      </>
-      )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-1 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 10))}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-xl transition-all ${currentPage === 1
+                ? 'text-slate-200 cursor-not-allowed opacity-30'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+                }`}
+              title="10페이지 앞으로"
+            >
+              <ChevronsLeft size={20} />
+            </button>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-xl transition-all ${currentPage === 1
+                ? 'text-slate-200 cursor-not-allowed opacity-50'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+                }`}
+            >
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map((pageNum) => (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-10 h-10 rounded-xl text-sm font-bold transition-all cursor-pointer ${currentPage === pageNum
+                    ? 'bg-brand text-white shadow-lg shadow-brand/20'
+                    : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className={`p-2 rounded-xl transition-all ${currentPage === totalPages
+                ? 'text-slate-300 cursor-not-allowed opacity-50'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+                }`}
+            >
+              <ChevronRight size={20} />
+            </button>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 10))}
+              disabled={currentPage > totalPages - 1}
+              className={`p-2 rounded-xl transition-all ${currentPage > totalPages - 1
+                ? 'text-slate-200 cursor-not-allowed opacity-30'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-brand cursor-pointer'
+                }`}
+              title="10페이지 뒤로"
+            >
+              <ChevronsRight size={20} />
+            </button>
+          </div>
+        )}
+          </>
+        )}
       </div>
 
       {/* Add Transaction Modal */}
@@ -2491,7 +3593,7 @@ export default function TransactionsPage() {
                           </span>
                         </button>
                         {isFilterFromCalendarOpen && (
-                          <div ref={filterFromCalendarRef} className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]">
+                          <div ref={filterFromCalendarRef} className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]" style={{ backgroundColor: '#ffffff' }}>
                             <CalendarUI 
                               initialYear={tempFilters.dateFrom && typeof tempFilters.dateFrom === 'string' && tempFilters.dateFrom.includes('-') ? parseInt(tempFilters.dateFrom.substring(0, 4)) : new Date().getFullYear()}
                               initialMonth={tempFilters.dateFrom && typeof tempFilters.dateFrom === 'string' && tempFilters.dateFrom.includes('-') ? parseInt(tempFilters.dateFrom.substring(5, 7)) : (new Date().getMonth() + 1)}
@@ -2529,7 +3631,7 @@ export default function TransactionsPage() {
                           </span>
                         </button>
                         {isFilterToCalendarOpen && (
-                          <div ref={filterToCalendarRef} className="absolute right-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]">
+                          <div ref={filterToCalendarRef} className="absolute right-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]" style={{ backgroundColor: '#ffffff' }}>
                             <CalendarUI 
                               initialYear={tempFilters.dateTo && typeof tempFilters.dateTo === 'string' && tempFilters.dateTo.includes('-') ? parseInt(tempFilters.dateTo.substring(0, 4)) : new Date().getFullYear()}
                               initialMonth={tempFilters.dateTo && typeof tempFilters.dateTo === 'string' && tempFilters.dateTo.includes('-') ? parseInt(tempFilters.dateTo.substring(5, 7)) : (new Date().getMonth() + 1)}
