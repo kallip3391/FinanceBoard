@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowLeftRight, Plus, Search, ChevronDown, PlusCircle, Wallet, ArrowUpDown, CheckCircle2, TrendingUp, Scale } from "lucide-react";
+import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowLeftRight, Plus, Search, ChevronDown, PlusCircle, Wallet, ArrowUpDown, CheckCircle2, TrendingUp, Scale, Award } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
@@ -190,6 +190,71 @@ function AnimatedTradeCounter({
       {new Intl.NumberFormat('ko-KR').format(rounded)}
     </>
   );
+}
+
+// ── 최근 매수일/최근 매도일 날짜 롤링 효과 (YYYY.MM.DD) ──
+function AnimatedDateText({ dateStr, duration = 800 }) {
+  const [displayDate, setDisplayDate] = useState(dateStr || '-');
+  const prevDateRef = useRef(dateStr);
+
+  useEffect(() => {
+    if (!dateStr || dateStr === '-') {
+      setDisplayDate('-');
+      prevDateRef.current = '-';
+      return;
+    }
+
+    const parts = String(dateStr).split('.');
+    if (parts.length !== 3) {
+      setDisplayDate(dateStr);
+      prevDateRef.current = dateStr;
+      return;
+    }
+
+    const year = parts[0];
+    const targetMonth = Number(parts[1]) || 1;
+    const targetDay = Number(parts[2]) || 1;
+
+    let startMonth = 1;
+    let startDay = 1;
+    if (prevDateRef.current && prevDateRef.current.includes('.')) {
+      const prevParts = prevDateRef.current.split('.');
+      if (prevParts.length === 3) {
+        startMonth = Number(prevParts[1]) || 1;
+        startDay = Number(prevParts[2]) || 1;
+      }
+    }
+
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 4);
+
+      const curMonth = Math.round(startMonth + (targetMonth - startMonth) * ease);
+      const curDay = Math.round(startDay + (targetDay - startDay) * ease);
+
+      setDisplayDate(
+        `${year}.${String(curMonth).padStart(2, '0')}.${String(curDay).padStart(2, '0')}`
+      );
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        setDisplayDate(dateStr);
+        prevDateRef.current = dateStr;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [dateStr, duration]);
+
+  return <>{displayDate}</>;
 }
 
 // 상단 카드 서브텍스트용 원화/외화 간결 포맷터
@@ -1645,6 +1710,9 @@ export default function TransactionsPage() {
     let buyAmountForeignKRW = 0;
     let sellAmountForeignKRW = 0;
 
+    const stockMap = {};
+    let latestTx = null;
+
     targetTxs.forEach(tx => {
       const isKRW = (tx.currency || 'KRW') === 'KRW';
       const isBuy = tx.trade_type === TRADE_TYPES.BUY || tx.trade_type === 'BUY' || tx.type === '매수';
@@ -1676,6 +1744,47 @@ export default function TransactionsPage() {
           sellQtyForeign += qty;
         }
       }
+
+      // 종목별 누적 집계
+      const code = tx.stock_code || tx.security?.code || tx.stockCode || '';
+      const rawName = tx.stock_name || tx.security?.name || tx.stock || '';
+      const name = STOCK_KR_NAMES[code] || rawName || code;
+      const stockKey = code || name;
+
+      if (stockKey) {
+        if (!stockMap[stockKey]) {
+          stockMap[stockKey] = {
+            key: stockKey,
+            code,
+            name,
+            amountKRW: 0,
+            amountForeign: 0,
+            qty: 0,
+            count: 0,
+            isKRW,
+            currency: tx.currency || 'KRW'
+          };
+        }
+        stockMap[stockKey].amountKRW += amtKRW;
+        if (!isKRW) {
+          stockMap[stockKey].amountForeign += amt;
+        }
+        stockMap[stockKey].qty += qty;
+        stockMap[stockKey].count += 1;
+      }
+
+      // 최신 거래일 및 거래 종목 찾기
+      if (tx.date) {
+        const txDateStr = String(tx.date).substring(0, 10);
+        if (!latestTx || txDateStr.localeCompare(latestTx.dateStr) > 0 || (txDateStr === latestTx.dateStr && (tx.id || 0) > (latestTx.id || 0))) {
+          latestTx = {
+            dateStr: txDateStr,
+            name,
+            qty,
+            id: tx.id || 0
+          };
+        }
+      }
     });
 
     // 전체(ALL) 통합 지표
@@ -1698,6 +1807,54 @@ export default function TransactionsPage() {
     const avgForeignRate = foreignTotalAmt > 0
       ? (foreignTotalKRW / foreignTotalAmt)
       : (Number(exchangeRates?.USD) || 1350);
+
+    // 종목 수 & 1위 종목 추출
+    const stockList = Object.values(stockMap);
+    const distinctStocksCount = stockList.length;
+
+    let topStock = null;
+    if (stockList.length > 0) {
+      stockList.sort((a, b) => {
+        if (currencyFilter === 'OVERSEAS') {
+          return b.amountForeign - a.amountForeign;
+        }
+        return b.amountKRW - a.amountKRW;
+      });
+      topStock = stockList[0];
+    }
+
+    let topStockShare = '0.0';
+    let topStockSub = '-';
+    if (topStock) {
+      let baseAmount = 0;
+      if (currencyFilter === 'OVERSEAS') {
+        baseAmount = tradeTypeFilter === 'SELL' ? sellAmountForeign : (tradeTypeFilter === 'BUY' ? buyAmountForeign : foreignTotalAmt);
+        if (baseAmount > 0) {
+          topStockShare = ((topStock.amountForeign / baseAmount) * 100).toFixed(1);
+        }
+        topStockSub = `${formatForeignAmount(topStock.amountForeign, topStock.currency || 'USD')} · ${topStock.qty.toLocaleString('ko-KR')}주`;
+      } else if (currencyFilter === 'KRW') {
+        baseAmount = tradeTypeFilter === 'SELL' ? sellAmountKRW : (tradeTypeFilter === 'BUY' ? buyAmountKRW : krwTurnover);
+        if (baseAmount > 0) {
+          topStockShare = ((topStock.amountKRW / baseAmount) * 100).toFixed(1);
+        }
+        topStockSub = `${formatSubKRW(topStock.amountKRW)} · ${topStock.qty.toLocaleString('ko-KR')}주`;
+      } else {
+        baseAmount = tradeTypeFilter === 'SELL' ? totalSellKRW : (tradeTypeFilter === 'BUY' ? totalBuyKRW : totalTurnoverKRW);
+        if (baseAmount > 0) {
+          topStockShare = ((topStock.amountKRW / baseAmount) * 100).toFixed(1);
+        }
+        topStockSub = `${formatSubKRW(topStock.amountKRW)} · ${topStock.qty.toLocaleString('ko-KR')}주`;
+      }
+    }
+
+    // 최신 거래일 포맷
+    let latestTxDateFormatted = '-';
+    let latestTxSub = '-';
+    if (latestTx && latestTx.dateStr) {
+      latestTxDateFormatted = latestTx.dateStr.replace(/-/g, '.');
+      latestTxSub = `${latestTx.name} ${Number(latestTx.qty || 0).toLocaleString('ko-KR')}주`;
+    }
 
     return {
       // 전체
@@ -1732,8 +1889,16 @@ export default function TransactionsPage() {
       sellCountForeign,
       buyQtyForeign,
       sellQtyForeign,
+
+      // 종목 수 & 1위 종목 & 최신 거래일
+      distinctStocksCount,
+      topStockName: topStock ? topStock.name : '-',
+      topStockShare,
+      topStockSub,
+      latestTxDate: latestTxDateFormatted,
+      latestTxSub,
     };
-  }, [filteredTransactions, exchangeRates]);
+  }, [filteredTransactions, exchangeRates, currencyFilter, tradeTypeFilter]);
 
   // Pagination Logic (필터링된 데이터를 기준으로 계산)
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE));
@@ -1866,136 +2031,32 @@ export default function TransactionsPage() {
         {/* 로그인 완료 및 로딩 완료 후 본문 표시 */}
         {user && !loading && (
           <>
-        {/* 상단 4대 핵심 요약 카드 (Glass Card) - 추천 A안: 자금 흐름 & 포지션 중심 */}
+        {/* 상단 4대 핵심 요약 카드 (Glass Card) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* 1. 총 매수금액 */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">총 매수금액</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                  매수 {currencyFilter === "ALL" ? summary.totalBuyCount : (currencyFilter === "OVERSEAS" ? summary.buyCountForeign : summary.buyCountKRW)}건
-                </span>
-                <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Wallet size={12} strokeWidth={2.5} />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
-                <AnimatedTradeCounter
-                  key={`buy-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
-                  value={
-                    currencyFilter === "ALL"
-                      ? summary.totalBuyKRW
-                      : (currencyFilter === "OVERSEAS" ? summary.buyAmountForeign : summary.buyAmountKRW)
-                  }
-                  isForeign={currencyFilter === "OVERSEAS"}
-                  showSign={false}
-                  duration={800}
-                />
-              </span>
-              {currencyFilter !== "OVERSEAS" && (
-                <span className="text-xs font-bold text-slate-400">원</span>
-              )}
-            </div>
-            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
-                {currencyFilter === "ALL" && (
-                  <>국내 {formatSubKRW(summary.buyAmountKRW)} · 해외 {formatSubUSD(summary.buyAmountForeign)}</>
-                )}
-                {currencyFilter === "KRW" && (
-                  <>체결수량 {summary.buyQtyKRW.toLocaleString('ko-KR')}주</>
-                )}
-                {currencyFilter === "OVERSEAS" && (
-                  <>약 {formatSubKRW(summary.buyAmountForeignKRW)}</>
-                )}
-              </span>
-              <span className="font-semibold text-slate-500">
-                매수 투자금액
-              </span>
-            </div>
-            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-          </div>
-
-          {/* 2. 총 매도금액 */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-bold text-slate-500">총 매도금액</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600">
-                  매도 {currencyFilter === "ALL" ? summary.totalSellCount : (currencyFilter === "OVERSEAS" ? summary.sellCountForeign : summary.sellCountKRW)}건
-                </span>
-                <div className="w-5 h-5 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
-                  <TrendingUp size={12} strokeWidth={2.5} />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-              <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
-                <AnimatedTradeCounter
-                  key={`sell-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
-                  value={
-                    currencyFilter === "ALL"
-                      ? summary.totalSellKRW
-                      : (currencyFilter === "OVERSEAS" ? summary.sellAmountForeign : summary.sellAmountKRW)
-                  }
-                  isForeign={currencyFilter === "OVERSEAS"}
-                  showSign={false}
-                  duration={800}
-                />
-              </span>
-              {currencyFilter !== "OVERSEAS" && (
-                <span className="text-xs font-bold text-slate-400">원</span>
-              )}
-            </div>
-            <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
-                {currencyFilter === "ALL" && (
-                  <>국내 {formatSubKRW(summary.sellAmountKRW)} · 해외 {formatSubUSD(summary.sellAmountForeign)}</>
-                )}
-                {currencyFilter === "KRW" && (
-                  <>체결수량 {summary.sellQtyKRW.toLocaleString('ko-KR')}주</>
-                )}
-                {currencyFilter === "OVERSEAS" && (
-                  <>약 {formatSubKRW(summary.sellAmountForeignKRW)}</>
-                )}
-              </span>
-              <span className="font-semibold text-slate-500">
-                매도 투자금액
-              </span>
-            </div>
-            <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
-          </div>
-
-          {/* 3. 순 매수금액 */}
-          {(() => {
-            const currentNetBuy = currencyFilter === "ALL"
-              ? summary.totalNetBuyKRW
-              : (currencyFilter === "OVERSEAS" ? summary.foreignNetBuy : summary.krwNetBuy);
-            const isPositive = currentNetBuy >= 0;
-            return (
+          {tradeTypeFilter === "ALL" ? (
+            <>
+              {/* 1. 총 매수금액 */}
               <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
                 <div className="flex justify-between items-start mb-2">
-                  <span className="text-xs font-bold text-slate-500">순 매수금액</span>
+                  <span className="text-xs font-bold text-slate-500">총 매수금액</span>
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
-                      isPositive ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'
-                    }`}>
-                      {isPositive ? (currencyFilter === "OVERSEAS" ? "달러 투입" : "투입 자금") : (currencyFilter === "OVERSEAS" ? "달러 회수" : "현금 회수")}
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                      매수 {currencyFilter === "ALL" ? summary.totalBuyCount : (currencyFilter === "OVERSEAS" ? summary.buyCountForeign : summary.buyCountKRW)}건
                     </span>
-                    <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                      <Scale size={12} strokeWidth={2.5} />
+                    <div className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <Wallet size={12} strokeWidth={2.5} />
                     </div>
                   </div>
                 </div>
                 <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-                  <span className={`text-2xl font-black tabular-nums tracking-tight cursor-default select-none ${
-                    isPositive ? 'text-indigo-600' : 'text-emerald-600'
-                  }`}>
+                  <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
                     <AnimatedTradeCounter
-                      key={`net-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
-                      value={currentNetBuy}
+                      key={`buy-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                      value={
+                        currencyFilter === "ALL"
+                          ? summary.totalBuyKRW
+                          : (currencyFilter === "OVERSEAS" ? summary.buyAmountForeign : summary.buyAmountKRW)
+                      }
                       isForeign={currencyFilter === "OVERSEAS"}
                       showSign={false}
                       duration={800}
@@ -2006,93 +2067,441 @@ export default function TransactionsPage() {
                   )}
                 </div>
                 <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-                  <span>
+                  <span
+                    key={`buy-sub-${currencyFilter}-${tradeTypeFilter}-${summary.buyAmountKRW}-${summary.buyAmountForeign}`}
+                    className="animate-fade-in inline-block"
+                  >
                     {currencyFilter === "ALL" && (
-                      <>국내 {formatSubKRW(summary.krwNetBuy)} · 해외 {formatSubUSD(summary.foreignNetBuy)}</>
+                      <>국내 {formatSubKRW(summary.buyAmountKRW)} · 해외 {formatSubUSD(summary.buyAmountForeign)}</>
                     )}
                     {currencyFilter === "KRW" && (
-                      <>매수금액 - 매도금액</>
+                      <>체결수량 {summary.buyQtyKRW.toLocaleString('ko-KR')}주</>
                     )}
                     {currencyFilter === "OVERSEAS" && (
-                      <>약 {formatSubKRW(summary.buyAmountForeignKRW - summary.sellAmountForeignKRW)}</>
+                      <>약 {formatSubKRW(summary.buyAmountForeignKRW)}</>
                     )}
                   </span>
-                  <span className={`font-semibold ${isPositive ? 'text-indigo-600' : 'text-emerald-600'}`}>
-                    순 투자금액
+                  <span className="font-semibold text-slate-500">
+                    매수 투자금액
                   </span>
                 </div>
-                <div className={`absolute top-0 left-0 w-1 h-full ${isPositive ? 'bg-indigo-500' : 'bg-emerald-500'}`}></div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
               </div>
-            );
-          })()}
 
-          {/* 4. 총 거래대금 (전체/국내) OR 매매 거래환율 (해외) */}
-          {currencyFilter === "OVERSEAS" ? (
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-slate-500">매매 거래환율</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
-                    USD / KRW
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-                <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 cursor-default select-none">
-                  <AnimatedTradeCounter
-                    key={`foreign-rate-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
-                    value={summary.avgForeignRate}
-                    isForeign={false}
-                    isRate={true}
-                    showSign={false}
-                    duration={800}
-                  />
-                </span>
-                <span className="text-xs font-bold text-slate-400">원</span>
-              </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-                <span>총 {summary.buyCountForeign + summary.sellCountForeign}건 기준</span>
-                <span className="font-semibold text-emerald-600">매매 평균환율</span>
-              </div>
-              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-bold text-slate-500">총 거래대금</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                    총 {currencyFilter === "ALL" ? summary.totalTxCount : (summary.buyCountKRW + summary.sellCountKRW)}건
-                  </span>
-                  <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
-                    <ArrowUpDown size={12} strokeWidth={2.5} />
+              {/* 2. 총 매도금액 */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-slate-500">총 매도금액</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600">
+                      매도 {currencyFilter === "ALL" ? summary.totalSellCount : (currencyFilter === "OVERSEAS" ? summary.sellCountForeign : summary.sellCountKRW)}건
+                    </span>
+                    <div className="w-5 h-5 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
+                      <TrendingUp size={12} strokeWidth={2.5} />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
-                <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
-                  <AnimatedTradeCounter
-                    key={`turnover-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
-                    value={currencyFilter === "ALL" ? summary.totalTurnoverKRW : summary.krwTurnover}
-                    isForeign={false}
-                    showSign={false}
-                    duration={800}
-                  />
-                </span>
-                <span className="text-xs font-bold text-slate-400">원</span>
-              </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-                <span>
-                  {currencyFilter === "ALL" ? (
-                    <>국내 {summary.buyCountKRW + summary.sellCountKRW}건 · 해외 {summary.buyCountForeign + summary.sellCountForeign}건</>
-                  ) : (
-                    <>매수 {summary.buyCountKRW}건 · 매도 {summary.sellCountKRW}건</>
+                <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                  <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                    <AnimatedTradeCounter
+                      key={`sell-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                      value={
+                        currencyFilter === "ALL"
+                          ? summary.totalSellKRW
+                          : (currencyFilter === "OVERSEAS" ? summary.sellAmountForeign : summary.sellAmountKRW)
+                      }
+                      isForeign={currencyFilter === "OVERSEAS"}
+                      showSign={false}
+                      duration={800}
+                    />
+                  </span>
+                  {currencyFilter !== "OVERSEAS" && (
+                    <span className="text-xs font-bold text-slate-400">원</span>
                   )}
-                </span>
-                <span className="font-semibold text-slate-500">회전 규모</span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                  <span
+                    key={`sell-sub-${currencyFilter}-${tradeTypeFilter}-${summary.sellAmountKRW}-${summary.sellAmountForeign}`}
+                    className="animate-fade-in inline-block"
+                  >
+                    {currencyFilter === "ALL" && (
+                      <>국내 {formatSubKRW(summary.sellAmountKRW)} · 해외 {formatSubUSD(summary.sellAmountForeign)}</>
+                    )}
+                    {currencyFilter === "KRW" && (
+                      <>체결수량 {summary.sellQtyKRW.toLocaleString('ko-KR')}주</>
+                    )}
+                    {currencyFilter === "OVERSEAS" && (
+                      <>약 {formatSubKRW(summary.sellAmountForeignKRW)}</>
+                    )}
+                  </span>
+                  <span className="font-semibold text-slate-500">
+                    매도 투자금액
+                  </span>
+                </div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
               </div>
-              <div className="absolute top-0 left-0 w-1 h-full bg-slate-700"></div>
-            </div>
+
+              {/* 3. 순 매수금액 */}
+              {(() => {
+                const currentNetBuy = currencyFilter === "ALL"
+                  ? summary.totalNetBuyKRW
+                  : (currencyFilter === "OVERSEAS" ? summary.foreignNetBuy : summary.krwNetBuy);
+                const isPositive = currentNetBuy >= 0;
+                return (
+                  <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-bold text-slate-500">순 매수금액</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                          {isPositive ? (currencyFilter === "OVERSEAS" ? "달러 투입" : "투입 자금") : (currencyFilter === "OVERSEAS" ? "달러 회수" : "현금 회수")}
+                        </span>
+                        <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                          <Scale size={12} strokeWidth={2.5} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                      <span className="text-2xl font-black tabular-nums tracking-tight text-indigo-600 cursor-default select-none">
+                        <AnimatedTradeCounter
+                          key={`net-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                          value={currentNetBuy}
+                          isForeign={currencyFilter === "OVERSEAS"}
+                          showSign={false}
+                          duration={800}
+                        />
+                      </span>
+                      {currencyFilter !== "OVERSEAS" && (
+                        <span className="text-xs font-bold text-slate-400">원</span>
+                      )}
+                    </div>
+                    <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                      <span
+                        key={`net-sub-${currencyFilter}-${tradeTypeFilter}-${summary.krwNetBuy}-${summary.foreignNetBuy}`}
+                        className="animate-fade-in inline-block"
+                      >
+                        {currencyFilter === "ALL" && (
+                          <>국내 {formatSubKRW(summary.krwNetBuy)} · 해외 {formatSubUSD(summary.foreignNetBuy)}</>
+                        )}
+                        {currencyFilter === "KRW" && (
+                          <>매수금액 - 매도금액</>
+                        )}
+                        {currencyFilter === "OVERSEAS" && (
+                          <>약 {formatSubKRW(summary.buyAmountForeignKRW - summary.sellAmountForeignKRW)}</>
+                        )}
+                      </span>
+                      <span className="font-semibold text-indigo-600">
+                        순 투자금액
+                      </span>
+                    </div>
+                    <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                  </div>
+                );
+              })()}
+
+              {/* 4. 총 거래대금 (전체/국내) OR 매매 거래환율 (해외) */}
+              {currencyFilter === "OVERSEAS" ? (
+                <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-slate-500">매매 거래환율</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+                        USD / KRW
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                    <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 cursor-default select-none">
+                      <AnimatedTradeCounter
+                        key={`foreign-rate-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                        value={summary.avgForeignRate}
+                        isForeign={false}
+                        isRate={true}
+                        showSign={false}
+                        duration={800}
+                      />
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">원</span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                    <span
+                      key={`rate-sub-${currencyFilter}-${summary.buyCountForeign + summary.sellCountForeign}`}
+                      className="animate-fade-in inline-block"
+                    >
+                      총 {summary.buyCountForeign + summary.sellCountForeign}건 기준
+                    </span>
+                    <span className="font-semibold text-emerald-600">매매 평균환율</span>
+                  </div>
+                  <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                </div>
+              ) : (
+                <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-slate-500">총 거래대금</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        총 {currencyFilter === "ALL" ? summary.totalTxCount : (summary.buyCountKRW + summary.sellCountKRW)}건
+                      </span>
+                      <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <ArrowUpDown size={12} strokeWidth={2.5} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                    <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                      <AnimatedTradeCounter
+                        key={`turnover-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                        value={currencyFilter === "ALL" ? summary.totalTurnoverKRW : summary.krwTurnover}
+                        isForeign={false}
+                        showSign={false}
+                        duration={800}
+                      />
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">원</span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                    <span
+                      key={`turnover-sub-${currencyFilter}-${summary.totalTxCount}`}
+                      className="animate-fade-in inline-block"
+                    >
+                      {currencyFilter === "ALL" ? (
+                        <>국내 {summary.buyCountKRW + summary.sellCountKRW}건 · 해외 {summary.buyCountForeign + summary.sellCountForeign}건</>
+                      ) : (
+                        <>매수 {summary.buyCountKRW}건 · 매도 {summary.sellCountKRW}건</>
+                      )}
+                    </span>
+                    <span className="font-semibold text-slate-500">회전 규모</span>
+                  </div>
+                  <div className="absolute top-0 left-0 w-1 h-full bg-slate-700"></div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* ── 매수(BUY) / 매도(SELL) 선택 시 전용 4대 카드 ── */}
+
+              {/* 1. 총 매수금액 / 총 매도금액 */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-slate-500">
+                    {tradeTypeFilter === 'BUY' ? '총 매수금액' : '총 매도금액'}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                      tradeTypeFilter === 'BUY' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
+                    }`}>
+                      {tradeTypeFilter === 'BUY' ? '매수' : '매도'}{' '}
+                      {currencyFilter === "ALL"
+                        ? (tradeTypeFilter === 'BUY' ? summary.totalBuyCount : summary.totalSellCount)
+                        : (currencyFilter === "OVERSEAS"
+                            ? (tradeTypeFilter === 'BUY' ? summary.buyCountForeign : summary.sellCountForeign)
+                            : (tradeTypeFilter === 'BUY' ? summary.buyCountKRW : summary.sellCountKRW))}건
+                    </span>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                      tradeTypeFilter === 'BUY' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'
+                    }`}>
+                      {tradeTypeFilter === 'BUY' ? (
+                        <Wallet size={12} strokeWidth={2.5} />
+                      ) : (
+                        <TrendingUp size={12} strokeWidth={2.5} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                  <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                    <AnimatedTradeCounter
+                      key={`sub-amt-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                      value={
+                        tradeTypeFilter === 'BUY'
+                          ? (currencyFilter === "ALL" ? summary.totalBuyKRW : (currencyFilter === "OVERSEAS" ? summary.buyAmountForeign : summary.buyAmountKRW))
+                          : (currencyFilter === "ALL" ? summary.totalSellKRW : (currencyFilter === "OVERSEAS" ? summary.sellAmountForeign : summary.sellAmountKRW))
+                      }
+                      isForeign={currencyFilter === "OVERSEAS"}
+                      showSign={false}
+                      duration={800}
+                    />
+                  </span>
+                  {currencyFilter !== "OVERSEAS" && (
+                    <span className="text-xs font-bold text-slate-400">원</span>
+                  )}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                  <span
+                    key={`sub-card1-${currencyFilter}-${tradeTypeFilter}`}
+                    className="animate-fade-in inline-block"
+                  >
+                    {currencyFilter === "ALL" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>국내 {formatSubKRW(summary.buyAmountKRW)} · 해외 {formatSubUSD(summary.buyAmountForeign)}</>
+                        : <>국내 {formatSubKRW(summary.sellAmountKRW)} · 해외 {formatSubUSD(summary.sellAmountForeign)}</>
+                    )}
+                    {currencyFilter === "KRW" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>체결수량 {summary.buyQtyKRW.toLocaleString('ko-KR')}주</>
+                        : <>체결수량 {summary.sellQtyKRW.toLocaleString('ko-KR')}주</>
+                    )}
+                    {currencyFilter === "OVERSEAS" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>약 {formatSubKRW(summary.buyAmountForeignKRW)}</>
+                        : <>약 {formatSubKRW(summary.sellAmountForeignKRW)}</>
+                    )}
+                  </span>
+                  <span className="font-semibold text-slate-500">
+                    {tradeTypeFilter === 'BUY' ? '매수 투자금액' : '매도 투자금액'}
+                  </span>
+                </div>
+                <div className={`absolute top-0 left-0 w-1 h-full ${
+                  tradeTypeFilter === 'BUY' ? 'bg-blue-500' : 'bg-rose-500'
+                }`}></div>
+              </div>
+
+              {/* 2. 거래현황 */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-slate-500">거래현황</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                      총 {summary.distinctStocksCount} 종목
+                    </span>
+                    <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                      <CheckCircle2 size={12} strokeWidth={2.5} />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
+                  <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                    <AnimatedTradeCounter
+                      key={`status-count-${currencyFilter}-${tradeTypeFilter}-${activeFilters.dateFrom || ''}-${activeFilters.dateTo || ''}`}
+                      value={
+                        currencyFilter === "ALL"
+                          ? (tradeTypeFilter === 'BUY' ? summary.totalBuyCount : summary.totalSellCount)
+                          : (currencyFilter === "OVERSEAS"
+                              ? (tradeTypeFilter === 'BUY' ? summary.buyCountForeign : summary.sellCountForeign)
+                              : (tradeTypeFilter === 'BUY' ? summary.buyCountKRW : summary.sellCountKRW))
+                      }
+                      isForeign={false}
+                      showSign={false}
+                      duration={800}
+                    />
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">건</span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                  <span
+                    key={`sub-card2-${currencyFilter}-${tradeTypeFilter}`}
+                    className="animate-fade-in inline-block"
+                  >
+                    {currencyFilter === "ALL" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>국내 {summary.buyCountKRW}건 · 해외 {summary.buyCountForeign}건</>
+                        : <>국내 {summary.sellCountKRW}건 · 해외 {summary.sellCountForeign}건</>
+                    )}
+                    {currencyFilter === "KRW" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>국내 체결수량 {summary.buyQtyKRW.toLocaleString('ko-KR')}주</>
+                        : <>국내 체결수량 {summary.sellQtyKRW.toLocaleString('ko-KR')}주</>
+                    )}
+                    {currencyFilter === "OVERSEAS" && (
+                      tradeTypeFilter === 'BUY'
+                        ? <>해외 체결수량 {summary.buyQtyForeign.toLocaleString('ko-KR')}주</>
+                        : <>해외 체결수량 {summary.sellQtyForeign.toLocaleString('ko-KR')}주</>
+                    )}
+                  </span>
+                  <span className="font-semibold text-slate-500">
+                    조회기간 합계
+                  </span>
+                </div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+              </div>
+
+              {/* 3. 누적 매수 1위 / 누적 매도 1위 */}
+              <div
+                key={`card3-stock-${tradeTypeFilter}-${currencyFilter}`}
+                className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-slate-500">
+                    {tradeTypeFilter === 'BUY' ? '누적 매수 1위' : '누적 매도 1위'}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-violet-50 text-violet-600">
+                      비중{' '}
+                      <AnimatedTradeCounter
+                        key={`top-share-${currencyFilter}-${tradeTypeFilter}-${summary.topStockShare}`}
+                        value={summary.topStockShare}
+                        decimals={1}
+                        duration={800}
+                      />%
+                    </span>
+                    <div className="w-5 h-5 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center">
+                      <Award size={12} strokeWidth={2.5} />
+                    </div>
+                  </div>
+                </div>
+                <div
+                  key={`top-stock-main-${currencyFilter}-${tradeTypeFilter}-${summary.topStockName}`}
+                  className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none min-h-[32px] animate-summary-pop"
+                >
+                  <span className="text-2xl font-black text-slate-800 tracking-tight truncate max-w-[220px]" title={summary.topStockName}>
+                    {summary.topStockName}
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                  <span
+                    key={`top-sub-${currencyFilter}-${tradeTypeFilter}-${summary.topStockSub}`}
+                    className="truncate max-w-[170px] animate-fade-in inline-block"
+                    title={summary.topStockSub}
+                  >
+                    {summary.topStockSub}
+                  </span>
+                  <span className="font-semibold text-slate-500 shrink-0">
+                    {tradeTypeFilter === 'BUY' ? '최대 투자' : '최대 매도'}
+                  </span>
+                </div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-violet-500"></div>
+              </div>
+
+              {/* 4. 최근 매수일 / 최근 매도일 */}
+              <div
+                key={`card4-latest-${tradeTypeFilter}-${currencyFilter}`}
+                className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-bold text-slate-500">
+                    {tradeTypeFilter === 'BUY' ? '최근 매수일' : '최근 매도일'}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      최근 체결
+                    </span>
+                    <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                      <Calendar size={12} strokeWidth={2.5} />
+                    </div>
+                  </div>
+                </div>
+                <div
+                  key={`latest-date-main-${currencyFilter}-${tradeTypeFilter}-${summary.latestTxDate}`}
+                  className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none min-h-[32px] animate-summary-pop"
+                >
+                  <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
+                    <AnimatedDateText dateStr={summary.latestTxDate} duration={800} />
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
+                  <span
+                    key={`latest-sub-${currencyFilter}-${tradeTypeFilter}-${summary.latestTxSub}`}
+                    className="truncate max-w-[180px] animate-fade-in inline-block"
+                    title={summary.latestTxSub}
+                  >
+                    {summary.latestTxSub}
+                  </span>
+                  <span className="font-semibold text-slate-500 shrink-0">
+                    {tradeTypeFilter === 'BUY' ? '최종 매수' : '최종 매도'}
+                  </span>
+                </div>
+                <div className="absolute top-0 left-0 w-1 h-full bg-slate-700"></div>
+              </div>
+            </>
           )}
         </div>
 

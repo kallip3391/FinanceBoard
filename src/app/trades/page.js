@@ -708,7 +708,12 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>수량 × 평균매수가 합계</span>
+              <span
+                key={`trades-card1-sub-${currencyFilter}`}
+                className="animate-fade-in inline-block"
+              >
+                수량 × 평균매수가 합계
+              </span>
               <span className="font-semibold text-slate-500">투자원금</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-slate-400"></div>
@@ -749,7 +754,12 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>매도금액 - 매수금액 합계</span>
+              <span
+                key={`trades-card2-sub-${currencyFilter}`}
+                className="animate-fade-in inline-block"
+              >
+                매도금액 - 매수금액 합계
+              </span>
               <span className="font-semibold text-slate-500">순수익률</span>
             </div>
             <div className={`absolute top-0 left-0 w-1 h-full ${
@@ -783,7 +793,12 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>보유기간 배당금</span>
+              <span
+                key={`trades-card3-sub-${currencyFilter}`}
+                className="animate-fade-in inline-block"
+              >
+                보유기간 배당금
+              </span>
               <span className="font-semibold text-emerald-600">배당 수익</span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
@@ -824,7 +839,12 @@ export default function TradesPnLPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>매매손익 + 배당금 합계</span>
+              <span
+                key={`trades-card4-sub-${currencyFilter}`}
+                className="animate-fade-in inline-block"
+              >
+                매매손익 + 배당금 합계
+              </span>
               <span className="font-semibold text-slate-500">총 수익률</span>
             </div>
             <div className={`absolute top-0 left-0 w-1 h-full ${

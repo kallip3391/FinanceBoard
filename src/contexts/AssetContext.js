@@ -117,7 +117,8 @@ export function AssetProvider({ children }) {
         const totalReturnRate = totalCostKRW > 0 ? 
           ((profitKRW + (Number(h.total_dividend) || 0)) / totalCostKRW) * 100 : 0;
 
-        const rawForeignDiv = Number(h.total_dividend_amount || h.total_dividend_foreign || h.dividend_amount || h.foreign_dividend || h.foreignDividend) || 0;
+        const rawForeignDiv = Number(h.total_dividend_amount || h.total_dividend_foreign || h.dividend_amount || h.foreign_dividend || h.foreignDividend) 
+          || (h.currency !== 'KRW' && h.total_dividend && currentRate > 0 ? (Number(h.total_dividend) / currentRate) : 0);
 
         return {
           ...h,

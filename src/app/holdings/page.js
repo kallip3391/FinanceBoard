@@ -114,13 +114,23 @@ function AnimatedTradeCounter({
   useEffect(() => {
     const endVal = Number(value) || 0;
     // 최초 진입 시 또는 통화 단위 변경 시(KRW <-> USD) 0부터 롤링 시작
-    const shouldStartFromZero = !hasAnimatedInitialRef.current || prevIsForeignRef.current !== isForeign;
+    const isCurrencySwitched = prevIsForeignRef.current !== isForeign;
+    const shouldStartFromZero = !hasAnimatedInitialRef.current || isCurrencySwitched;
     const startVal = shouldStartFromZero
       ? 0
       : (Number(prevValueRef.current) || 0);
 
-    // 아직 데이터 로딩 전이라 endVal이 0이고 startVal도 0이면 대기
+    // 아직 데이터 로딩 전이라 value가 없는 경우만 대기
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    if (isCurrencySwitched) {
+      setDisplayValue(startVal);
+    }
+
     if (endVal === 0 && startVal === 0) {
+      setDisplayValue(0);
       prevValueRef.current = 0;
       prevIsForeignRef.current = isForeign;
       return;
@@ -285,7 +295,8 @@ export default function HoldingsPage() {
         foreignCostUSD += costUSD;
         foreignEvalUSD += evalUSD;
         foreignTotalProfitUSD += profitUSD;
-        foreignDivUSD += (h.foreignDividend || 0);
+        const fDiv = Number(h.foreignDividend) || (h.dividend && Number(h.exchangeRate) ? (Number(h.dividend) / Number(h.exchangeRate)) : 0);
+        foreignDivUSD += fDiv;
       }
     });
 
@@ -1117,6 +1128,7 @@ export default function HoldingsPage() {
             <button
               onClick={() => {
                 setHoldingTab("stock");
+                setCurrencyFilter("ALL");
                 setCurrentStockPage(1);
               }}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -1130,6 +1142,11 @@ export default function HoldingsPage() {
             <button
               onClick={() => {
                 setHoldingTab("account");
+                setCurrencyFilter("ALL");
+                const accounts = Object.keys(holdingsByAccount || {});
+                if (accounts.length > 0) {
+                  setSelectedAccount(accounts[0]);
+                }
                 setCurrentStockPage(1);
               }}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -1170,6 +1187,7 @@ export default function HoldingsPage() {
                       : 'text-slate-800'
                 }`}>
                   <AnimatedTradeCounter
+                    key={`card1-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
                     value={holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW}
                     isForeign={holdingsSummary.isOverseas}
                     showSign={true}
@@ -1217,6 +1235,7 @@ export default function HoldingsPage() {
                       : 'text-slate-800'
                 }`}>
                   <AnimatedTradeCounter
+                    key={`card2-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
                     value={holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW}
                     isForeign={holdingsSummary.isOverseas}
                     showSign={true}
@@ -1249,6 +1268,7 @@ export default function HoldingsPage() {
               <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
                 <span className="text-2xl font-black text-emerald-600 tabular-nums tracking-tight cursor-default select-none">
                   <AnimatedTradeCounter
+                    key={`card3-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
                     value={holdingsSummary.isOverseas ? holdingsSummary.foreignDivUSD : holdingsSummary.totalDivKRW}
                     isForeign={holdingsSummary.isOverseas}
                     showSign={true}
@@ -1275,6 +1295,7 @@ export default function HoldingsPage() {
               <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
                 <span className="text-2xl font-black text-slate-800 tabular-nums tracking-tight cursor-default select-none">
                   <AnimatedTradeCounter
+                    key={`card4-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
                     value={holdingsSummary.isOverseas ? holdingsSummary.foreignCostUSD : holdingsSummary.totalCostKRW}
                     isForeign={holdingsSummary.isOverseas}
                     showSign={false}

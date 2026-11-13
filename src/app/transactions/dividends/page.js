@@ -1826,13 +1826,17 @@ export default function TransactionsPage() {
               )}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
+              <span
+                key={`div-card1-sub-${currencyFilter}-${summary.dividendAmountKRW}-${summary.dividendAmountForeign}`}
+                className="animate-fade-in inline-block"
+              >
                 {currencyFilter === "ALL" && (
                   <>국내 {formatSubKRW(summary.dividendAmountKRW)} · 해외 {formatSubUSD(summary.dividendAmountForeign)}</>
                 )}
                 {currencyFilter === "OVERSEAS" && (
                   <>원화환산 {formatSubKRW(summary.dividendAmountForeignKRW)}</>
                 )}
+                {currencyFilter === "KRW" && "-"}
               </span>
               <span className="font-semibold text-slate-500">
                 조회기간 합계
@@ -1893,8 +1897,11 @@ export default function TransactionsPage() {
               {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">원</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
-                {currencyFilter === "KRW" && `월 평균 ${summary.monthlyAvgCountKRWDisplay}건`}
+              <span
+                key={`div-card2-sub-${currencyFilter}-${summary.monthlyAvgCountKRWDisplay}`}
+                className="animate-fade-in inline-block"
+              >
+                {currencyFilter === "KRW" ? `월 평균 ${summary.monthlyAvgCountKRWDisplay}건` : "-"}
               </span>
               <span className="font-semibold text-slate-500">
                 {currencyFilter === "ALL" && "원화 배당금"}
@@ -1963,13 +1970,17 @@ export default function TransactionsPage() {
               {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">원</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
+              <span
+                key={`div-card3-sub-${currencyFilter}-${summary.countForeign}-${summary.avgRateForeign}`}
+                className="animate-fade-in inline-block"
+              >
                 {currencyFilter === "ALL" && (
                   summary.countForeign > 0 
                     ? `평균환율 ${Math.round(summary.avgRateForeign || 0).toLocaleString('ko-KR')}원`
                     : '평균환율 -'
                 )}
                 {currencyFilter === "OVERSEAS" && `총 ${summary.countForeign}건`}
+                {currencyFilter === "KRW" && "-"}
               </span>
               <span className="font-semibold text-slate-500">
                 {currencyFilter === "ALL" && "원화 환산 배당금"}
@@ -2031,8 +2042,11 @@ export default function TransactionsPage() {
               {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">건</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-              <span>
-                {currencyFilter === "ALL" && `국내 ${summary.countKRW}건 · 해외 ${summary.countForeign}건`}
+              <span
+                key={`div-card4-sub-${currencyFilter}-${summary.countKRW}-${summary.countForeign}`}
+                className="animate-fade-in inline-block"
+              >
+                {currencyFilter === "ALL" ? `국내 ${summary.countKRW}건 · 해외 ${summary.countForeign}건` : "-"}
               </span>
               <span className="font-semibold text-slate-500">
                 조회기간 합계
