@@ -940,7 +940,7 @@ export default function TransactionsPage() {
       return;
     }
     if (!formData.dividendAmount) {
-      showAlert("입력 오류", "배당금(분배금)을 입력해 주세요.", "error", priceRef);
+      showAlert("입력 오류", "배당금을 입력해 주세요.", "error", priceRef);
       return;
     }
 
@@ -1217,7 +1217,32 @@ export default function TransactionsPage() {
     setEditingId(tx.id);
     const stockName = tx.security?.name || tx.stock_name || tx.stock || '';
     const stockCode = tx.security?.code || tx.stock_code || tx.stockCode || '';
-    const accountNm = accountNameById[tx.account_id] || '';
+    const accountNm = accountNameById[tx.account_id] || tx.account || '';
+
+    // 통화 판별: 명시된 currency가 있으면 사용, 없거나 불분명하면 국내 주식 여부로 판별
+    const isKRW = (tx.currency || 'KRW') === 'KRW' || 
+                  ['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(tx.security?.market) || 
+                  tx.security?.exchange_code === 'KRX' || 
+                  (stockCode && /^\d{6}$/.test(stockCode));
+    const txCurrency = tx.currency || (isKRW ? 'KRW' : 'USD');
+
+    // 배당금 산출: tx.dividend_amount가 있으면 사용, 없으면 total_dividend 또는 amount 사용
+    const rawDividend = (tx.dividend_amount != null && tx.dividend_amount !== '' && Number(tx.dividend_amount) > 0)
+      ? Number(tx.dividend_amount)
+      : (txCurrency === 'KRW'
+          ? (Number(tx.total_dividend) || Number(tx.amount) || 0)
+          : (Number(tx.exchange_rate) && Number(tx.total_dividend) 
+              ? (Number(tx.total_dividend) / Number(tx.exchange_rate)) 
+              : (Number(tx.amount) || 0))
+        );
+
+    const rawTotalDividend = Number(tx.total_dividend) || (
+      txCurrency === 'KRW' 
+        ? rawDividend 
+        : (Number(tx.exchange_rate) ? Math.round(rawDividend * Number(tx.exchange_rate)) : 0)
+    );
+
+    setSelectedAccountId(tx.account_id || null);
 
     setFormData({
       year: year || '',
@@ -1228,10 +1253,14 @@ export default function TransactionsPage() {
       stock: stockCode ? `[${stockCode}] ${stockName}` : stockName,
       stockCode: stockCode,
       security_id: tx.security_id || '',
-      currency: tx.currency || 'USD',
-      dividendAmount: tx.dividend_amount ? (tx.currency === 'KRW' ? tx.dividend_amount.toLocaleString('ko-KR') : tx.dividend_amount.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '',
-      exchangeRate: tx.exchange_rate ? tx.exchange_rate.toString() : '',
-      totalDividend: tx.total_dividend ? tx.total_dividend.toLocaleString('ko-KR') : '',
+      currency: txCurrency,
+      dividendAmount: rawDividend > 0 
+        ? (txCurrency === 'KRW' 
+            ? Math.round(rawDividend).toLocaleString('ko-KR') 
+            : rawDividend.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) 
+        : '',
+      exchangeRate: txCurrency === 'KRW' ? '1' : (tx.exchange_rate ? tx.exchange_rate.toString() : ''),
+      totalDividend: rawTotalDividend > 0 ? Math.round(rawTotalDividend).toLocaleString('ko-KR') : '',
       exchange_code: tx.security?.exchange_code || ''
     });
 
@@ -1582,6 +1611,33 @@ export default function TransactionsPage() {
       ? (dividendAmountForeignKRW / dividendAmountForeign)
       : (Number(exchangeRates?.USD) || 1350);
 
+    // 월 평균 계산 (국내)
+    let krwMonthCount = 1;
+    if (activeFilters.dateFrom && activeFilters.dateTo) {
+      const fromY = parseInt(activeFilters.dateFrom.substring(0, 4), 10);
+      const fromM = parseInt(activeFilters.dateFrom.substring(5, 7), 10);
+      const toY = parseInt(activeFilters.dateTo.substring(0, 4), 10);
+      const toM = parseInt(activeFilters.dateTo.substring(5, 7), 10);
+      if (!isNaN(fromY) && !isNaN(fromM) && !isNaN(toY) && !isNaN(toM)) {
+        krwMonthCount = Math.max(1, (toY - fromY) * 12 + (toM - fromM) + 1);
+      }
+    } else {
+      const krwMonths = new Set();
+      targetTxs.forEach(tx => {
+        const isKRW = (tx.currency || 'KRW') === 'KRW';
+        if (isKRW && tx.date) {
+          krwMonths.add(tx.date.substring(0, 7));
+        }
+      });
+      krwMonthCount = Math.max(1, krwMonths.size);
+    }
+
+    const monthlyAvgKRW = countKRW > 0 ? Math.round(dividendAmountKRW / krwMonthCount) : 0;
+    const rawMonthlyAvgCount = countKRW > 0 ? (countKRW / krwMonthCount) : 0;
+    const monthlyAvgCountKRWDisplay = rawMonthlyAvgCount % 1 === 0
+      ? rawMonthlyAvgCount.toString()
+      : rawMonthlyAvgCount.toFixed(1);
+
     return {
       totalDividendAllKRW,
       totalCountAll,
@@ -1592,6 +1648,8 @@ export default function TransactionsPage() {
       countKRW,
       uniqueStocksKRWCount: uniqueStocksKRW.size,
       avgPerCountKRW,
+      monthlyAvgKRW,
+      monthlyAvgCountKRWDisplay,
 
       // 해외
       dividendAmountForeign,
@@ -1601,7 +1659,7 @@ export default function TransactionsPage() {
       avgRateForeign,
       avgPerCountForeign,
     };
-  }, [filteredTransactions, exchangeRates]);
+  }, [filteredTransactions, exchangeRates, activeFilters.dateFrom, activeFilters.dateTo]);
 
   // Pagination Logic
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE));
@@ -1736,7 +1794,7 @@ export default function TransactionsPage() {
           <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow cursor-default select-none">
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-slate-500">
-                {currencyFilter === "OVERSEAS" ? "외화 총 배당금" : "총 배당금"}
+                총 배당금
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
@@ -1772,17 +1830,12 @@ export default function TransactionsPage() {
                 {currencyFilter === "ALL" && (
                   <>국내 {formatSubKRW(summary.dividendAmountKRW)} · 해외 {formatSubUSD(summary.dividendAmountForeign)}</>
                 )}
-                {currencyFilter === "KRW" && (
-                  <>국내 주식 배당금</>
-                )}
                 {currencyFilter === "OVERSEAS" && (
-                  <>약 {formatSubKRW(summary.dividendAmountForeignKRW)} 환산</>
+                  <>원화환산 {formatSubKRW(summary.dividendAmountForeignKRW)}</>
                 )}
               </span>
               <span className="font-semibold text-slate-500">
-                {currencyFilter === "ALL" && "조회기간 합계"}
-                {currencyFilter === "KRW" && "국내 배당금 합계"}
-                {currencyFilter === "OVERSEAS" && "외화 배당 합산"}
+                조회기간 합계
               </span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
@@ -1793,17 +1846,17 @@ export default function TransactionsPage() {
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-slate-500">
                 {currencyFilter === "ALL" && "국내 배당금"}
-                {currencyFilter === "KRW" && "수령 건수"}
-                {currencyFilter === "OVERSEAS" && "배당 평균환율"}
+                {currencyFilter === "KRW" && "평균 배당금"}
+                {currencyFilter === "OVERSEAS" && "평균 배당금"}
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
                   {currencyFilter === "ALL" && `국내 ${summary.countKRW}건`}
-                  {currencyFilter === "KRW" && `총 ${summary.countKRW}건 기준`}
-                  {currencyFilter === "OVERSEAS" && "USD / KRW"}
+                  {currencyFilter === "KRW" && "월 평균"}
+                  {currencyFilter === "OVERSEAS" && "평균 수령액"}
                 </span>
                 <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  {currencyFilter === "OVERSEAS" ? <Scale size={12} strokeWidth={2.5} /> : <TrendingUp size={12} strokeWidth={2.5} />}
+                  {currencyFilter === "KRW" ? <Calendar size={12} strokeWidth={2.5} /> : <TrendingUp size={12} strokeWidth={2.5} />}
                 </div>
               </div>
             </div>
@@ -1820,35 +1873,33 @@ export default function TransactionsPage() {
                 )}
                 {currencyFilter === "KRW" && (
                   <AnimatedDividendCounter
-                    key="card2-krw"
-                    value={summary.countKRW}
-                    isCount={true}
+                    key="card2-krw-monthly-avg"
+                    value={summary.monthlyAvgKRW}
+                    isForeign={false}
+                    showSign={false}
                     duration={800}
                   />
                 )}
                 {currencyFilter === "OVERSEAS" && (
                   <AnimatedDividendCounter
-                    key="card2-overseas"
-                    value={summary.avgRateForeign}
-                    isRate={true}
+                    key="card2-overseas-avg"
+                    value={summary.avgPerCountForeign}
+                    isForeign={true}
                     duration={800}
                   />
                 )}
               </span>
               {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">원</span>}
-              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">건</span>}
-              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">원</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">원</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
               <span>
-                {currencyFilter === "ALL" && "원화(KRW) 배당"}
-                {currencyFilter === "KRW" && "국내 배당 수령 횟수"}
-                {currencyFilter === "OVERSEAS" && "가중평균 거래환율"}
+                {currencyFilter === "KRW" && `월 평균 ${summary.monthlyAvgCountKRWDisplay}건`}
               </span>
               <span className="font-semibold text-slate-500">
-                {currencyFilter === "ALL" && "국내 배당금"}
-                {currencyFilter === "KRW" && "수령 건수"}
-                {currencyFilter === "OVERSEAS" && `총 ${summary.countForeign}건 기준`}
+                {currencyFilter === "ALL" && "원화 배당금"}
+                {currencyFilter === "KRW" && "월 평균 수령액"}
+                {currencyFilter === "OVERSEAS" && "1회 평균 수령액"}
               </span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
@@ -1859,17 +1910,23 @@ export default function TransactionsPage() {
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-slate-500">
                 {currencyFilter === "ALL" && "해외 배당금"}
-                {currencyFilter === "KRW" && "배당 종목 수"}
-                {currencyFilter === "OVERSEAS" && "수령 현황"}
+                {currencyFilter === "KRW" && "평균 배당금"}
+                {currencyFilter === "OVERSEAS" && "평균환율"}
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
                   {currencyFilter === "ALL" && `$ ${summary.dividendAmountForeign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  {currencyFilter === "KRW" && "지급 종목"}
-                  {currencyFilter === "OVERSEAS" && `총 ${summary.uniqueStocksForeignCount}개 종목`}
+                  {currencyFilter === "KRW" && "평균 수령액"}
+                  {currencyFilter === "OVERSEAS" && "KRW"}
                 </span>
                 <div className="w-5 h-5 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center">
-                  <Globe size={12} strokeWidth={2.5} />
+                  {currencyFilter === "OVERSEAS" ? (
+                    <Scale size={12} strokeWidth={2.5} />
+                  ) : currencyFilter === "KRW" ? (
+                    <CheckCircle2 size={12} strokeWidth={2.5} />
+                  ) : (
+                    <Globe size={12} strokeWidth={2.5} />
+                  )}
                 </div>
               </div>
             </div>
@@ -1886,35 +1943,38 @@ export default function TransactionsPage() {
                 )}
                 {currencyFilter === "KRW" && (
                   <AnimatedDividendCounter
-                    key="card3-krw"
-                    value={summary.uniqueStocksKRWCount}
-                    isCount={true}
+                    key="card3-krw-avg"
+                    value={summary.avgPerCountKRW}
+                    isForeign={false}
                     duration={800}
                   />
                 )}
                 {currencyFilter === "OVERSEAS" && (
                   <AnimatedDividendCounter
-                    key="card3-overseas"
-                    value={summary.countForeign}
-                    isCount={true}
+                    key="card3-overseas-rate"
+                    value={summary.avgRateForeign}
+                    isRate={true}
                     duration={800}
                   />
                 )}
               </span>
               {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">원</span>}
-              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">개 종목</span>}
-              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">건</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">원</span>}
+              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">원</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
               <span>
-                {currencyFilter === "ALL" && "외화(USD) 배당 환산"}
-                {currencyFilter === "KRW" && "배당 지급 종목"}
-                {currencyFilter === "OVERSEAS" && "해외 배당 수령 횟수"}
+                {currencyFilter === "ALL" && (
+                  summary.countForeign > 0 
+                    ? `평균환율 ${Math.round(summary.avgRateForeign || 0).toLocaleString('ko-KR')}원`
+                    : '평균환율 -'
+                )}
+                {currencyFilter === "OVERSEAS" && `총 ${summary.countForeign}건`}
               </span>
               <span className="font-semibold text-slate-500">
-                {currencyFilter === "ALL" && "해외 배당금"}
-                {currencyFilter === "KRW" && "보유 종목 배당"}
-                {currencyFilter === "OVERSEAS" && `총 ${summary.uniqueStocksForeignCount}개 종목 기준`}
+                {currencyFilter === "ALL" && "원화 환산 배당금"}
+                {currencyFilter === "KRW" && "1회 평균 수령액"}
+                {currencyFilter === "OVERSEAS" && "조회기간 평균환율"}
               </span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
@@ -1925,14 +1985,14 @@ export default function TransactionsPage() {
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs font-bold text-slate-500">
                 {currencyFilter === "ALL" && "수령 현황"}
-                {currencyFilter === "KRW" && "건당 평균 배당금"}
-                {currencyFilter === "OVERSEAS" && "외화 건당 평균 배당금"}
+                {currencyFilter === "KRW" && "수령 현황"}
+                {currencyFilter === "OVERSEAS" && "수령 현황"}
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
-                  {currencyFilter === "ALL" && `총 ${summary.uniqueStocksAllCount}개 종목`}
-                  {currencyFilter === "KRW" && "건당 평균"}
-                  {currencyFilter === "OVERSEAS" && "건당 평균"}
+                  {currencyFilter === "ALL" && `총 ${summary.uniqueStocksAllCount} 종목`}
+                  {currencyFilter === "KRW" && `총 ${summary.uniqueStocksKRWCount} 종목`}
+                  {currencyFilter === "OVERSEAS" && `총 ${summary.uniqueStocksForeignCount} 종목`}
                 </span>
                 <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
                   <CheckCircle2 size={12} strokeWidth={2.5} />
@@ -1951,34 +2011,31 @@ export default function TransactionsPage() {
                 )}
                 {currencyFilter === "KRW" && (
                   <AnimatedDividendCounter
-                    key="card4-krw"
-                    value={summary.avgPerCountKRW}
-                    isForeign={false}
+                    key="card4-krw-count"
+                    value={summary.countKRW}
+                    isCount={true}
                     duration={800}
                   />
                 )}
                 {currencyFilter === "OVERSEAS" && (
                   <AnimatedDividendCounter
-                    key="card4-overseas"
-                    value={summary.avgPerCountForeign}
-                    isForeign={true}
+                    key="card4-overseas-count"
+                    value={summary.countForeign}
+                    isCount={true}
                     duration={800}
                   />
                 )}
               </span>
               {currencyFilter === "ALL" && <span className="text-xs font-bold text-slate-400">건</span>}
-              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">원</span>}
+              {currencyFilter === "KRW" && <span className="text-xs font-bold text-slate-400">건</span>}
+              {currencyFilter === "OVERSEAS" && <span className="text-xs font-bold text-slate-400">건</span>}
             </div>
             <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
               <span>
                 {currencyFilter === "ALL" && `국내 ${summary.countKRW}건 · 해외 ${summary.countForeign}건`}
-                {currencyFilter === "KRW" && "1회 수령 평균액"}
-                {currencyFilter === "OVERSEAS" && "1회 수령 외화평균"}
               </span>
               <span className="font-semibold text-slate-500">
-                {currencyFilter === "ALL" && `총 ${summary.uniqueStocksAllCount}개 종목 기준`}
-                {currencyFilter === "KRW" && "국내 평균 배당금"}
-                {currencyFilter === "OVERSEAS" && "해외 평균 배당금"}
+                조회기간 합계
               </span>
             </div>
             <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
@@ -2479,14 +2536,22 @@ export default function TransactionsPage() {
 
       {/* Add Transaction Modal */}
       {isModalMounted && mounted && createPortal(
-        <div className={`fixed inset-0 z-[9990] bg-black/60 backdrop-blur-xs flex items-end md:items-center justify-center p-0 md:p-4 transition-opacity ${isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} onClick={toggleModal}>
-          <div className={`relative bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col pointer-events-auto ${isModalClosing ? 'animate-sheet-down md:animate-modal-out' : 'animate-sheet-up md:animate-page-slide'}`} onClick={(e) => e.stopPropagation()}>
-            {/* Mobile handle */}
-            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-2.5 mb-0.5 shrink-0 md:hidden" />
+        <div 
+          className={`fixed inset-0 z-[9990] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 ${
+            isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
+          }`} 
+          onClick={toggleModal}
+        >
+          <div 
+            className={`relative bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col pointer-events-auto ${
+              isModalClosing ? 'animate-modal-out' : 'animate-page-slide'
+            }`} 
+            onClick={(e) => e.stopPropagation()}
+          >
 
             <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                   {editingId ? <Edit2 size={16} strokeWidth={2.5} /> : <PlusCircle size={18} strokeWidth={2.5} />}
                 </div>
                 <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">{editingId ? '수정' : '등록'}</h3>
@@ -2500,10 +2565,10 @@ export default function TransactionsPage() {
             </div>
 
             <form ref={modalFormRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-              {/* 1. 배당일 (가운데 정렬) */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당일</label>
+              {/* 1. 배당일 & 계좌 (2열 나란히 배치, 거래내역-매매 등록 팝업 양식) */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당일</label>
                   <button
                     ref={calendarButtonRef}
                     type="button"
@@ -2526,6 +2591,7 @@ export default function TransactionsPage() {
                     <div
                       ref={calendarRef}
                       className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]"
+                      style={{ backgroundColor: '#ffffff' }}
                     >
                       <CalendarUI
                         initialYear={parseInt(formData.year) || new Date().getFullYear()}
@@ -2535,98 +2601,91 @@ export default function TransactionsPage() {
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* 2. 계좌 */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">계좌</label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1" ref={accountDropdownRef}>
-                    <button
-                      ref={accountRef}
-                      type="button"
-                      onClick={async () => {
-                        const next = !isAccountDropdownOpen;
-                        setIsAccountDropdownOpen(next);
-                        if (next) await refreshAccounts();
-                      }}
-                      className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white focus:outline-none transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs text-left"
-                    >
-                      <span className={`truncate ${formData.account ? 'text-slate-800 font-bold text-xs' : 'text-slate-400 font-medium text-xs'}`}>
-                        {formData.account || '계좌선택'}
-                      </span>
-                      <ChevronDown size={18} className="text-slate-400 shrink-0 ml-2" />
-                    </button>
-                    {isAccountDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden">
-                        <div ref={accountListRef} className="py-2 max-h-[286px] overflow-y-auto block overflow-x-hidden">
-                          {isAccountsLoading ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">불러오는 중...</div>
-                          ) : accounts.length === 0 ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">등록된 계좌가 없습니다</div>
-                          ) : (
-                            accounts.map((acc, index) => (
+                <div className="relative" ref={accountDropdownRef}>
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">계좌</label>
+                  <button
+                    ref={accountRef}
+                    type="button"
+                    onClick={async () => {
+                      const next = !isAccountDropdownOpen;
+                      setIsAccountDropdownOpen(next);
+                      if (next) await refreshAccounts();
+                    }}
+                    className={`w-full h-12 px-3.5 rounded-2xl border transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs text-left ${
+                      isAccountDropdownOpen
+                        ? 'border-blue-500 ring-2 ring-blue-100 bg-white text-blue-600'
+                        : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
+                    }`}
+                  >
+                    <span className={`truncate text-xs tracking-tight ${formData.account ? 'text-slate-800 font-bold' : 'text-slate-400 font-medium'}`}>
+                      {formData.account || '계좌선택'}
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className={`text-slate-400 shrink-0 ml-2 transition-transform duration-200 ${
+                        isAccountDropdownOpen ? 'rotate-180 text-blue-500' : ''
+                      }`}
+                    />
+                  </button>
+                  {isAccountDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
+                      <div ref={accountListRef} className="py-1 max-h-52 overflow-y-auto space-y-0.5">
+                        {isAccountsLoading ? (
+                          <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">불러오는 중...</div>
+                        ) : accounts.length === 0 ? (
+                          <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">등록된 계좌가 없습니다</div>
+                        ) : (
+                          accounts.map((acc, index) => {
+                            const isSelected = selectedAccountId === acc.account_id || formData.account === acc.account_nm;
+                            const isFocused = focusedAccountIndex === index;
+                            return (
                               <button
                                 key={acc.account_id}
                                 type="button"
-                                className={`w-full px-4 py-3 text-left transition-colors flex items-center cursor-pointer ${
-                                  focusedAccountIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
+                                className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all flex items-center justify-between cursor-pointer tracking-tight ${
+                                  isSelected
+                                    ? 'bg-blue-50 text-blue-600 font-black'
+                                    : isFocused
+                                      ? 'bg-slate-100/80 text-slate-900 font-semibold'
+                                      : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
                                 }`}
+                                onMouseEnter={() => setFocusedAccountIndex(index)}
                                 onClick={() => {
                                   setFormData(prev => ({ ...prev, account: acc.account_nm, account_id: acc.account_id }));
+                                  setSelectedAccountId(acc.account_id);
                                   setIsAccountDropdownOpen(false);
                                   setTimeout(() => stockRef.current?.focus(), 50);
                                 }}
                               >
-                                <span className="font-bold text-sm text-slate-700">{acc.account_nm}</span>
+                                <span className="truncate">{acc.account_nm}</span>
+                                {isSelected && <Check size={14} className="text-blue-600 shrink-0 ml-1.5" strokeWidth={2.5} />}
                               </button>
-                            ))
-                          )}
-                        </div>
+                            );
+                          })
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountForm({ institution: '', type: '' });
-                        setIsAccountTypeDropdownOpen(false);
-                        setIsAccountModalOpen(true);
-                        setIsAccountDropdownOpen(false);
-                      }}
-                      className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                      title="계좌 추가"
-                    >
-                      <Plus size={22} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!formData.account}
-                      onClick={() => {
-                        if (formData.account) {
-                          setAccountDeleteConfirm({ isOpen: true, name: formData.account });
-                        }
-                      }}
-                      className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${
-                        formData.account 
-                          ? 'text-slate-300 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
-                          : 'text-slate-200 cursor-not-allowed'
-                      }`}
-                      title="계좌 삭제"
-                    >
-                      <Trash2 size={22} />
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* 3. 종목 */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">종목</label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1" ref={stockDropdownRef}>
+              {/* 2. 종목 & 배당금 (가로 비율 조정: 종목 확대 col-span-3, 배당금 축소 col-span-2) */}
+              <div className="grid grid-cols-5 gap-3">
+                <div className="relative col-span-3">
+                  <div className="flex items-center gap-1.5 ml-0.5 mb-1.5">
+                    <label className="block text-xs font-black text-slate-600 tracking-tight">종목</label>
+                    {formData.security_id && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
+                        formData.currency === 'KRW'
+                          ? 'bg-blue-50 text-blue-600 border-blue-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {formData.currency === 'KRW' ? '국내' : '해외'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative" ref={stockDropdownRef}>
                     {formData.security_id ? (
                       <div
                         onClick={() => {
@@ -2652,13 +2711,13 @@ export default function TransactionsPage() {
                             priceRef.current?.focus();
                           }
                         }}
-                        className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer transition-all hover:border-blue-400 shadow-xs"
+                        className="w-full h-12 px-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer transition-all hover:border-blue-400 shadow-xs"
                       >
                         <span className="truncate">
                           {formData.stock.replace(`[${formData.stockCode}] `, '')}
                           <span className="text-[11px] text-slate-400 font-medium ml-1">({formData.stockCode})</span>
                         </span>
-                        <Search size={18} className="text-slate-400 shrink-0 ml-2" />
+                        <Search size={16} className="text-slate-400 shrink-0 ml-1.5" />
                       </div>
                     ) : (
                       <div className="relative w-full">
@@ -2673,13 +2732,14 @@ export default function TransactionsPage() {
                               e.preventDefault();
                               if (isStockDropdownOpen && focusedStockIndex >= 0 && searchedStocks[focusedStockIndex]) {
                                 const stock = searchedStocks[focusedStockIndex];
+                                const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
                                 setFormData(prev => ({
                                   ...prev,
                                   security_id: stock.security_id,
                                   stock: `[${stock.code}] ${stock.name}`,
                                   stockCode: stock.code,
                                   exchange_code: stock.exchange_code || '',
-                                  currency: stock.currency || prev.currency
+                                  currency: stockCur
                                 }));
                                 setIsStockDropdownOpen(false);
                                 setFocusedStockIndex(-1);
@@ -2735,11 +2795,11 @@ export default function TransactionsPage() {
                               setFocusedStockIndex(-1);
                             }
                           }}
-                          className="w-full h-12 pl-4 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-bold text-slate-800 text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                          className="w-full h-12 pl-3.5 pr-9 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-bold text-slate-800 text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
                         />
                         <button
                           type="button"
-                          className="absolute inset-y-0 right-0 flex items-center pr-3.5 cursor-pointer text-slate-400 hover:text-slate-600"
+                          className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer text-slate-400 hover:text-slate-600"
                           onClick={async () => {
                             const next = !isStockDropdownOpen;
                             if (next) {
@@ -2768,7 +2828,7 @@ export default function TransactionsPage() {
                             }
                           }}
                         >
-                          <Search size={18} />
+                          <Search size={16} />
                         </button>
                       </div>
                     )}
@@ -2784,24 +2844,33 @@ export default function TransactionsPage() {
                               <button
                                 key={stock.security_id || stock.code}
                                 type="button"
-                                className={`w-full px-4 py-3 text-left transition-colors flex items-center cursor-pointer ${
+                                className={`w-full px-3 py-2 text-left transition-colors flex items-center justify-between cursor-pointer ${
                                   focusedStockIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
                                 }`}
                                 onMouseEnter={() => setFocusedStockIndex(index)}
                                 onClick={() => {
+                                  const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
                                   setFormData(prev => ({ 
                                     ...prev, 
                                     stock: `[${stock.code}] ${stock.name}`, 
                                     stockCode: stock.code, 
                                     security_id: stock.security_id, 
-                                    currency: stock.currency || prev.currency 
+                                    exchange_code: stock.exchange_code || '',
+                                    currency: stockCur 
                                   }));
                                   setIsStockDropdownOpen(false);
                                   setTimeout(() => priceRef.current?.focus(), 50);
                                 }}
                               >
-                                <span className={`font-semibold text-sm leading-tight break-words ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
-                                  {stock.name} <span className={`text-[13px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
+                                <span className={`font-semibold text-xs leading-tight break-words truncate mr-2 ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
+                                  {stock.name} <span className={`text-[11px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
+                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
+                                  (stock.currency === 'KRW' || stock.exchange_code === 'KRX')
+                                    ? 'bg-blue-50 text-blue-600 border-blue-200' 
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}>
+                                  {(stock.currency === 'KRW' || stock.exchange_code === 'KRX') ? '국내' : '해외'}
                                 </span>
                               </button>
                             ))
@@ -2810,49 +2879,11 @@ export default function TransactionsPage() {
                       </div>
                     )}
                   </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStockForm({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
-                        setIsSectorDropdownOpen(false);
-                        setIsStockModalOpen(true);
-                      }}
-                      className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                      title="종목 추가"
-                    >
-                      <Plus size={22} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!formData.security_id}
-                      onClick={() => {
-                        if (formData.security_id) {
-                          setStockDeleteConfirm({ isOpen: true, id: formData.security_id, name: formData.stock.replace(`[${formData.stockCode}] `, '') });
-                        }
-                      }}
-                      className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${
-                        formData.security_id 
-                          ? 'text-slate-300 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
-                          : 'text-slate-200 cursor-not-allowed'
-                      }`}
-                      title="종목 삭제"
-                    >
-                      <Trash2 size={22} />
-                    </button>
-                  </div>
                 </div>
-              </div>
 
-              {/* 4. 배당금(분배금) & 통화 (우측정렬, 폰트/색상 통일) */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당금(분배금)</label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-blue-600 text-sm">
-                      {CURRENCIES[formData.currency]?.symbol || (formData.currency === 'KRW' ? '₩' : '$')}
-                    </span>
+                <div className="col-span-2">
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당금</label>
+                  <div className="flex items-center w-full h-12 px-3 rounded-2xl border border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-all bg-slate-50/70 gap-1 shadow-xs">
                     <input
                       ref={priceRef}
                       type="text"
@@ -2884,44 +2915,66 @@ export default function TransactionsPage() {
                           setFormData(prev => ({ ...prev, dividendAmount: formatted }));
                         }
                       }}
-                      className={`w-full h-12 pl-10 pr-4 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 text-right text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
+                      className={`flex-1 bg-transparent outline-none text-right text-xs min-w-0 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
                         !formData.dividendAmount || formData.dividendAmount === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
                       }`}
                     />
-                  </div>
-
-                  <div className="flex-shrink-0 w-24 flex items-center">
-                    <span className="w-full h-12 rounded-2xl border font-bold text-center text-xs shadow-xs border-blue-200 bg-blue-50 text-blue-600 flex items-center justify-center">
-                      {formData.currency || 'KRW'}
-                    </span>
+                    {formData.currency && formData.currency !== 'KRW' ? (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold shrink-0 leading-none">
+                        {getCurrencySymbol(formData.currency)}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium text-xs shrink-0">원</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* 5. 총 배당금 하단 카드 */}
-              <div className="px-4 py-3 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-2 shadow-xs">
-                {formData.currency !== 'KRW' && (
+              {/* 3. 총 배당금 (매매 거래금액 카드와 동일 양식) */}
+              {formData.currency && formData.currency !== 'KRW' ? (
+                <div className="px-5 py-3 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-2 shadow-xs">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">환율</span>
-                    <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">적용 환율</span>
+                    <div className="flex items-center gap-1.5">
                       <span className="font-extrabold text-slate-700 text-sm tabular-nums">
-                        {formData.exchangeRate || '-'}
+                        {formData.exchangeRate ? Number(formData.exchangeRate).toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-'}
                       </span>
-                      <span className="text-xs font-bold text-slate-400">{formData.currency} / KRW</span>
+                      <span className="text-xs font-bold text-slate-400">원</span>
                     </div>
                   </div>
-                )}
 
-                <div className={`flex justify-between items-center ${formData.currency !== 'KRW' ? 'pt-2 border-t border-slate-200/60' : ''}`}>
-                  <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">총 배당금</span>
-                  <div className="text-right flex items-baseline gap-1.5">
-                    <span className="text-2xl font-black text-blue-600 tabular-nums">{formData.totalDividend || '0'}</span>
-                    <span className="text-sm font-bold text-slate-400">원</span>
+                  <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">총 배당금</span>
+                      {formData.totalDividend && (
+                        <span className="text-[11px] font-semibold text-slate-400 ml-0.5">
+                          ≈ {formData.totalDividend}원
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black text-amber-600 tabular-nums">{formData.dividendAmount || '0'}</span>
+                      <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold leading-none">
+                        {getCurrencySymbol(formData.currency)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">총 배당금</label>
+                  <div className="px-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 shadow-xs flex justify-end items-center h-14">
+                    <div className="text-right flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black text-blue-600 tabular-nums">
+                        {formData.totalDividend || '0'}
+                      </span>
+                      <span className="text-sm font-bold text-slate-400">원</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              {/* 6. Footer 버튼 */}
+              {/* 4. Footer 버튼 */}
               <div className="pt-2 flex gap-3">
                 <button
                   type="button"
@@ -2936,7 +2989,7 @@ export default function TransactionsPage() {
                   className={`flex-1 h-12 rounded-2xl font-bold text-sm transition-all shadow-md ${
                     loading 
                       ? 'bg-slate-300 text-white cursor-not-allowed' 
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-500/25 cursor-pointer'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25 cursor-pointer'
                   } focus:outline-none`}
                 >
                   {loading ? '처리 중...' : (editingId ? '수정 완료' : '등록 완료')}

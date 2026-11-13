@@ -199,7 +199,7 @@ export default function HoldingsPage() {
   const sortDropdownRef = useRef(null);
 
   const STOCKS_PER_PAGE = 6;
-  const LIST_PER_PAGE = 9;
+  const LIST_PER_PAGE = 5;
 
   // 드롭다운 외부 클릭 및 ESC 키 처리
   useEffect(() => {
@@ -1427,35 +1427,86 @@ export default function HoldingsPage() {
 
         {/* 메인 뷰: 카드형 / 리스트형 */}
         {stockViewMode === "card" ? (
-          <div className="flex flex-col gap-6">
-            <div key={`stock-grid-${holdingTab}-${selectedAccount}-${currentStockPage}-${currencyFilter}-${sortBy}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {paginatedHoldings.map((h, i) => {
-                const s = getCurrencyStyle(h.currency);
-                const isKRW = h.currency === 'KRW';
-                return (
-                  <div key={`stock-card-${h.code || ''}-${h.name || ''}-${i}`} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[210px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
-                    <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
-                    <div className="flex justify-between items-start gap-4">
-                       <div className="flex-1 min-w-0 flex items-start gap-2">
-                         <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
-                         <div className="flex-1 min-w-0">
-                           <div className="font-bold text-slate-800 truncate mb-0.5" title={h.name}>{h.name}</div>
-                           <div className="text-[12px] text-slate-400 font-mono truncate">{formatStockCode(h.code)}</div>
-                         </div>
-                       </div>
-                       <div className="text-right shrink-0">
-                         <div className="text-lg font-bold text-slate-800 whitespace-nowrap">{h.currentPrice ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}` : '-'}</div><div className="text-xs text-slate-500">현재가</div>
-                       </div>
-                    </div>
+          <div className="flex flex-col">
+            <div key={`stock-grid-${holdingTab}-${selectedAccount}-${currentStockPage}-${currencyFilter}-${sortBy}`} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {paginatedHoldings.length === 0 ? (
+                <div className="col-span-full h-[416px] flex items-center justify-center rounded-2xl border border-slate-100 bg-white shadow-sm text-slate-400 text-sm font-medium">
+                  조회된 보유 종목이 없습니다.
+                </div>
+              ) : (
+                <>
+                  {paginatedHoldings.map((h, i) => {
+                    const s = getCurrencyStyle(h.currency);
+                    const isKRW = h.currency === 'KRW';
+                    return (
+                      <div key={`stock-card-${h.code || ''}-${h.name || ''}-${i}`} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[200px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
+                        <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
+                        <div className="flex justify-between items-start gap-4">
+                           <div className="flex-1 min-w-0 flex items-start gap-2">
+                             <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
+                             <div className="flex-1 min-w-0">
+                               <div className="font-bold text-slate-800 truncate mb-0.5" title={h.name}>{h.name}</div>
+                               <div className="text-[12px] text-slate-400 font-mono truncate">{formatStockCode(h.code)}</div>
+                             </div>
+                           </div>
+                           <div className="text-right shrink-0">
+                             <div className="text-lg font-bold text-slate-800 whitespace-nowrap">{h.currentPrice ? `${getCurrencySymbol(h.currency)}${formatCurrency(h.currentPrice, h.currency)}` : '-'}</div><div className="text-xs text-slate-500">현재가</div>
+                           </div>
+                        </div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div>
-                      <div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div>
-                      <div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div>
-                    </div>
-                  </div>
-                );
-              })}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div>
+                          <div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div>
+                          <div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {paginatedHoldings.length < STOCKS_PER_PAGE &&
+                    [...Array(STOCKS_PER_PAGE - paginatedHoldings.length)].map((_, i) => (
+                      <div
+                        key={`empty-card-${i}`}
+                        className={`relative bg-white p-4 pt-5 rounded-2xl border border-slate-200/80 transition-all h-[200px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${paginatedHoldings.length + i + 1} overflow-hidden select-none pointer-events-none`}
+                      >
+                        {/* 상단 회색 바 */}
+                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-300"></div>
+
+                        {/* 상단: 로고 / 종목명 / 현재가 */}
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="flex-1 min-w-0 flex items-start gap-2">
+                            <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold shrink-0 bg-slate-100 text-slate-300 text-xs">
+                              -
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-slate-300 truncate mb-0.5">-</div>
+                              <div className="text-[12px] text-slate-300 font-mono truncate">-</div>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-lg font-bold text-slate-300 whitespace-nowrap">-</div>
+                            <div className="text-xs text-slate-400">현재가</div>
+                          </div>
+                        </div>
+
+                        {/* 하단: 보유수량 / 매수가 / 평가액 (중간에 매수가와 평가액 사이 줄 포함) */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-sm">
+                            <div className="text-slate-500">보유수량</div>
+                            <div className="font-medium text-slate-400">-</div>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <div className="text-slate-500">매수가</div>
+                            <div className="font-medium text-slate-400">-</div>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+                            <div className="text-sm font-bold text-slate-500">평가액</div>
+                            <div className="text-xl font-black text-slate-400">-</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </>
+              )}
             </div>
 
             {/* 페이지네이션 */}
@@ -1526,11 +1577,11 @@ export default function HoldingsPage() {
             )}
           </div>
         ) : (
-          <div>
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-3">
+          <div className="flex flex-col">
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm mb-6 h-[416px]">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <tr className="h-[54px] bg-slate-50/50 border-b border-slate-100">
                     <th className="px-6 py-4 text-center text-sm font-semibold text-slate-500">종목</th>
                     <th className="px-4 py-4 text-center text-sm font-semibold text-slate-500">수량</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-slate-500">평균 매수가</th>
@@ -1543,7 +1594,7 @@ export default function HoldingsPage() {
                 <tbody key={`holdings-list-${holdingTab}-${selectedAccount}-${currentStockPage}-${currencyFilter}-${sortBy}`} className="divide-y divide-slate-50">
                   {paginatedHoldings.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="px-6 py-16 text-center text-slate-400 text-sm font-medium">
+                      <td colSpan="7" className="h-[360px] text-center text-slate-400 text-sm font-medium">
                         조회된 보유 종목이 없습니다.
                       </td>
                     </tr>
@@ -1739,7 +1790,19 @@ export default function HoldingsPage() {
                           </td>
                         </tr>
                       );
-                    })
+                    }).concat(
+                      paginatedHoldings.length > 0 && paginatedHoldings.length < ITEMS_PER_PAGE ?
+                      [...Array(ITEMS_PER_PAGE - paginatedHoldings.length)].map((_, i) => (
+                        <tr
+                          key={`empty-${i}`}
+                          className={`h-[72px] opacity-0 animate-row-fade stagger-${paginatedHoldings.length + i + 1} pointer-events-none select-none`}
+                        >
+                          <td colSpan="7" className="px-6 py-2">
+                            <div className="min-h-[52px]">&nbsp;</div>
+                          </td>
+                        </tr>
+                      )) : []
+                    )
                   )}
                 </tbody>
               </table>

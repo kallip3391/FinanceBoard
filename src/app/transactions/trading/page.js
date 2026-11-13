@@ -2793,7 +2793,7 @@ export default function TransactionsPage() {
                           : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
                       }`}
                     >
-                      <span className={`truncate text-xs font-bold tracking-tight ${formData.account ? 'text-slate-800' : 'text-slate-400'}`}>
+                      <span className={`truncate text-xs tracking-tight ${formData.account ? 'text-slate-800 font-bold' : 'text-slate-400 font-medium'}`}>
                         {formData.account || '계좌선택'}
                       </span>
                       <ChevronDown
