@@ -342,7 +342,9 @@ export default function HoldingsPage() {
         if (aIsKRW !== bIsKRW) {
           return aIsKRW - bIsKRW; // 국내(KRW) 우선, 해외 나중
         }
-        return bTotalProfit - aTotalProfit; // 동일 지역 내 총손익 높은순
+        const aEval = a.evaluationAmountKRW ?? ((a.currentPrice || a.purchasePrice || 0) * (a.totalQuantity || 0));
+        const bEval = b.evaluationAmountKRW ?? ((b.currentPrice || b.purchasePrice || 0) * (b.totalQuantity || 0));
+        return bEval - aEval; // 동일 지역 내 평가금액(현재가 × 수량) 높은순
       }
       if (sortBy === "totalProfit_desc") return bTotalProfit - aTotalProfit;
       if (sortBy === "totalProfit_asc") return aTotalProfit - bTotalProfit;
