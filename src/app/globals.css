@@ -114,6 +114,10 @@
     animation: feedLift 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   
+  .animate-legend-item {
+    animation: legendFadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  
   .stagger-1 { animation-delay: 0.05s; }
   .stagger-2 { animation-delay: 0.1s; }
   .stagger-3 { animation-delay: 0.15s; }
@@ -225,6 +229,17 @@
   from {
     opacity: 0;
     transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes legendFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;

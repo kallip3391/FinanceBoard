@@ -197,6 +197,7 @@ export default function HoldingsPage() {
   const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData, domesticTransactions, overseasTransactions } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
+  const [chartTab, setChartTab] = useState("allocation"); // "allocation" (자산 비중) | "trend" (자산 추이)
   const [holdingTab, setHoldingTab] = useState("stock"); // "stock" | "account"
   const [stockViewMode, setStockViewMode] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("stockViewMode") || "card" : "card"));
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -415,12 +416,8 @@ export default function HoldingsPage() {
     }
   }, [isTrendLoading, trendData.length, selectedPeriod]);
 
-  // 애니메이션 시간 및 방식 계산
+  // 긴 기간 여부 계산 (3년/전체는 포인트가 많아 linear 보간 사용)
   const isLongPeriod = selectedPeriod === "3년" || selectedPeriod === "전체";
-  const isFirstLoad = !loadedPeriods.has(selectedPeriod);
-  
-  // 최초 로딩이거나 DB 조회 후 로딩 완료된 시점에는 '그리기' 방식(Key 변경), 그 외에는 '모핑' 방식(Key 고정)
-  const topChartKey = isFirstLoad && isTrendLoading ? 'loading' : (isFirstLoad ? `draw-${selectedPeriod}` : 'cached');
 
   const sectorData = useMemo(() => {
     return holdings.reduce((acc, h) => {
@@ -437,12 +434,8 @@ export default function HoldingsPage() {
 
   const currencyData = useMemo(() => {
     return holdings.reduce((acc, h) => {
-      const currencyMap = {
-        'KRW': '한국', 'USD': '미국', 'EUR': '유럽',
-        'JPY': '일본', 'GBP': '영국', 'CNY': '중국', 'HKD': '홍콩'
-      };
-      const currency = h.currency || "KRW";
-      const name = currencyMap[currency] || '해외';
+      const isKRW = (h.currency || "KRW") === "KRW";
+      const name = isKRW ? "국내" : "해외";
       const amount = h.evaluationAmountKRW || 0;
       if (amount > 0) {
         const idx = acc.findIndex(item => item.name === name);
@@ -549,7 +542,7 @@ export default function HoldingsPage() {
 
   const CustomDashboardLegend = ({ data, colors, total }) => {
     return (
-      <div className="mt-4 w-full max-h-[104px] overflow-y-auto pr-2 custom-scrollbar">
+      <div className="mt-2 w-full h-[108px] overflow-y-auto pr-2 custom-scrollbar shrink-0">
         <div className="flex flex-col gap-2">
           {data.map((item, index) => {
             const percent = total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
@@ -557,7 +550,11 @@ export default function HoldingsPage() {
               ? item.code
               : (item.name.includes(' (') ? item.name.split(' (')[0] : item.name);
             return (
-              <div key={index} className="flex items-center justify-between group py-1 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors rounded-lg px-2">
+              <div 
+                key={index} 
+                className="flex items-center justify-between group py-1 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors rounded-lg px-2 animate-legend-item"
+                style={{ animationDelay: `${750 + index * 60}ms` }}
+              >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: colors[index % colors.length] }}></div>
                   <span className="text-sm font-bold text-slate-700 group-hover:text-brand transition-colors truncate">{displayTitle}</span>
@@ -661,8 +658,56 @@ export default function HoldingsPage() {
       };
     });
 
+    // 기간 변경 시(3년 -> 1년, 1년 -> 3개월 등) 데이터 개수 차이로 인한 우측 빈 공간(1cm 공백) 현상을 완전히 방지하기 위해
+    // 모든 기간의 데이터 포인트를 정확히 60개로 균등 보간(Resample)하여 X축을 100% 꽉 채우고
+    // 차트가 좌우 찌그러짐 없이 순수하게 위아래로만 유려하게 물결치도록(모핑) 처리합니다.
+    const TARGET_POINTS = 60;
+    let sampledData = normalizedData;
+
+    if (normalizedData.length >= 2) {
+      sampledData = [];
+      const total = normalizedData.length;
+      const startTime = new Date(normalizedData[0].date).getTime();
+      const endTime = new Date(normalizedData[total - 1].date).getTime();
+      const timespan = Math.max(endTime - startTime, 86400000);
+
+      const seenDates = new Set();
+      for (let i = 0; i < TARGET_POINTS; i++) {
+        const progress = i / (TARGET_POINTS - 1);
+        const targetTime = new Date(startTime + timespan * progress);
+        let dateStr = targetTime.toISOString().split('T')[0];
+
+        // 날짜 중복 방지 (안전장치)
+        if (seenDates.has(dateStr)) {
+          const offsetTime = new Date(startTime + timespan * progress + i * 3600000);
+          dateStr = offsetTime.toISOString().split('T')[0];
+        }
+        seenDates.add(dateStr);
+
+        const t = progress * (total - 1);
+        const low = Math.floor(t);
+        const high = Math.min(total - 1, Math.ceil(t));
+        const ratio = t - low;
+
+        const dLow = normalizedData[low];
+        const dHigh = normalizedData[high];
+
+        const invest = Math.round(dLow.invest + (dHigh.invest - dLow.invest) * ratio);
+        const evalAmt = Math.round(dLow.eval + (dHigh.eval - dLow.eval) * ratio);
+        const profitRate = Number((dLow.profitRate + (dHigh.profitRate - dLow.profitRate) * ratio).toFixed(2));
+
+        sampledData.push({
+          date: dateStr,
+          displayDate: dateStr.replace(/-/g, '.'),
+          invest,
+          eval: evalAmt,
+          profitRate
+        });
+      }
+    }
+
     // 그라데이션 오프셋 계산 (수익률 0 지점 찾기, NaN 방지)
-    const profitRates = normalizedData.map(d => d.profitRate);
+    const profitRates = sampledData.map(d => d.profitRate);
     const maxProfit = profitRates.length > 0 ? Math.max(...profitRates, 0) : 0;
     const minProfit = profitRates.length > 0 ? Math.min(...profitRates, 0) : 0;
     let off = 0.5;
@@ -674,7 +719,7 @@ export default function HoldingsPage() {
     }
 
     return {
-      data: normalizedData,
+      data: sampledData,
       off: off
     };
   }, [trendData, selectedPeriod, summary, domesticTransactions, overseasTransactions]);
@@ -688,57 +733,19 @@ export default function HoldingsPage() {
     if (!finalChartData || finalChartData.length === 0) return [];
     
     let ticks = [];
-    const lastIdx = finalChartData.length - 1;
+    const len = finalChartData.length;
 
-    finalChartData.forEach((d, idx) => {
-      const [, m, day] = d.date.split('-').map(Number);
-      
-      let isVisible = false;
-      switch (selectedPeriod) {
-        case "3개월":
-          if ((lastIdx - idx) % 3 === 0) isVisible = true;
-          break;
-        case "6개월":
-          if ((lastIdx - idx) % 6 === 0) isVisible = true;
-          break;
-        case "1년":
-          if (day === 1) isVisible = true;
-          break;
-        case "3년":
-        case "전체":
-          if ((m === 1 && day === 1) || (m === 4 && day === 1) || (m === 7 && day === 1) || (m === 10 && day === 1)) {
-            isVisible = true;
-          }
-          break;
-      }
-
-      if (isVisible) ticks.push(d.date);
-    });
-
-    if (ticks.length === 0 && finalChartData.length > 0) {
-      ticks.push(finalChartData[0].date);
-      if (finalChartData.length > 1) {
-        ticks.push(finalChartData[finalChartData.length - 1].date);
-      }
+    // 5~7개의 균등한 X축 눈금 생성
+    const tickCount = selectedPeriod === "3개월" ? 5 : (selectedPeriod === "6개월" ? 6 : 7);
+    const step = (len - 1) / (tickCount - 1);
+    
+    for (let i = 0; i < tickCount; i++) {
+      const idx = Math.min(len - 1, Math.round(i * step));
+      ticks.push(finalChartData[idx].date);
     }
     
     ticks = Array.from(new Set(ticks)).sort();
-
-    const filtered = [];
-    const minGap = (selectedPeriod === "전체" || selectedPeriod === "3년" || selectedPeriod === "1년") ? 25 : 2;
-    
-    for (const t of ticks) {
-      if (filtered.length === 0) {
-        filtered.push(t);
-        continue;
-      }
-      const last = new Date(filtered[filtered.length - 1]);
-      const current = new Date(t);
-      const diff = (current - last) / (1000 * 60 * 60 * 24);
-      if (diff >= minGap) filtered.push(t);
-    }
-
-    return filtered;
+    return ticks;
   }, [finalChartData, selectedPeriod]);
 
   const yearMarkTicks = useMemo(() => {
@@ -870,24 +877,151 @@ export default function HoldingsPage() {
       ) : user ? (
         <>
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">자산 트렌드</h2>
-            <div className="flex gap-2">
-              {["3개월", "6개월", "1년", "3년", "전체"].map((p) => (
-                <button key={p} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${selectedPeriod === p ? "bg-brand text-white shadow-md shadow-brand/20" : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 shadow-sm"}`} onClick={() => setSelectedPeriod(p)}>{p}</button>
-              ))}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-h-[42px]">
+            {/* 좌측: 타이틀 */}
+            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4 whitespace-nowrap">
+              {chartTab === "allocation" ? "자산 비중" : "자산 추이"}
+            </h2>
+
+            {/* 중앙: 자산 추이 선택 시 기간 버튼 (계좌 버튼과 동일한 모양) */}
+            {chartTab === "trend" && (
+              <div className="flex bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
+                {["3개월", "6개월", "1년", "3년", "전체"].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setSelectedPeriod(p)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      selectedPeriod === p
+                        ? "bg-white text-slate-800 shadow-xs"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 우측: 탭 전환 (자산 비중 | 자산 추이) */}
+            <div className="flex bg-slate-100 p-1 rounded-xl shrink-0 self-start md:self-auto">
+              <button
+                onClick={() => setChartTab("allocation")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  chartTab === "allocation"
+                    ? "bg-white text-slate-800 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                자산 비중
+              </button>
+              <button
+                onClick={() => setChartTab("trend")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  chartTab === "trend"
+                    ? "bg-white text-slate-800 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                자산 추이
+              </button>
             </div>
           </div>
-          <div className="glass-card overflow-hidden flex flex-col min-w-0">
-            {isTrendLoading ? (
-              <div className="flex-1 flex items-center justify-center p-20 text-slate-400 text-sm">트렌드 데이터를 불러오는 중...</div>
-            ) : finalChartData.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center p-20 text-slate-400 text-center">조회된 트렌드 데이터가 없습니다.</div>
-            ) : (
-              <div className="flex-1 w-full p-2 pb-0 flex flex-col gap-2 min-h-[400px] min-w-0 overflow-hidden">
-                  <div className="h-[250px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "250px" }}>
+
+          {chartTab === "allocation" ? (
+            holdings.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><PieChartIcon size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3></div>
+                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
                     {isClient && chartReady && (
-                      <ResponsiveContainer width="100%" height={250} debounce={100} minWidth={0}>
+                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
+                        <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <CustomDashboardLegend data={sectorData} colors={PIE_COLORS} total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />
+                </div>
+                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><Globe size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3></div>
+                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
+                    {isClient && chartReady && (
+                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
+                        <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <CustomDashboardLegend data={currencyData} colors={PIE_COLORS.slice(4).concat(PIE_COLORS.slice(0, 4))} total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />
+                </div>
+                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><LayoutList size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3></div>
+                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
+                    {isClient && chartReady && (
+                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
+                        <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <CustomDashboardLegend data={stockData} colors={PIE_COLORS.slice(8).concat(PIE_COLORS.slice(0, 8))} total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />
+                </div>
+              </div>
+            ) : (
+              <div className="glass-card p-12 text-center text-slate-400 font-medium h-[500px] flex items-center justify-center">
+                보유 중인 자산이 없습니다.
+              </div>
+            )
+          ) : (
+            <div className="glass-card overflow-hidden flex flex-col min-w-0 h-[500px]">
+            {isTrendLoading || !chartReady ? (
+              <div className="w-full h-full p-6 flex flex-col justify-between animate-pulse select-none">
+                {/* 상단 차트 영역 스켈레톤 */}
+                <div className="h-[270px] w-full flex flex-col justify-between border-b border-slate-100/80 pb-4 relative">
+                  <div className="flex justify-between items-center text-xs text-slate-300 font-mono">
+                    <span className="w-12 h-3.5 bg-slate-100 rounded-md"></span>
+                    <span className="w-16 h-3.5 bg-slate-100 rounded-md"></span>
+                  </div>
+                  <div className="w-full h-full flex items-center justify-center relative">
+                    <div className="absolute inset-0 flex flex-col justify-between py-2 pointer-events-none">
+                      <div className="w-full border-t border-slate-100/90"></div>
+                      <div className="w-full border-t border-slate-100/90"></div>
+                      <div className="w-full border-t border-slate-100/90"></div>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-400 text-xs font-semibold z-10 bg-white/85 px-4 py-2 rounded-xl backdrop-blur-xs border border-slate-200/60 shadow-xs">
+                      <div className="w-3.5 h-3.5 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
+                      <span>자산 트렌드를 불러오는 중...</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-slate-300 font-mono">
+                    <span className="w-10 h-3.5 bg-slate-100 rounded-md"></span>
+                    <span className="w-14 h-3.5 bg-slate-100 rounded-md"></span>
+                  </div>
+                </div>
+
+                {/* 하단 수익률 차트 영역 스켈레톤 */}
+                <div className="h-[150px] w-full flex flex-col justify-between pt-2">
+                  <div className="w-full h-full flex items-center justify-between relative py-2">
+                    <div className="absolute inset-0 flex flex-col justify-around pointer-events-none">
+                      <div className="w-full border-t border-slate-100/90"></div>
+                      <div className="w-full border-t border-slate-100/90"></div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="w-12 h-3 bg-slate-100 rounded"></span>
+                    <span className="w-12 h-3 bg-slate-100 rounded"></span>
+                    <span className="w-12 h-3 bg-slate-100 rounded"></span>
+                    <span className="w-12 h-3 bg-slate-100 rounded"></span>
+                    <span className="w-12 h-3 bg-slate-100 rounded"></span>
+                  </div>
+                </div>
+              </div>
+            ) : finalChartData.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center p-20 text-slate-400 text-center h-full">
+                조회된 트렌드 데이터가 없습니다.
+              </div>
+            ) : (
+              <div className="flex-1 w-full p-2 pb-0 flex flex-col justify-between min-h-0 min-w-0 overflow-hidden animate-fade-in">
+                  <div className="h-[285px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "285px" }}>
+                    {isClient && chartReady && (
+                      <ResponsiveContainer width="100%" height={285} debounce={100} minWidth={0}>
                         <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 10, right: 2, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorEval" x1="0" y1="0" x2="0" y2="1">
@@ -942,9 +1076,9 @@ export default function HoldingsPage() {
                             }}
                           />
                         ))}
-                        {/* 1. 매수금액 (회색선) */}
+                        {/* 1. 매수금액 (회색선) - 키 고정으로 기간 변경 시 차트가 움직이는 모핑 효과 */}
                         <Area 
-                          key={`asset-invest-${topChartKey}`}
+                          key="asset-invest-line"
                           yAxisId="left"
                           type="monotone" 
                           dataKey="invest" 
@@ -955,12 +1089,12 @@ export default function HoldingsPage() {
                           name="매수금액" 
                           activeDot={{ r: 3, fill: '#64748b' }}
                           isAnimationActive={true}
-                          animationDuration={2000}
+                          animationDuration={800}
                           animationEasing="ease-in-out"
                         />
-                        {/* 2. 평가금액 (파란색 면) */}
+                        {/* 2. 평가금액 (파란색 면) - 키 고정으로 기간 변경 시 차트가 움직이는 모핑 효과 */}
                         <Area 
-                          key={`asset-eval-${topChartKey}`}
+                          key="asset-eval-area"
                           yAxisId="left"
                           type="monotone" 
                           dataKey="eval" 
@@ -970,7 +1104,7 @@ export default function HoldingsPage() {
                           name="평가금액" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#3b82f6' }}
                           isAnimationActive={true}
-                          animationDuration={2000}
+                          animationDuration={800}
                           animationEasing="ease-in-out"
                           filter="url(#shadow)"
                         />
@@ -980,12 +1114,12 @@ export default function HoldingsPage() {
                 </div>
 
                 {/* 차트 상/하단 구분선 (가시성 강화) */}
-                <div className="mx-6 h-[1px] bg-gradient-to-r from-transparent via-slate-300/80 to-transparent"></div>
+                <div className="mx-6 h-[1px] bg-gradient-to-r from-transparent via-slate-300/80 to-transparent shrink-0"></div>
 
                 {/* 하단: 수익률 차트 (37.5%) */}
-                <div className="h-[150px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "150px" }}>
+                <div className="h-[165px] w-full min-w-0 relative flex-shrink-0" style={{ minWidth: "100%", height: "165px" }}>
                   {isClient && chartReady && (
-                    <ResponsiveContainer width="100%" height={150} debounce={100} minWidth={0}>
+                    <ResponsiveContainer width="100%" height={165} debounce={100} minWidth={0}>
                       <AreaChart data={finalChartData} syncId="assetTrend" margin={{ top: 0, right: 2, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
@@ -1042,9 +1176,9 @@ export default function HoldingsPage() {
                             alwaysShow={true}
                           />
                         ))}
-                        {/* 수익률 (3년/전체에서 애니메이션이 씹히는 것을 방지하기 위해 key와 duration 최적화) */}
+                        {/* 수익률 차트 */}
                         <Area 
-                          key={`profit-rate-fill-${selectedPeriod}-${trendData.length}`}
+                          key={`profit-rate-fill-${selectedPeriod}`}
                           yAxisId="right"
                           type={isLongPeriod ? "linear" : "monotone"} 
                           dataKey="profitRate" 
@@ -1056,9 +1190,9 @@ export default function HoldingsPage() {
                           name="수익률" 
                           activeDot={{ r: 5, strokeWidth: 0, fill: '#ff4d6d', filter: 'url(#glow)' }}
                           isAnimationActive={true}
-                          animationDuration={2000}
-                          animationBegin={50} // 미세한 딜레이를 주어 브라우저가 연산할 시간을 확보
-                          animationEasing="ease-in-out"
+                          animationDuration={700}
+                          animationBegin={0}
+                          animationEasing="ease-out"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -1067,50 +1201,8 @@ export default function HoldingsPage() {
               </div>
             )}
           </div>
-        </div>
-
-      {holdings.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">포트폴리오</h2>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="glass-card p-6 flex flex-col items-center">
-              <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><PieChartIcon size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3></div>
-              <div className="w-full h-[280px]">
-                {isClient && chartReady && (
-                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
-                    <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <CustomDashboardLegend data={sectorData} colors={PIE_COLORS} total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />
-            </div>
-            <div className="glass-card p-6 flex flex-col items-center">
-              <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><Globe size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3></div>
-              <div className="w-full h-[280px]">
-                {isClient && chartReady && (
-                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
-                    <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <CustomDashboardLegend data={currencyData} colors={PIE_COLORS.slice(4).concat(PIE_COLORS.slice(0, 4))} total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />
-            </div>
-            <div className="glass-card p-6 flex flex-col items-center">
-              <div className="flex items-center gap-2 self-start mb-6 pb-2 border-b-2 border-slate-100 w-full"><LayoutList size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3></div>
-              <div className="w-full h-[280px]">
-                {isClient && chartReady && (
-                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
-                    <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={120} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <CustomDashboardLegend data={stockData} colors={PIE_COLORS.slice(8).concat(PIE_COLORS.slice(0, 8))} total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex flex-col gap-4">
         {/* Header Section */}
