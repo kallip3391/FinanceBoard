@@ -245,6 +245,19 @@ export default function HoldingsPage() {
     }
     return 1000000000;
   });
+  const [goalPaceMode, setGoalPaceMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("goalPaceMode");
+        if (saved === "all" || saved === "1y") {
+          return saved;
+        }
+      } catch (e) {
+        console.error("Failed to read goalPaceMode from localStorage:", e);
+      }
+    }
+    return "all"; // 기본값: 전체 기간
+  });
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [isGoalModalClosing, setIsGoalModalClosing] = useState(false);
   const [goalInputTemp, setGoalInputTemp] = useState("1000000000");
@@ -406,15 +419,13 @@ export default function HoldingsPage() {
       : 0;
 
     // ── 현재 페이스(월평균 자산 증가액) 및 목표 달성 예상 시점 계산 ──
-    let monthlyPace = 0;
-
-    // 1) 트렌드 데이터 기반 최근 자산 성장 추세 분석
+    // 1) 최근 1년 기준 페이스
+    let oneYearPace = 0;
     const validTrend = (trendData || [])
       .filter(d => (d.eval || d.value) > 0 && d.date)
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     if (validTrend.length >= 2) {
-      // 최근 최대 1년(365일) 또는 전체 기간의 시작점과 최근 시점 비교
       const startIndex = Math.max(0, validTrend.length - 365);
       const firstPt = validTrend[startIndex];
       const lastPt = validTrend[validTrend.length - 1];
@@ -425,27 +436,33 @@ export default function HoldingsPage() {
       const growth = lastVal - firstVal;
 
       if (days >= 14 && growth > 0) {
-        monthlyPace = (growth / days) * 30.4375;
+        oneYearPace = (growth / days) * 30.4375;
       }
     }
 
-    // 2) 트렌드 데이터가 적거나 0 이하일 경우, 거래 내역 전체 투자 기간 기반 페이스 산출
-    if (monthlyPace <= 0) {
-      const allDates = [...(domesticTransactions || []), ...(overseasTransactions || [])]
-        .map(t => t.date)
-        .filter(Boolean)
-        .sort();
+    // 2) 투자 시작일(0원)부터 현재까지 전체 기간 기준 페이스
+    let allPace = 0;
+    const allDates = [...(domesticTransactions || []), ...(overseasTransactions || [])]
+      .map(t => t.date)
+      .filter(Boolean)
+      .sort();
 
-      if (allDates.length > 0 && totalEvalAmount > 0) {
-        const firstTx = new Date(allDates[0]);
-        const now = new Date();
-        const days = Math.max(14, (now.getTime() - firstTx.getTime()) / (1000 * 60 * 60 * 24));
-        const totalPace = (totalEvalAmount / days) * 30.4375;
-        if (totalPace > 0) {
-          monthlyPace = totalPace;
-        }
-      }
+    if (allDates.length > 0 && totalEvalAmount > 0) {
+      const firstTx = new Date(allDates[0]);
+      const now = new Date();
+      const days = Math.max(14, (now.getTime() - firstTx.getTime()) / (1000 * 60 * 60 * 24));
+      allPace = (totalEvalAmount / days) * 30.4375;
+    } else if (validTrend.length >= 2 && totalEvalAmount > 0) {
+      const firstPt = validTrend[0];
+      const lastPt = validTrend[validTrend.length - 1];
+      const days = Math.max(14, (new Date(lastPt.date).getTime() - new Date(firstPt.date).getTime()) / (1000 * 60 * 60 * 24));
+      allPace = (totalEvalAmount / days) * 30.4375;
     }
+
+    // 선택된 모드에 따른 활성 페이스 결정 (기본값: 전체 기간)
+    const activeMonthlyPace = goalPaceMode === "1y"
+      ? (oneYearPace > 0 ? oneYearPace : allPace)
+      : (allPace > 0 ? allPace : oneYearPace);
 
     // 3) 달성 예상 시점 계산 (xx년 x월)
     let projectedDateText = "분석 중";
@@ -455,8 +472,8 @@ export default function HoldingsPage() {
     if (isReached) {
       projectedDateText = "달성 완료! 🎉";
       projectedSubText = "목표 초과 달성 중";
-    } else if (monthlyPace > 0) {
-      const monthsNeeded = Math.ceil(remaining / monthlyPace);
+    } else if (activeMonthlyPace > 0) {
+      const monthsNeeded = Math.ceil(remaining / activeMonthlyPace);
       if (monthsNeeded > 600) {
         projectedDateText = "50년 이상";
         projectedSubText = "납입/수익률 확대 필요";
@@ -484,12 +501,25 @@ export default function HoldingsPage() {
       exceeded,
       isReached,
       profitContribution,
-      monthlyPace,
+      monthlyPace: activeMonthlyPace,
+      allPace,
+      oneYearPace,
       projectedDateText,
       durationText,
       projectedSubText,
     };
-  }, [targetGoal, totalEvalAmount, totalProfitAmount, trendData, domesticTransactions, overseasTransactions]);
+  }, [targetGoal, totalEvalAmount, totalProfitAmount, trendData, domesticTransactions, overseasTransactions, goalPaceMode]);
+
+  const handlePaceModeChange = (mode) => {
+    setGoalPaceMode(mode);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("goalPaceMode", mode);
+      } catch (e) {
+        console.error("Failed to save goalPaceMode to localStorage:", e);
+      }
+    }
+  };
 
   const handleCloseGoalModal = () => {
     if (isGoalModalClosing) return;
@@ -1613,21 +1643,58 @@ export default function HoldingsPage() {
                     />
                   </div>
                   {/* 현재 페이스 기준 달성 예상 한 줄 안내 */}
-                  <div className="flex items-center justify-between text-[11px] pt-0.5 text-slate-500">
+                  <div className="flex items-center justify-between text-[11px] pt-0.5 text-slate-500 flex-wrap gap-2">
                     <div className="flex items-center gap-1.5 font-medium">
-                      <Clock size={12} className="text-blue-500" />
-                      <span>현재 페이스 기준:</span>
-                      <strong className="text-blue-600 font-bold">
-                        {goalStats.isReached ? '목표 달성 완료!' : `${goalStats.projectedDateText} 달성 예상`}
-                      </strong>
-                      {!goalStats.isReached && goalStats.durationText && (
-                        <span className="text-slate-400 font-normal">({goalStats.durationText})</span>
-                      )}
+                      <Clock size={12} className="text-blue-500 shrink-0" />
+                      <span className="shrink-0">현재 페이스 기준:</span>
+                      <div key={`pace-date-full-${targetGoal}-${goalPaceMode}`} className="inline-flex items-center gap-1 animate-summary-pop flex-wrap">
+                        <strong className="text-blue-600 font-bold">
+                          {goalStats.isReached ? '목표 달성 완료!' : `${goalStats.projectedDateText} 달성 예상`}
+                        </strong>
+                        {!goalStats.isReached && goalStats.durationText && (
+                          <span className="text-slate-400 font-normal">
+                            ({goalStats.durationText})
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {!goalStats.isReached && goalStats.monthlyPace > 0 && (
-                      <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
-                        월평균 <strong className="text-slate-700 font-bold">+{formatKoreanWon(Math.round(goalStats.monthlyPace))}</strong>
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* 전체 / 1년 미니 토글 캡슐 (위치 고정) */}
+                        <div className="inline-flex bg-slate-200/80 p-0.5 rounded-md text-[10px] font-bold shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handlePaceModeChange("all")}
+                            className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                              goalPaceMode === "all"
+                                ? "bg-white text-blue-600 shadow-2xs font-extrabold"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                            title="투자 시작일(0원)부터 현재까지 전체 기간 평균 증가 속도"
+                          >
+                            전체
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePaceModeChange("1y")}
+                            className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                              goalPaceMode === "1y"
+                                ? "bg-white text-blue-600 shadow-2xs font-extrabold"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                            title="최근 1년 동안의 실제 자산 증가 속도"
+                          >
+                            1년
+                          </button>
+                        </div>
+                        {/* 금액 길이에 따른 알약 위치 흔들림 방지 (고정폭 120px & 우측 정렬) */}
+                        <span className="text-[11px] text-slate-500 font-medium w-[120px] inline-block text-right whitespace-nowrap">
+                          월평균 :{" "}
+                          <strong key={`pace-val-${goalPaceMode}`} className="text-slate-700 font-bold inline-block animate-summary-pop tabular-nums">
+                            +{formatKoreanWon(Math.round(goalStats.monthlyPace))}
+                          </strong>
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1689,7 +1756,7 @@ export default function HoldingsPage() {
                       <span className="text-xs text-slate-400 font-semibold">목표 기여</span>
                     </div>
                     <span className="text-[11px] text-slate-400 truncate">
-                      누적 수익 {totalProfitAmount > 0 ? '+' : ''}{(totalProfitAmount || 0).toLocaleString()}원
+                      누적 손익 {totalProfitAmount > 0 ? '+' : ''}{(totalProfitAmount || 0).toLocaleString()}원
                     </span>
                   </div>
 
@@ -1703,12 +1770,12 @@ export default function HoldingsPage() {
                       </span>
                       <Calendar size={14} className={goalStats.isReached ? 'text-emerald-500' : 'text-blue-600'} />
                     </div>
-                    <div key={`projected-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
+                    <div key={`projected-num-${targetGoal}-${goalPaceMode}`} className="my-1 animate-summary-pop text-right">
                       <span className={`text-lg font-black ${goalStats.isReached ? 'text-emerald-600' : 'text-blue-600'}`}>
                         {goalStats.projectedDateText}
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-500 truncate font-medium">
+                    <span key={`projected-sub-${targetGoal}-${goalPaceMode}`} className="text-[11px] text-slate-500 truncate font-medium inline-block animate-summary-pop">
                       {goalStats.projectedSubText}
                     </span>
                   </div>
