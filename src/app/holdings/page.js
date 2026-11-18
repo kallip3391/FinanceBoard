@@ -1637,7 +1637,7 @@ export default function HoldingsPage() {
                   {/* 1행 1열: 목표 자산 */}
                   <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-semibold">목표 자산</span>
+                      <span className="text-xs font-bold text-slate-500">목표 자산</span>
                       <Trophy size={14} className="text-blue-500" />
                     </div>
                     <div key={`goal-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
@@ -1653,7 +1653,7 @@ export default function HoldingsPage() {
                   {/* 1행 2열: 남은 금액 / 초과 달성 */}
                   <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-semibold">
+                      <span className="text-xs font-bold text-slate-500">
                         {goalStats.isReached ? '초과 달성액' : '남은 금액'}
                       </span>
                       <Coins size={14} className="text-amber-500" />
@@ -1679,7 +1679,7 @@ export default function HoldingsPage() {
                   {/* 2행 1열: 투자 수익금 기여율 */}
                   <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-semibold">수익금 기여도</span>
+                      <span className="text-xs font-bold text-slate-500">수익금 기여도</span>
                       <Sparkles size={14} className="text-indigo-500" />
                     </div>
                     <div key={`profit-num-${targetGoal}`} className="my-1 animate-summary-pop flex items-baseline justify-end gap-1">
@@ -1694,10 +1694,14 @@ export default function HoldingsPage() {
                   </div>
 
                   {/* 2행 2열: 현재 페이스 기준 달성 예상 시점 */}
-                  <div className="bg-white rounded-xl p-3 border border-blue-100 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+                  <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between relative overflow-hidden">
                     <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-xs font-semibold text-blue-600">달성 예상 시점</span>
-                      <Calendar size={14} className="text-blue-600" />
+                      <span className={`text-xs font-bold ${
+                        goalStats.isReached ? 'text-emerald-600' : 'text-blue-600'
+                      }`}>
+                        달성 예상 시점
+                      </span>
+                      <Calendar size={14} className={goalStats.isReached ? 'text-emerald-500' : 'text-blue-600'} />
                     </div>
                     <div key={`projected-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
                       <span className={`text-lg font-black ${goalStats.isReached ? 'text-emerald-600' : 'text-blue-600'}`}>
