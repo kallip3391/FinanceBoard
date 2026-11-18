@@ -18,7 +18,15 @@ import {
   Check,
   CheckCircle2,
   Coins,
-  Wallet
+  Wallet,
+  Target,
+  Trophy,
+  Pencil,
+  Sparkles,
+  X,
+  Clock,
+  Calendar,
+  TrendingUp
 } from "lucide-react";
 import MobileDashboard from "@/app/components/mobile/MobileDashboard";
 import {
@@ -104,7 +112,8 @@ function AnimatedTradeCounter({
   value,
   isForeign = false,
   showSign = false,
-  duration = 800
+  duration = 800,
+  formatType = 'default' // 'default' | 'koreanWon' | 'percent'
 }) {
   const [displayValue, setDisplayValue] = useState(0);
   const prevValueRef = useRef(0);
@@ -169,6 +178,14 @@ function AnimatedTradeCounter({
     return <>{formatForeignAmount(safeVal, 'USD', showSign)}</>;
   }
 
+  if (formatType === 'koreanWon') {
+    return <>{showSign && safeVal > 0 ? '+' : ''}{formatKoreanWon(Math.round(safeVal))}</>;
+  }
+
+  if (formatType === 'percent') {
+    return <>{showSign && safeVal > 0 ? '+' : ''}{safeVal.toFixed(1)}%</>;
+  }
+
   const rounded = Math.round(safeVal);
   return (
     <>
@@ -190,6 +207,23 @@ const SORT_OPTIONS = [
   { value: "name_asc", label: "종목명 가나다순" },
 ];
 
+// 한글 금액 포맷터 (예: 3억 5,000만원)
+function formatKoreanWon(amount) {
+  if (!amount || amount === 0) return "0원";
+  const abs = Math.abs(amount);
+  const eok = Math.floor(abs / 100000000);
+  const man = Math.floor((abs % 100000000) / 10000);
+  const rest = Math.floor(abs % 10000);
+
+  let parts = [];
+  if (eok > 0) parts.push(`${eok}억`);
+  if (man > 0) parts.push(`${man.toLocaleString()}만`);
+  if (parts.length === 0 && rest > 0) parts.push(`${rest.toLocaleString()}`);
+
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${parts.join(" ")}원`;
+}
+
 const emptySubscribe = () => () => {};
 
 export default function HoldingsPage() {
@@ -197,7 +231,23 @@ export default function HoldingsPage() {
   const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData, domesticTransactions, overseasTransactions } = useAssets();
   const [selectedPeriod, setSelectedPeriod] = useState("1년");
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [chartTab, setChartTab] = useState("allocation"); // "allocation" (자산 비중) | "trend" (자산 추이)
+  const [chartTab, setChartTab] = useState("allocation"); // "allocation" (자산 비중) | "trend" (자산 추이) | "goal" (목표 달성)
+  const [targetGoal, setTargetGoal] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("targetAssetGoal");
+        if (saved && !isNaN(Number(saved)) && Number(saved) > 0) {
+          return Number(saved);
+        }
+      } catch (e) {
+        console.error("Failed to read targetAssetGoal from localStorage:", e);
+      }
+    }
+    return 1000000000;
+  });
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [isGoalModalClosing, setIsGoalModalClosing] = useState(false);
+  const [goalInputTemp, setGoalInputTemp] = useState("1000000000");
   const [holdingTab, setHoldingTab] = useState("stock"); // "stock" | "account"
   const [stockViewMode, setStockViewMode] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("stockViewMode") || "card" : "card"));
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -328,6 +378,167 @@ export default function HoldingsPage() {
       isOverseas
     };
   }, [filteredHoldings, currencyFilter]);
+
+  // 목표 자산 트래커 관련 계산 및 함수
+  const totalEvalAmount = useMemo(() => {
+    if (summary && summary.totalEvaluation > 0) return summary.totalEvaluation;
+    return (holdings || []).reduce((acc, h) => acc + (h.evaluationAmountKRW || 0), 0);
+  }, [summary, holdings]);
+
+  const totalCostAmount = useMemo(() => {
+    if (summary && summary.totalCost > 0) return summary.totalCost;
+    return (holdings || []).reduce((acc, h) => acc + (h.totalCostKRW || 0), 0);
+  }, [summary, holdings]);
+
+  const totalProfitAmount = useMemo(() => {
+    if (summary && summary.totalProfit !== undefined) return summary.totalProfit;
+    return totalEvalAmount - totalCostAmount;
+  }, [summary, totalEvalAmount, totalCostAmount]);
+
+  const goalStats = useMemo(() => {
+    const goal = targetGoal || 1000000000;
+    const progressPercent = goal > 0 ? Number(((totalEvalAmount / goal) * 100).toFixed(1)) : 0;
+    const remaining = Math.max(0, goal - totalEvalAmount);
+    const exceeded = Math.max(0, totalEvalAmount - goal);
+    const isReached = totalEvalAmount >= goal;
+    const profitContribution = (goal > 0 && totalProfitAmount > 0)
+      ? Number(((totalProfitAmount / goal) * 100).toFixed(1))
+      : 0;
+
+    // ── 현재 페이스(월평균 자산 증가액) 및 목표 달성 예상 시점 계산 ──
+    let monthlyPace = 0;
+
+    // 1) 트렌드 데이터 기반 최근 자산 성장 추세 분석
+    const validTrend = (trendData || [])
+      .filter(d => (d.eval || d.value) > 0 && d.date)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (validTrend.length >= 2) {
+      // 최근 최대 1년(365일) 또는 전체 기간의 시작점과 최근 시점 비교
+      const startIndex = Math.max(0, validTrend.length - 365);
+      const firstPt = validTrend[startIndex];
+      const lastPt = validTrend[validTrend.length - 1];
+
+      const days = (new Date(lastPt.date).getTime() - new Date(firstPt.date).getTime()) / (1000 * 60 * 60 * 24);
+      const firstVal = firstPt.eval || firstPt.value || 0;
+      const lastVal = lastPt.eval || lastPt.value || totalEvalAmount;
+      const growth = lastVal - firstVal;
+
+      if (days >= 14 && growth > 0) {
+        monthlyPace = (growth / days) * 30.4375;
+      }
+    }
+
+    // 2) 트렌드 데이터가 적거나 0 이하일 경우, 거래 내역 전체 투자 기간 기반 페이스 산출
+    if (monthlyPace <= 0) {
+      const allDates = [...(domesticTransactions || []), ...(overseasTransactions || [])]
+        .map(t => t.date)
+        .filter(Boolean)
+        .sort();
+
+      if (allDates.length > 0 && totalEvalAmount > 0) {
+        const firstTx = new Date(allDates[0]);
+        const now = new Date();
+        const days = Math.max(14, (now.getTime() - firstTx.getTime()) / (1000 * 60 * 60 * 24));
+        const totalPace = (totalEvalAmount / days) * 30.4375;
+        if (totalPace > 0) {
+          monthlyPace = totalPace;
+        }
+      }
+    }
+
+    // 3) 달성 예상 시점 계산 (xx년 x월)
+    let projectedDateText = "분석 중";
+    let durationText = "";
+    let projectedSubText = "데이터 축적 중";
+
+    if (isReached) {
+      projectedDateText = "달성 완료! 🎉";
+      projectedSubText = "목표 초과 달성 중";
+    } else if (monthlyPace > 0) {
+      const monthsNeeded = Math.ceil(remaining / monthlyPace);
+      if (monthsNeeded > 600) {
+        projectedDateText = "50년 이상";
+        projectedSubText = "납입/수익률 확대 필요";
+      } else {
+        const targetDate = new Date();
+        targetDate.setMonth(targetDate.getMonth() + monthsNeeded);
+        const targetYear = targetDate.getFullYear();
+        const targetMonth = targetDate.getMonth() + 1;
+
+        projectedDateText = `${targetYear}년 ${targetMonth}월`;
+        durationText = monthsNeeded < 12 
+          ? `${monthsNeeded}개월 후` 
+          : `${Math.floor(monthsNeeded / 12)}년 ${monthsNeeded % 12 > 0 ? `${monthsNeeded % 12}개월 ` : ''}후`;
+        projectedSubText = `약 ${durationText}`;
+      }
+    } else {
+      projectedDateText = "페이스 산출 중";
+      projectedSubText = "추이 데이터 축적 필요";
+    }
+
+    return {
+      goal,
+      progressPercent,
+      remaining,
+      exceeded,
+      isReached,
+      profitContribution,
+      monthlyPace,
+      projectedDateText,
+      durationText,
+      projectedSubText,
+    };
+  }, [targetGoal, totalEvalAmount, totalProfitAmount, trendData, domesticTransactions, overseasTransactions]);
+
+  const handleCloseGoalModal = () => {
+    if (isGoalModalClosing) return;
+    setIsGoalModalClosing(true);
+    setTimeout(() => {
+      setIsGoalModalOpen(false);
+      setIsGoalModalClosing(false);
+    }, 200);
+  };
+
+  // 목표 금액 변경 모달 ESC 키 닫기 감지
+  useEffect(() => {
+    if (!isGoalModalOpen) return;
+    const handleModalKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleCloseGoalModal();
+      }
+    };
+    window.addEventListener("keydown", handleModalKeyDown);
+    return () => window.removeEventListener("keydown", handleModalKeyDown);
+  }, [isGoalModalOpen, isGoalModalClosing]);
+
+  const handleSaveGoal = (val) => {
+    const raw = typeof val === 'string' ? val.replace(/[^0-9]/g, '') : val;
+    const num = Number(raw);
+    if (!isNaN(num) && num > 0) {
+      setTargetGoal(num);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("targetAssetGoal", num.toString());
+        } catch (e) {
+          console.error("Failed to save targetAssetGoal:", e);
+        }
+      }
+      handleCloseGoalModal();
+    }
+  };
+
+  const handleQuickSetGoal = (amount) => {
+    setTargetGoal(amount);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("targetAssetGoal", amount.toString());
+      } catch (e) {
+        console.error("Failed to save targetAssetGoal:", e);
+      }
+    }
+  };
 
   const sortedHoldings = useMemo(() => {
     let list = [...filteredHoldings];
@@ -882,38 +1093,84 @@ export default function HoldingsPage() {
       ) : user ? (
         <>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-h-[42px]">
-            {/* 좌측: 타이틀 */}
-            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4 whitespace-nowrap">
-              {chartTab === "allocation" ? "자산 비중" : "자산 추이"}
-            </h2>
-
-            {/* 중앙: 자산 추이 선택 시 기간 버튼 (계좌 버튼과 동일한 모양) */}
-            {chartTab === "trend" && (
-              <div className="flex bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
-                {["3개월", "6개월", "1년", "3년", "전체"].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setSelectedPeriod(p)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                      selectedPeriod === p
-                        ? "bg-white text-slate-800 shadow-xs"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* 좌측: 아이콘 + 타이틀 + 뱃지 + 서브텍스트 (탭 전환 시 부드러운 애니메이션 효과) */}
+            <div key={chartTab} className="flex items-start gap-3 animate-header-switch">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-2xs mt-0.5 ${
+                chartTab === "allocation"
+                  ? "bg-indigo-50 text-indigo-600 border-indigo-100/70"
+                  : chartTab === "trend"
+                    ? "bg-emerald-50 text-emerald-600 border-emerald-100/70"
+                    : "bg-blue-50 text-blue-600 border-blue-100/70"
+              }`}>
+                {chartTab === "allocation" && <PieChartIcon size={20} strokeWidth={2.5} />}
+                {chartTab === "trend" && <TrendingUp size={20} strokeWidth={2.5} />}
+                {chartTab === "goal" && <Trophy size={20} strokeWidth={2.5} />}
               </div>
+
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-bold text-slate-800 tracking-tight">
+                    {chartTab === "allocation" ? "자산 비중" : chartTab === "trend" ? "자산 추이" : "목표 자산 트래커"}
+                  </h2>
+                  {chartTab === "allocation" && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                      섹터 · 지역 · 종목별
+                    </span>
+                  )}
+                  {chartTab === "trend" && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                      투자 흐름 & 수익률
+                    </span>
+                  )}
+                  {chartTab === "goal" && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      goalStats.isReached
+                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                        : 'bg-blue-50 text-blue-600 border border-blue-200'
+                    }`}>
+                      {goalStats.isReached ? '🎉 목표 초과 달성!' : `달성률 ${goalStats.progressPercent}%`}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {chartTab === "allocation" && "보유 자산의 섹터별, 국가/통화별, 종목별 분산 투자 비중을 분석합니다."}
+                  {chartTab === "trend" && "투자 원금 대비 총 자산의 성장 흐름과 수익률 변동 추이를 확인합니다."}
+                  {chartTab === "goal" && "설정하신 목표 금액 대비 현재 포트폴리오 평가금액 기준 진행률입니다."}
+                </p>
+              </div>
+            </div>
+
+            {/* 중앙: 자산 추이 기간 선택 버튼 (가운데 정렬) */}
+            {chartTab === "trend" ? (
+              <div className="flex-1 flex justify-center max-w-full overflow-x-auto py-1 md:py-0 animate-fade-in">
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  {["3개월", "6개월", "1년", "3년", "전체"].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setSelectedPeriod(p)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        selectedPeriod === p
+                          ? "bg-white text-slate-800 shadow-xs"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="hidden md:block flex-1" />
             )}
 
-            {/* 우측: 탭 전환 (자산 비중 | 자산 추이) */}
+            {/* 우측 3단 탭 전환 (자산 비중 | 자산 추이 | 목표 달성) */}
             <div className="flex bg-slate-100 p-1 rounded-xl shrink-0 self-start md:self-auto">
               <button
                 onClick={() => setChartTab("allocation")}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   chartTab === "allocation"
-                    ? "bg-white text-slate-800 shadow-xs"
+                    ? "bg-indigo-600 text-white shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -923,11 +1180,21 @@ export default function HoldingsPage() {
                 onClick={() => setChartTab("trend")}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   chartTab === "trend"
-                    ? "bg-white text-slate-800 shadow-xs"
+                    ? "bg-emerald-600 text-white shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 자산 추이
+              </button>
+              <button
+                onClick={() => setChartTab("goal")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  chartTab === "goal"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                목표 달성
               </button>
             </div>
           </div>
@@ -974,7 +1241,7 @@ export default function HoldingsPage() {
                 보유 중인 자산이 없습니다.
               </div>
             )
-          ) : (
+          ) : chartTab === "trend" ? (
             <div className="glass-card overflow-hidden flex flex-col min-w-0 h-[500px]">
             {isTrendLoading || !chartReady ? (
               <div className="w-full h-full p-6 flex flex-col justify-between animate-pulse select-none">
@@ -1206,33 +1473,310 @@ export default function HoldingsPage() {
               </div>
             )}
           </div>
+        ) : (
+          /* 목표 자산 달성 현황 카드 (chartTab === "goal") */
+          <div className="glass-card p-6 md:p-8 flex flex-col justify-between h-[500px] overflow-hidden animate-fade-in">
+            {/* 본문: 대형 원형 게이지 & 세부 진행률/2x2 지표 카드 */}
+            <div className="flex-1 py-1 flex flex-col lg:flex-row items-center justify-between gap-8 min-h-0">
+              {/* 좌측: 자산비중 도넛 크기(260px)에 맞춘 대형 원형 프로그레스 게이지 */}
+              <div className="flex flex-col items-center justify-center relative lg:w-[300px] shrink-0">
+                <div className="relative w-[250px] h-[250px] md:w-[260px] md:h-[260px] flex items-center justify-center">
+                  <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 260 260">
+                    <defs>
+                      <linearGradient id="goalProgressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        {goalStats.isReached ? (
+                          <>
+                            <stop offset="0%" stopColor="#10b981" />
+                            <stop offset="100%" stopColor="#059669" />
+                          </>
+                        ) : (
+                          <>
+                            <stop offset="0%" stopColor="#3b82f6" />
+                            <stop offset="100%" stopColor="#6366f1" />
+                          </>
+                        )}
+                      </linearGradient>
+                    </defs>
+                    {/* 트랙 배경원 */}
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="110"
+                      fill="transparent"
+                      stroke="#f1f5f9"
+                      strokeWidth="18"
+                    />
+                    {/* 진행률 원 */}
+                    <circle
+                      cx="130"
+                      cy="130"
+                      r="110"
+                      fill="transparent"
+                      stroke="url(#goalProgressGrad)"
+                      strokeWidth="18"
+                      strokeDasharray={2 * Math.PI * 110}
+                      strokeDashoffset={(2 * Math.PI * 110) * (1 - Math.min(goalStats.progressPercent, 100) / 100)}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none">
+                    <span className="text-xs font-semibold text-slate-400 mb-0.5">목표 달성률</span>
+                    <div key={`gauge-pct-${targetGoal}`} className="flex items-baseline justify-center gap-0.5 my-1 animate-summary-pop">
+                      <span className={`text-4xl font-black tracking-tight ${goalStats.isReached ? 'text-emerald-600' : 'text-slate-800'}`}>
+                        <AnimatedTradeCounter value={goalStats.progressPercent} formatType="percent" duration={700} />
+                      </span>
+                    </div>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full mt-1.5 ${
+                      goalStats.isReached ? 'bg-emerald-100/80 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {goalStats.isReached ? '🎉 목표 도달' : `${formatKoreanWon(goalStats.remaining)} 남음`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 우측: 빠른 목표 선택 & 금액 변경 + 진행 바 + 2x2 지표 카드 */}
+              <div className="flex-1 w-full flex flex-col justify-between gap-3 min-h-0">
+                {/* 상단: 빠른 목표 선택 + 20억원 뒤에 목표 금액 변경 버튼 */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                    <Sparkles size={13} className="text-amber-500" />
+                    <span>목표 선택:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[100000000, 300000000, 500000000, 1000000000, 2000000000].map((amt) => {
+                      const isCurrent = targetGoal === amt;
+                      return (
+                        <button
+                          key={amt}
+                          onClick={() => handleQuickSetGoal(amt)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            isCurrent
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 active:scale-95'
+                          }`}
+                        >
+                          {formatKoreanWon(amt)}
+                        </button>
+                      );
+                    })}
+                    {/* 20억원 뒤에 금액 변경 버튼 배치 */}
+                    <button
+                      onClick={() => {
+                        setGoalInputTemp(String(targetGoal));
+                        setIsGoalModalClosing(false);
+                        setIsGoalModalOpen(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-2xs transition-all cursor-pointer active:scale-95 ml-1"
+                    >
+                      <Pencil size={12} className="text-slate-500" />
+                      <span>금액 변경</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 진행 바 */}
+                <div className="bg-slate-50/80 rounded-2xl p-3 border border-slate-100 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between text-sm flex-wrap gap-1">
+                    <span className="font-semibold text-slate-600">
+                      현재 자산:{" "}
+                      <span key={`header-asset-${totalEvalAmount}`} className="inline-block animate-summary-pop">
+                        <strong className="text-slate-800 font-bold">
+                          <AnimatedTradeCounter value={totalEvalAmount} duration={700} />원
+                        </strong>{" "}
+                        <span className="text-slate-500 font-medium">
+                          (<AnimatedTradeCounter value={totalEvalAmount} formatType="koreanWon" duration={700} />)
+                        </span>
+                      </span>
+                    </span>
+                    <span className="font-semibold text-slate-600">
+                      목표:{" "}
+                      <span key={`header-goal-${targetGoal}`} className="inline-block animate-summary-pop">
+                        <strong className="text-blue-600 font-bold">
+                          <AnimatedTradeCounter value={goalStats.goal} duration={700} />원
+                        </strong>{" "}
+                        <span className="text-blue-500 font-medium">
+                          (<AnimatedTradeCounter value={goalStats.goal} formatType="koreanWon" duration={700} />)
+                        </span>
+                      </span>
+                    </span>
+                  </div>
+                  <div className="h-3 w-full bg-slate-200/70 rounded-full overflow-hidden p-0.5">
+                    <div
+                      className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                        goalStats.isReached
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                          : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500'
+                      }`}
+                      style={{ width: `${Math.min(goalStats.progressPercent, 100)}%` }}
+                    />
+                  </div>
+                  {/* 현재 페이스 기준 달성 예상 한 줄 안내 */}
+                  <div className="flex items-center justify-between text-[11px] pt-0.5 text-slate-500">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Clock size={12} className="text-blue-500" />
+                      <span>현재 페이스 기준:</span>
+                      <strong className="text-blue-600 font-bold">
+                        {goalStats.isReached ? '목표 달성 완료!' : `${goalStats.projectedDateText} 달성 예상`}
+                      </strong>
+                      {!goalStats.isReached && goalStats.durationText && (
+                        <span className="text-slate-400 font-normal">({goalStats.durationText})</span>
+                      )}
+                    </div>
+                    {!goalStats.isReached && goalStats.monthlyPace > 0 && (
+                      <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+                        월평균 <strong className="text-slate-700 font-bold">+{formatKoreanWon(Math.round(goalStats.monthlyPace))}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4대 핵심 지표 2열 배치 (1줄: 목표자산/남은금액, 2줄: 수익금기여도/달성예상시점) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* 1행 1열: 목표 자산 */}
+                  <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-xs font-semibold">목표 자산</span>
+                      <Trophy size={14} className="text-blue-500" />
+                    </div>
+                    <div key={`goal-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
+                      <span className="text-lg font-black text-slate-800">
+                        <AnimatedTradeCounter value={goalStats.goal} duration={700} />원
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 truncate">
+                      <AnimatedTradeCounter value={goalStats.goal} formatType="koreanWon" duration={700} />
+                    </span>
+                  </div>
+
+                  {/* 1행 2열: 남은 금액 / 초과 달성 */}
+                  <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-xs font-semibold">
+                        {goalStats.isReached ? '초과 달성액' : '남은 금액'}
+                      </span>
+                      <Coins size={14} className="text-amber-500" />
+                    </div>
+                    <div key={`remain-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
+                      <span className={`text-lg font-black ${goalStats.isReached ? 'text-emerald-600' : 'text-slate-800'}`}>
+                        {goalStats.isReached && '+'}
+                        <AnimatedTradeCounter 
+                          value={goalStats.isReached ? goalStats.exceeded : goalStats.remaining} 
+                          duration={700} 
+                        />원
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 truncate">
+                      {goalStats.isReached ? (
+                        <>+<AnimatedTradeCounter value={goalStats.exceeded} formatType="koreanWon" duration={700} /> 초과 달성</>
+                      ) : (
+                        <AnimatedTradeCounter value={goalStats.remaining} formatType="koreanWon" duration={700} />
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 2행 1열: 투자 수익금 기여율 */}
+                  <div className="bg-white rounded-xl p-3 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-xs font-semibold">수익금 기여도</span>
+                      <Sparkles size={14} className="text-indigo-500" />
+                    </div>
+                    <div key={`profit-num-${targetGoal}`} className="my-1 animate-summary-pop flex items-baseline justify-end gap-1">
+                      <span className={`text-lg font-black ${totalProfitAmount > 0 ? 'text-blue-600' : totalProfitAmount < 0 ? 'text-rose-600' : 'text-slate-800'}`}>
+                        <AnimatedTradeCounter value={goalStats.profitContribution} formatType="percent" duration={700} />
+                      </span>
+                      <span className="text-xs text-slate-400 font-semibold">목표 기여</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 truncate">
+                      누적 수익 {totalProfitAmount > 0 ? '+' : ''}{(totalProfitAmount || 0).toLocaleString()}원
+                    </span>
+                  </div>
+
+                  {/* 2행 2열: 현재 페이스 기준 달성 예상 시점 */}
+                  <div className="bg-white rounded-xl p-3 border border-blue-100 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="text-xs font-semibold text-blue-600">달성 예상 시점</span>
+                      <Calendar size={14} className="text-blue-600" />
+                    </div>
+                    <div key={`projected-num-${targetGoal}`} className="my-1 animate-summary-pop text-right">
+                      <span className={`text-lg font-black ${goalStats.isReached ? 'text-emerald-600' : 'text-blue-600'}`}>
+                        {goalStats.projectedDateText}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 truncate font-medium">
+                      {goalStats.projectedSubText}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 하단 푸터: 로컬 스토리지 안내 */}
+            <div className="shrink-0 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <Wallet size={14} className="text-slate-400" />
+                <span>목표 금액은 브라우저에 자동 저장되어 다음 접속 시에도 동일하게 유지됩니다.</span>
+              </div>
+              <span className="hidden sm:inline text-xs text-slate-400">기본값: 10억 원</span>
+            </div>
+          </div>
         )}
       </div>
 
       <div className="flex flex-col gap-4">
         {/* Header Section */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">
-              {holdingTab === "account" ? "계좌별 보유현황" : "종목별 보유현황"}
-            </h2>
-            {user && (
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-white px-3.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                <CheckCircle2 size={15} className="text-blue-500" />
-                <span>총 {holdingsSummary.count} 종목 보유</span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* 좌측: 아이콘 + 타이틀 + 뱃지 + 서브텍스트 (탭 전환 시 부드러운 애니메이션 효과) */}
+          <div key={holdingTab} className="flex items-start gap-3 animate-header-switch">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-2xs mt-0.5 ${
+              holdingTab === "account"
+                ? "bg-amber-50 text-amber-600 border-amber-100/70"
+                : "bg-sky-50 text-sky-600 border-sky-100/70"
+            }`}>
+              {holdingTab === "account" ? (
+                <Wallet size={20} strokeWidth={2.5} />
+              ) : (
+                <LayoutList size={20} strokeWidth={2.5} />
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-slate-800 tracking-tight">
+                  {holdingTab === "account" ? "계좌별 보유현황" : "종목별 보유현황"}
+                </h2>
+                {user && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                    holdingTab === "account"
+                      ? "bg-amber-50 text-amber-700 border-amber-200/60"
+                      : "bg-sky-50 text-sky-700 border-sky-200/60"
+                  }`}>
+                    {holdingTab === "account"
+                      ? `총 ${Object.keys(holdingsByAccount || {}).length}개 계좌 관리`
+                      : `총 ${holdingsSummary.count}개 종목 보유`}
+                  </span>
+                )}
               </div>
-            )}
+              <p className="text-xs text-slate-400 mt-0.5">
+                {holdingTab === "account"
+                  ? "등록된 증권 계좌별 자산 분배 현황과 각 계좌의 상세 포트폴리오를 관리합니다."
+                  : "보유 중인 국내 및 해외 개별 종목의 실시간 평가손익과 상세 수익률을 확인합니다."}
+              </p>
+            </div>
           </div>
-          <div className="flex bg-slate-100 p-1 rounded-xl">
+
+          {/* 우측: 탭 전환 (종목별 | 계좌별) */}
+          <div className="flex bg-slate-100 p-1 rounded-xl shrink-0 self-start md:self-auto">
             <button
               onClick={() => {
                 setHoldingTab("stock");
                 setCurrencyFilter("ALL");
                 setCurrentStockPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 holdingTab === "stock"
-                  ? "bg-white text-slate-800 shadow-xs"
+                  ? "bg-sky-600 text-white shadow-xs"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1248,9 +1792,9 @@ export default function HoldingsPage() {
                 }
                 setCurrentStockPage(1);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 holdingTab === "account"
-                  ? "bg-white text-slate-800 shadow-xs"
+                  ? "bg-amber-500 text-white shadow-xs"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -2002,6 +2546,130 @@ export default function HoldingsPage() {
 
       {/* 데스크톱 섹션 닫기 */}
       </div>
+
+      {/* 목표 금액 수정 모달 */}
+      {isGoalModalOpen && (
+        <div 
+          className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs ${
+            isGoalModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
+          }`}
+          onClick={handleCloseGoalModal}
+        >
+          <div 
+            className={`bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full p-6 flex flex-col gap-5 ${
+              isGoalModalClosing ? 'animate-modal-out' : 'animate-page-slide'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Trophy size={18} className="text-brand" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">목표 자산 금액 변경</h3>
+                  <span className="text-[11px] text-slate-400">나만의 포트폴리오 목표 금액을 설정하세요</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseGoalModal}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 모달 본문 */}
+            <div className="flex flex-col gap-3">
+              <label className="text-xs font-semibold text-slate-500">금액 입력(원 단위)</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={goalInputTemp ? Number(goalInputTemp.replace(/[^0-9]/g, '')).toLocaleString('ko-KR') : ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    setGoalInputTemp(raw);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (Number(goalInputTemp) > 0) {
+                        handleSaveGoal(goalInputTemp);
+                      }
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      handleCloseGoalModal();
+                    }
+                  }}
+                  placeholder="예: 1,000,000,000"
+                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                  autoFocus
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400 pointer-events-none select-none">
+                  원
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-slate-400">목표 금액:</span>
+                <span className="text-sm font-bold text-blue-600">
+                  {formatKoreanWon(Number(goalInputTemp) || 0)}
+                </span>
+              </div>
+
+              {/* 빠른 증감 버튼 */}
+              <div className="flex flex-wrap gap-1.5 pt-2">
+                {[
+                  { label: "+1,000만", add: 10000000 },
+                  { label: "+5,000만", add: 50000000 },
+                  { label: "+1억", add: 100000000 },
+                  { label: "+5억", add: 500000000 },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      const current = Number(goalInputTemp) || 0;
+                      setGoalInputTemp(String(Math.max(0, current + item.add)));
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-lg text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setGoalInputTemp("1000000000")}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-lg text-xs font-semibold text-slate-400 transition-colors cursor-pointer ml-auto"
+                >
+                  기본값 (10억)
+                </button>
+              </div>
+            </div>
+
+            {/* 모달 액션 버튼 */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleCloseGoalModal}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveGoal(goalInputTemp)}
+                disabled={!Number(goalInputTemp) || Number(goalInputTemp) <= 0}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed shadow-xs transition-all cursor-pointer active:scale-95"
+              >
+                저장하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
