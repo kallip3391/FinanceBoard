@@ -658,10 +658,15 @@ export default function HoldingsPage() {
       };
     });
 
-    // 기간 변경 시(3년 -> 1년, 1년 -> 3개월 등) 데이터 개수 차이로 인한 우측 빈 공간(1cm 공백) 현상을 완전히 방지하기 위해
-    // 모든 기간의 데이터 포인트를 정확히 60개로 균등 보간(Resample)하여 X축을 100% 꽉 채우고
-    // 차트가 좌우 찌그러짐 없이 순수하게 위아래로만 유려하게 물결치도록(모핑) 처리합니다.
-    const TARGET_POINTS = 60;
+    // 기간별 맞춤 포인트 수 정의 (3개월: 60개, 6개월: 100개, 1년: 200개, 3년: 600개, 전체: 800개)
+    const TARGET_POINTS_MAP = {
+      "3개월": 60,
+      "6개월": 100,
+      "1년": 200,
+      "3년": 600,
+      "전체": 800
+    };
+    const targetPoints = TARGET_POINTS_MAP[selectedPeriod] || 60;
     let sampledData = normalizedData;
 
     if (normalizedData.length >= 2) {
@@ -672,8 +677,8 @@ export default function HoldingsPage() {
       const timespan = Math.max(endTime - startTime, 86400000);
 
       const seenDates = new Set();
-      for (let i = 0; i < TARGET_POINTS; i++) {
-        const progress = i / (TARGET_POINTS - 1);
+      for (let i = 0; i < targetPoints; i++) {
+        const progress = i / (targetPoints - 1);
         const targetTime = new Date(startTime + timespan * progress);
         let dateStr = targetTime.toISOString().split('T')[0];
 
