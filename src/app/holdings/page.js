@@ -1913,8 +1913,18 @@ export default function HoldingsPage() {
                 )}
               </div>
               <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-                <span>평가손익 + 배당금 합계</span>
-                <span className="font-semibold text-slate-500">총 수익률</span>
+                <span>총매수금액 + 총손익</span>
+                <span className="font-semibold text-slate-500">
+                  <AnimatedTradeCounter
+                    key={`card1-sub-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
+                    value={holdingsSummary.isOverseas 
+                      ? (holdingsSummary.foreignCostUSD + holdingsSummary.foreignSumProfitUSD) 
+                      : (holdingsSummary.totalCostKRW + holdingsSummary.totalSumProfitKRW)}
+                    isForeign={holdingsSummary.isOverseas}
+                    duration={800}
+                  />
+                  {!holdingsSummary.isOverseas && "원"}
+                </span>
               </div>
               <div className={`absolute top-0 left-0 w-1 h-full ${
                 (holdingsSummary.isOverseas ? holdingsSummary.foreignSumProfitUSD : holdingsSummary.totalSumProfitKRW) > 0 
@@ -1961,8 +1971,18 @@ export default function HoldingsPage() {
                 )}
               </div>
               <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-50 pt-2">
-                <span>평가금액 - 매수금액 합계</span>
-                <span className="font-semibold text-slate-500">수익률</span>
+                <span>총매수금액 + 평가손익</span>
+                <span className="font-semibold text-slate-500">
+                  <AnimatedTradeCounter
+                    key={`card2-sub-${holdingTab}-${selectedAccount}-${currencyFilter}-${holdingsSummary.isOverseas ? 'usd' : 'krw'}`}
+                    value={holdingsSummary.isOverseas 
+                      ? (holdingsSummary.foreignCostUSD + holdingsSummary.foreignProfitUSD) 
+                      : (holdingsSummary.totalCostKRW + holdingsSummary.totalProfitKRW)}
+                    isForeign={holdingsSummary.isOverseas}
+                    duration={800}
+                  />
+                  {!holdingsSummary.isOverseas && "원"}
+                </span>
               </div>
               <div className={`absolute top-0 left-0 w-1 h-full ${
                 (holdingsSummary.isOverseas ? holdingsSummary.foreignProfitUSD : holdingsSummary.totalProfitKRW) > 0 
