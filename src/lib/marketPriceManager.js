@@ -51,13 +51,10 @@ class MarketPriceManager {
       
       const data = await response.json();
       
-      if (!data.chart?.result || data.chart.result.length === 0) {
+      const currentPrice = data.price ?? data.chart?.result?.[0]?.meta?.regularMarketPrice;
+      if (currentPrice === undefined || currentPrice === null || isNaN(currentPrice)) {
         throw new Error('데이터를 찾을 수 없습니다.');
       }
-
-      const res = data.chart.result[0];
-      const meta = res.meta;
-      const currentPrice = meta.regularMarketPrice;
 
       // 2. 캐시 저장
       this.priceCache.set(symbol, {

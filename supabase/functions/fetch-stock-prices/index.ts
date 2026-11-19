@@ -35,51 +35,139 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const requestType = url.searchParams.get("type")?.toUpperCase(); 
+    // 💡 수집 기간(일수) 또는 특정 일자 파라미터 지원 (기본 3일치 수집)
+    const daysParam = parseInt(url.searchParams.get("days") || "3", 10);
+    const targetDateParam = url.searchParams.get("date"); // YYYY-MM-DD 특정일자
     
     const { data: securities } = await supabase.from("security").select("*");
     if (!securities) throw new Error("종목 리스트를 불러올 수 없습니다.");
 
-    const krwDates = getPastDaysIncludingWeekends(3).reverse(); 
-    const usdDates = getPastDaysIncludingWeekends(1).reverse();
+    let krwDates = getPastDaysIncludingWeekends(daysParam).reverse(); 
+    let usdDates = getPastDaysIncludingWeekends(daysParam).reverse();
 
-    // --- [SECTION A: 해외 종목 수집] ---
+    if (targetDateParam) {
+      const singleDateObj = {
+        dbFormatted: targetDateParam,
+        krwApiYmd: targetDateParam,
+        usdApiYmd: targetDateParam,
+        isWeekend: false
+      };
+      krwDates = [singleDateObj];
+      usdDates = [singleDateObj];
+    }
+
+    // --- [SECTION A: 해외 종목 수집 (1순위: 네이버 해외 차트 API, 2순위: MarketStack 백업)] ---
     if (!requestType || requestType !== "KRW") {
       const usdStocks = securities.filter(s => s.currency !== "KRW");
-      if (usdStocks.length > 0 && MS_KEYS.length > 0) {
-        console.log(`\n🌐 [해외] 최근 ${usdDates.length}일 데이터 수집 시작...`);
-        const tickers = usdStocks.map(s => s.code.trim().toUpperCase());
+      if (usdStocks.length > 0) {
+        console.log(`\n🌐 [해외] 종목 ${usdStocks.length}개 대상 최근 ${usdDates.length}일치 수집 시작 (1순위: 네이버 해외 차트/시세 API)...`);
+        const naverSuccessIds = new Set<string>();
 
-        for (const dateObj of usdDates) {
-          const bulkData = await fetchBulkWithSwitching(tickers, dateObj.usdApiYmd, MS_KEYS);
-          const lastSuccessMap = new Map();
+        // 1순위: 네이버페이 증권 해외 API (5개씩 묶어 병렬 처리)
+        const CHUNK_SIZE = 5;
+        for (let i = 0; i < usdStocks.length; i += CHUNK_SIZE) {
+          const chunk = usdStocks.slice(i, i + CHUNK_SIZE);
 
-          if (bulkData && bulkData.length > 0) {
-            for (const item of bulkData) {
-              if (item.close && item.close > 0) lastSuccessMap.set(item.symbol, item);
+          await Promise.all(
+            chunk.map(async (stock) => {
+              const ticker = stock.code.trim().toUpperCase();
+              try {
+                const naverData = await fetchForeignFromNaver(ticker);
+                if (naverData && (naverData.close > 0 || (naverData.history && naverData.history.length > 0))) {
+                  naverSuccessIds.add(stock.security_id);
+
+                  // 요청된 각 일자별로 실제 과거 일봉 데이터 매칭 및 DB 저장
+                  for (const dateObj of usdDates) {
+                    const targetCompact = dateObj.usdApiYmd.replace(/-/g, "");
+
+                    // 1) 히스토리에서 해당 일자와 정확히 일치하는 일봉 데이터 탐색
+                    let matched = (naverData.history || []).find((h: any) => {
+                      const hDt = String(h.localDate || "").replace(/-/g, "");
+                      return hDt === targetCompact;
+                    });
+
+                    // 2) 주말/휴일 등으로 당일 데이터가 없는 경우, 해당 일자 직전 영업일 일봉 매칭
+                    if (!matched && naverData.history && naverData.history.length > 0) {
+                      const prevCandles = naverData.history
+                        .filter((h: any) => String(h.localDate || "").replace(/-/g, "") <= targetCompact)
+                        .sort((a: any, b: any) => String(a.localDate).localeCompare(String(b.localDate)));
+                      if (prevCandles.length > 0) {
+                        matched = prevCandles[prevCandles.length - 1];
+                      }
+                    }
+
+                    const dayClose = matched ? parseFloat(String(matched.closePrice).replace(/,/g, "")) : naverData.close;
+                    const dayOpen = matched ? parseFloat(String(matched.openPrice || dayClose).replace(/,/g, "")) : naverData.open;
+                    const dayHigh = matched ? parseFloat(String(matched.highPrice || dayClose).replace(/,/g, "")) : naverData.high;
+                    const dayLow = matched ? parseFloat(String(matched.lowPrice || dayClose).replace(/,/g, "")) : naverData.low;
+                    const dayVol = matched ? Number(matched.accumulatedTradingVolume || 0) : naverData.volume;
+
+                    if (dayClose > 0) {
+                      await supabase.from("stock_prices").upsert({
+                        security_id: stock.security_id,
+                        price_date: dateObj.usdApiYmd,
+                        close_price: dayClose,
+                        open_price: dayOpen || 0,
+                        high_price: dayHigh || 0,
+                        low_price: dayLow || 0,
+                        volume: dateObj.isWeekend ? 0 : (dayVol || 0),
+                        currency: stock.currency,
+                        updated_at: new Date().toISOString()
+                      }, { onConflict: "security_id,price_date" });
+
+                      console.log(`✅ [해외/네이버] ${ticker.padEnd(6)} | ${dateObj.usdApiYmd} | 종가: ${dayClose.toString().padStart(8)}`);
+                    }
+                  }
+                }
+              } catch (err: any) {
+                console.warn(`⚠️ [해외/네이버 실패] ${ticker}:`, err.message);
+              }
+            })
+          );
+        }
+
+        // 2순위: 네이버에서 조회되지 않은 종목에 한해 MarketStack 백업 호출
+        const failedStocks = usdStocks.filter(s => !naverSuccessIds.has(s.security_id));
+        if (failedStocks.length > 0) {
+          if (MS_KEYS.length > 0) {
+            console.log(`\n⚠️ [해외/MarketStack 백업] 네이버 실패 종목 ${failedStocks.length}개 대상 최근 ${usdDates.length}일치 전환 시도...`);
+            const failedTickers = failedStocks.map(s => s.code.trim().toUpperCase());
+
+            for (const dateObj of usdDates) {
+              const bulkData = await fetchBulkWithSwitching(failedTickers, dateObj.usdApiYmd, MS_KEYS);
+              const lastSuccessMap = new Map();
+
+              if (bulkData && bulkData.length > 0) {
+                for (const item of bulkData) {
+                  if (item.close && item.close > 0) lastSuccessMap.set(item.symbol, item);
+                }
+              }
+
+              for (const stock of failedStocks) {
+                const ticker = stock.code.trim().toUpperCase();
+                const apiData = (bulkData || []).find((d: any) => d.symbol === ticker);
+                const finalData = apiData || lastSuccessMap.get(ticker);
+
+                if (finalData) {
+                  await supabase.from("stock_prices").upsert({
+                    security_id: stock.security_id,
+                    price_date: dateObj.usdApiYmd,
+                    close_price: finalData.close,
+                    open_price: finalData.open || 0,
+                    high_price: finalData.high || 0,
+                    low_price: finalData.low || 0,
+                    volume: (dateObj.isWeekend || !apiData) ? 0 : (finalData.volume || 0),
+                    currency: stock.currency,
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: "security_id,price_date" });
+
+                  const icon = !apiData ? "📋" : "✅";
+                  console.log(`${icon} [해외/MarketStack] ${ticker.padEnd(6)} | ${dateObj.usdApiYmd} | 종가: ${finalData.close.toString().padStart(8)}`);
+                }
+              }
             }
-          }
-
-          for (const stock of usdStocks) {
-            const ticker = stock.code.trim().toUpperCase();
-            const apiData = (bulkData || []).find(d => d.symbol === ticker);
-            const finalData = apiData || lastSuccessMap.get(ticker);
-
-            if (finalData) {
-              await supabase.from("stock_prices").upsert({
-                security_id: stock.security_id,
-                price_date: dateObj.usdApiYmd,
-                close_price: finalData.close,
-                open_price: finalData.open || 0,
-                high_price: finalData.high || 0,
-                low_price: finalData.low || 0,
-                volume: (dateObj.isWeekend || !apiData) ? 0 : (finalData.volume || 0),
-                currency: stock.currency,
-                updated_at: new Date().toISOString()
-              }, { onConflict: "security_id,price_date" });
-
-              const icon = !apiData ? "📋" : "✅";
-              console.log(`${icon} [해외] ${ticker.padEnd(6)} | ${dateObj.usdApiYmd} | 종가: ${finalData.close.toString().padStart(8)}`);
-            }
+          } else {
+            console.log(`ℹ️ [해외] 네이버 실패 종목 ${failedStocks.length}개가 있으나 MarketStack 키가 없어 건너뜁니다.`);
           }
         }
       }
@@ -89,7 +177,7 @@ Deno.serve(async (req) => {
     if (!requestType || requestType === "KRW") {
       const krwStocks = securities.filter(s => s.currency === "KRW");
       const beginBasDt = krwDates[0].krwApiYmd.replace(/-/g, "");
-      console.log(`\n🇰🇷 [국내/금현물] 최근 ${krwDates.length}일 데이터 수집 시작 (시작일: ${beginBasDt})...`);
+      console.log(`\n🇰🇷 [국내/금현물] 최근 ${krwDates.length}일치 데이터 수집 시작 (시작일: ${beginBasDt})...`);
 
       const CHUNK_SIZE = 5;
       for (let i = 0; i < krwStocks.length; i += CHUNK_SIZE) {
@@ -174,6 +262,105 @@ Deno.serve(async (req) => {
 });
 
 /** --- [Helper Functions] --- **/
+
+// 💡 [수정 4] 해외 종목 네이버페이 증권 차트 및 시세 조회 (과거 일봉 및 당일 종가 모두 지원)
+async function fetchForeignFromNaver(ticker: string) {
+  const cleanTicker = ticker.trim().toUpperCase();
+  const baseTicker = cleanTicker.replace(/\.(O|N|A|AMS)$/i, "");
+  
+  // 후보 목록 구성 (나스닥, 뉴욕, 아멕스, 아멕스(AMS), 점 표기 대응)
+  const candidates: { code: string; exchange: string }[] = [];
+
+  if (baseTicker.includes(".") || baseTicker.includes("-")) {
+    const rawNoPunct = baseTicker.replace(/[\.-]/g, "");
+    const bVariant = baseTicker.replace(/[\.-]/g, "b");
+    candidates.push({ code: `${bVariant}.N`, exchange: "NYSE" });
+    candidates.push({ code: `${rawNoPunct}.N`, exchange: "NYSE" });
+    candidates.push({ code: `${baseTicker}.N`, exchange: "NYSE" });
+    candidates.push({ code: `${baseTicker}.O`, exchange: "NASDAQ" });
+    candidates.push({ code: `${baseTicker}.A`, exchange: "AMEX" });
+    candidates.push({ code: baseTicker, exchange: "" });
+  } else {
+    candidates.push({ code: `${baseTicker}.O`, exchange: "NASDAQ" });
+    candidates.push({ code: `${baseTicker}.N`, exchange: "NYSE" });
+    candidates.push({ code: `${baseTicker}.A`, exchange: "AMEX" });
+    candidates.push({ code: `${baseTicker}.AMS`, exchange: "AMS" });
+    candidates.push({ code: `${baseTicker}.A`, exchange: "AMS" });
+    candidates.push({ code: `${baseTicker}.O`, exchange: "" });
+    candidates.push({ code: `${baseTicker}.N`, exchange: "" });
+    candidates.push({ code: baseTicker, exchange: "" });
+  }
+
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*"
+  };
+
+  for (const { code, exchange } of candidates) {
+    // 1. 차트 API (정확한 periodType=dayCandle 파라미터 적용)
+    try {
+      const exchangeQuery = exchange ? `&stockExchangeType=${exchange}` : "";
+      const chartUrl = `https://api.stock.naver.com/chart/foreign/item/${code}?periodType=dayCandle${exchangeQuery}`;
+      const res = await fetch(chartUrl, { headers });
+      if (res.ok) {
+        const list = await res.json();
+        if (Array.isArray(list) && list.length > 0) {
+          const latest = list[list.length - 1];
+          const close = parseFloat(String(latest.closePrice || "0").replace(/,/g, ""));
+          if (close > 0) {
+            return {
+              symbol: cleanTicker,
+              reutersCode: code,
+              close,
+              open: parseFloat(String(latest.openPrice || close).replace(/,/g, "")),
+              high: parseFloat(String(latest.highPrice || close).replace(/,/g, "")),
+              low: parseFloat(String(latest.lowPrice || close).replace(/,/g, "")),
+              volume: Number(latest.accumulatedTradingVolume || 0),
+              history: list
+            };
+          }
+        }
+      }
+    } catch {
+      // 다음 후보 계속 시도
+    }
+
+    // 2. 기본 시세 basic API (당일 최신 시세 백업)
+    try {
+      const basicUrl = `https://api.stock.naver.com/stock/${code}/basic`;
+      const res = await fetch(basicUrl, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const rawClose = data?.closePrice || data?.now;
+        const close = parseFloat(String(rawClose || "0").replace(/,/g, ""));
+        if (close > 0) {
+          const rawDt = String(data?.localDate || "");
+          return {
+            symbol: cleanTicker,
+            reutersCode: code,
+            close,
+            open: parseFloat(String(data?.openPrice || close).replace(/,/g, "")),
+            high: parseFloat(String(data?.highPrice || close).replace(/,/g, "")),
+            low: parseFloat(String(data?.lowPrice || close).replace(/,/g, "")),
+            volume: Number(data?.accumulatedTradingVolume || 0),
+            history: [{
+              localDate: rawDt.replace(/-/g, ""),
+              closePrice: close,
+              openPrice: parseFloat(String(data?.openPrice || close).replace(/,/g, "")),
+              highPrice: parseFloat(String(data?.highPrice || close).replace(/,/g, "")),
+              lowPrice: parseFloat(String(data?.lowPrice || close).replace(/,/g, "")),
+              accumulatedTradingVolume: Number(data?.accumulatedTradingVolume || 0)
+            }]
+          };
+        }
+      }
+    } catch {
+      // 계속 시도
+    }
+  }
+
+  return null;
+}
 
 // 💡 [수정 3] 금현물 전용 시세 조회 함수 신설 (V2 API + 'GOLD' 코드 대응)
 async function fetchGoldPriceFromPublic(key: string, beginYmd: string, code: string) {
