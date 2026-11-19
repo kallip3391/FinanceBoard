@@ -1811,7 +1811,7 @@ export default function HoldingsPage() {
                         <AnimatedTradeCounter value={goalStats.goal} duration={700} />원
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-400 truncate">
+                    <span className="text-[11px] text-slate-500 font-medium truncate">
                       <AnimatedTradeCounter value={goalStats.goal} formatType="koreanWon" duration={700} />
                     </span>
                   </div>
@@ -1833,7 +1833,7 @@ export default function HoldingsPage() {
                         />원
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-400 truncate">
+                    <span className="text-[11px] text-slate-500 font-medium truncate">
                       {goalStats.isReached ? (
                         <>+<AnimatedTradeCounter value={goalStats.exceeded} formatType="koreanWon" duration={700} /> 초과 달성</>
                       ) : (
@@ -1854,7 +1854,7 @@ export default function HoldingsPage() {
                       </span>
                       <span className="text-xs text-slate-400 font-semibold">목표 기여</span>
                     </div>
-                    <span className="text-[11px] text-slate-400 truncate">
+                    <span className="text-[11px] text-slate-500 font-medium truncate">
                       누적 손익 {totalProfitAmount > 0 ? '+' : ''}{(totalProfitAmount || 0).toLocaleString()}원
                     </span>
                   </div>
