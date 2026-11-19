@@ -10,6 +10,7 @@ import {
   GUEST_DOMESTIC_TRANSACTIONS,
   GUEST_OVERSEAS_TRANSACTIONS,
   GUEST_DIVIDEND_TRANSACTIONS,
+  GUEST_OTHER_TRANSACTIONS,
   GUEST_HOLDINGS,
   GUEST_HOLDINGS_BY_ACCOUNT,
   GUEST_SUMMARY,
@@ -36,6 +37,7 @@ export function AssetProvider({ children }) {
   const [domesticTransactions, setDomesticTransactions] = useState([]);
   const [overseasTransactions, setOverseasTransactions] = useState([]);
   const [dividendTransactions, setDividendTransactions] = useState([]);
+  const [otherTransactions, setOtherTransactions] = useState([]);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(true);
   const [accounts, setAccounts] = useState([]);
   const [accountNameById, setAccountNameById] = useState({});
@@ -66,6 +68,29 @@ export function AssetProvider({ children }) {
 
     // 게스트 계정인 경우 임시 데이터 즉시 반환
     if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
+      // 금현물 시세를 비동기로 조회하여 업데이트 시도
+      MarketPriceManager.getPrice('KRX_GOLD').then(liveGoldPrice => {
+        if (liveGoldPrice) {
+          setHoldings(prev => prev.map(item => {
+            if ((item.code === 'GOLD' && item.currency === 'KRW') || (item.name && item.name.includes('금현물'))) {
+              const cur = liveGoldPrice;
+              const evalAmt = item.totalQuantity * cur;
+              const profit = evalAmt - item.totalCostKRW;
+              const rRate = item.purchasePrice > 0 ? (((cur / item.purchasePrice) - 1) * 100).toFixed(2) : '0.00';
+              return {
+                ...item,
+                currentPrice: cur,
+                evaluationAmountKRW: evalAmt,
+                profitAmountKRW: profit,
+                returnRate: rRate,
+                totalReturnRate: rRate
+              };
+            }
+            return item;
+          }));
+        }
+      }).catch(() => {});
+
       setHoldings(GUEST_HOLDINGS);
       setHoldingsByAccount(GUEST_HOLDINGS_BY_ACCOUNT);
       setSummary(GUEST_SUMMARY);
@@ -81,9 +106,13 @@ export function AssetProvider({ children }) {
       const uniqueSecurities = Array.from(new Set(viewData.map(v => v.security_id)));
       const securityMapForSymbols = viewData.reduce((acc, curr) => {
         if (!acc[curr.security_id]) {
+          const isGold = (curr.security_code === 'GOLD' && curr.currency === 'KRW') || 
+                         (curr.security_name && curr.security_name.includes('금현물')) ||
+                         curr.transaction_type === 'other';
           acc[curr.security_id] = {
             code: curr.security_code,
-            exchange_code: curr.sector === '해외' ? 'OVERSEAS' : (curr.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS')
+            exchange_code: isGold ? 'OTHER' : (curr.sector === '해외' ? 'OVERSEAS' : (curr.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS')),
+            isGold
           };
         }
         return acc;
@@ -97,9 +126,12 @@ export function AssetProvider({ children }) {
       const livePrices = await MarketPriceManager.getMultiplePrices(fetchSymbols);
 
       const processHolding = (h) => {
+        const isGold = (h.security_code === 'GOLD' && h.currency === 'KRW') || 
+                       (h.security_name && h.security_name.includes('금현물')) ||
+                       h.transaction_type === 'other';
         const lookupSym = MarketPriceManager.formatSymbol(
           h.security_code, 
-          h.sector === '해외' ? 'OVERSEAS' : (h.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS')
+          isGold ? 'OTHER' : (h.sector === '해외' ? 'OVERSEAS' : (h.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS'))
         );
         const currentPrice = livePrices[lookupSym] || null;
         const currentRate = exchangeRates[h.currency.toUpperCase()] || 1;
@@ -124,6 +156,7 @@ export function AssetProvider({ children }) {
           ...h,
           name: h.security_name,
           code: h.security_code,
+          transaction_type: h.transaction_type || (isGold ? 'other' : (h.currency === 'KRW' ? 'domestic' : 'overseas')),
           currentPrice,
           exchangeRate: currentRate,
           evaluationAmountKRW: evalAmtKRW,
@@ -272,9 +305,25 @@ export function AssetProvider({ children }) {
 
     // 게스트 계정인 경우 임시 거래내역 반환
     if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
-      setDomesticTransactions(GUEST_DOMESTIC_TRANSACTIONS);
-      setOverseasTransactions(GUEST_OVERSEAS_TRANSACTIONS);
+      let customTxs = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = JSON.parse(localStorage.getItem('guest_custom_transactions') || '[]');
+          // 제목(종목명)이 누락된 불완전한 테스트 자료는 자동 삭제 정리
+          customTxs = raw.filter(t => Boolean(t.stock_name || t.security?.name || t.stock));
+          if (customTxs.length !== raw.length) {
+            localStorage.setItem('guest_custom_transactions', JSON.stringify(customTxs));
+          }
+        } catch (e) {}
+      }
+      const customDomestic = customTxs.filter(t => t.transaction_type === 'domestic');
+      const customOverseas = customTxs.filter(t => t.transaction_type === 'overseas');
+      const customOther = customTxs.filter(t => t.transaction_type === 'other');
+
+      setDomesticTransactions([...customDomestic, ...GUEST_DOMESTIC_TRANSACTIONS]);
+      setOverseasTransactions([...customOverseas, ...GUEST_OVERSEAS_TRANSACTIONS]);
       setDividendTransactions(GUEST_DIVIDEND_TRANSACTIONS);
+      setOtherTransactions([...customOther, ...(GUEST_OTHER_TRANSACTIONS || [])]);
       setIsTransactionsLoading(false);
       return;
     }
@@ -283,15 +332,17 @@ export function AssetProvider({ children }) {
       // 최초 로딩 시에만 스켈레톤 표시
       setIsTransactionsLoading(true);
       
-      const [domestic, overseas, dividend] = await Promise.all([
+      const [domestic, overseas, dividend, other] = await Promise.all([
         TransactionManager.getDomesticTransactions(),
         TransactionManager.getOverseasTransactions(),
-        TransactionManager.getDividendTransactions()
+        TransactionManager.getDividendTransactions(),
+        TransactionManager.getOtherTransactions()
       ]);
       
       setDomesticTransactions(domestic || []);
       setOverseasTransactions(overseas || []);
       setDividendTransactions(dividend || []);
+      setOtherTransactions(other || []);
     } catch (e) {
       if (user) console.error("거래 내역 로드 오류:", e);
     } finally {
@@ -389,6 +440,7 @@ export function AssetProvider({ children }) {
     isTrendLoading,
     domesticTransactions,
     overseasTransactions,
+    otherTransactions,
     dividendTransactions,
     isTransactionsLoading,
     accounts,

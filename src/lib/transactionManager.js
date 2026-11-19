@@ -15,7 +15,8 @@ export const CURRENCIES = {
 export const TRANSACTION_TYPES = {
   DOMESTIC: 'domestic',
   OVERSEAS: 'overseas',
-  DIVIDEND: 'dividend'
+  DIVIDEND: 'dividend',
+  OTHER: 'other'
 };
 
 // 매수/매도 구분 상수
@@ -29,19 +30,23 @@ export const TRADE_TYPES = {
 export class TransactionManager {
   // 현재 로그인한 사용자 ID 가져오기
   static async getCurrentUserId() {
-    // 로컬 개발용 인증 우회 (localhost 접속 시)
+    try {
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user && session.user.id) {
+          return session.user.id;
+        }
+      }
+    } catch (err) {
+      // 세션 확인 중 발생하는 예외는 조용히 처리 (F5 등에서 발생 가능)
+    }
+
+    // 로컬 개발용 인증 우회 (로그인 세션이 없는 localhost 환경)
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       return '00000000-0000-0000-0000-000000000000';
     }
     
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session || !session.user) return null;
-      return session.user.id;
-    } catch (err) {
-      // 세션 확인 중 발생하는 예외는 조용히 처리 (F5 등에서 발생 가능)
-      return null;
-    }
+    return null;
   }
 
   static async addAccount(accountData) {
@@ -118,6 +123,11 @@ export class TransactionManager {
     return this.getTransactions({ ...filters, transaction_type: TRANSACTION_TYPES.DIVIDEND });
   }
 
+  // 기타 매매내역 조회
+  static async getOtherTransactions(filters = {}) {
+    return this.getTransactions({ ...filters, transaction_type: TRANSACTION_TYPES.OTHER });
+  }
+
   // 계좌 목록 조회
   static async getAccounts() {
     const userId = await this.getCurrentUserId();
@@ -161,6 +171,30 @@ export class TransactionManager {
     const userId = await this.getCurrentUserId();
     if (!userId) throw new Error('로그인이 필요합니다.');
 
+    // 1. 게스트 모드 (localhost 인증 우회 환경)
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      const newTx = {
+        id: `guest-tx-${Date.now()}`,
+        ...transactionData,
+        mate_stat: '01',
+        alt_sync: true,
+        user_id: userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      if (typeof window !== 'undefined') {
+        try {
+          const list = JSON.parse(localStorage.getItem('guest_custom_transactions') || '[]');
+          list.push(newTx);
+          localStorage.setItem('guest_custom_transactions', JSON.stringify(list));
+        } catch (e) {
+          console.error('[TransactionManager] 거래 로컬 저장 오류:', e);
+        }
+      }
+      return newTx;
+    }
+
+    // 2. 실제 로그인 사용자
     const { data, error } = await supabase
       .from('transactions')
       .insert({
@@ -182,6 +216,25 @@ export class TransactionManager {
     const userId = await this.getCurrentUserId();
     if (!userId) throw new Error('로그인이 필요합니다.');
 
+    // 1. 게스트 모드
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      if (typeof window !== 'undefined') {
+        try {
+          const list = JSON.parse(localStorage.getItem('guest_custom_transactions') || '[]');
+          const idx = list.findIndex(t => t.id === transactionId);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...updateData, updated_at: new Date().toISOString() };
+            localStorage.setItem('guest_custom_transactions', JSON.stringify(list));
+            return list[idx];
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      return { id: transactionId, ...updateData };
+    }
+
+    // 2. 실제 로그인 사용자
     const { data, error } = await supabase
       .from('transactions')
       .update({
@@ -202,6 +255,21 @@ export class TransactionManager {
     const userId = await this.getCurrentUserId();
     if (!userId) throw new Error('로그인이 필요합니다.');
 
+    // 1. 게스트 모드
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      if (typeof window !== 'undefined') {
+        try {
+          const list = JSON.parse(localStorage.getItem('guest_custom_transactions') || '[]');
+          const filtered = list.filter(t => t.id !== transactionId);
+          localStorage.setItem('guest_custom_transactions', JSON.stringify(filtered));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      return true;
+    }
+
+    // 2. 실제 로그인 사용자
     const { error } = await supabase
       .from('transactions')
       .delete()
@@ -251,7 +319,22 @@ export class TransactionManager {
   // 종목 중복 체크
   static async checkStockDuplicate(name, code) {
     const userId = await this.getCurrentUserId();
-    if (!userId) throw new Error('로그인이 필요합니다.');
+    if (!userId) return false;
+
+    // 게스트 모드 (localhost 인증 우회 환경)
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      if (typeof window !== 'undefined') {
+        try {
+          const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
+          if (custom.some(s => s.name?.toUpperCase() === name.toUpperCase() || s.code?.toUpperCase() === code.toUpperCase())) {
+            return true;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return false;
+    }
 
     const { data: nameData } = await supabase
       .from('security')
@@ -277,18 +360,88 @@ export class TransactionManager {
     const userId = await this.getCurrentUserId();
     if (!userId) throw new Error('로그인이 필요합니다.');
 
-    const { data, error } = await supabase
-      .from('security')
-      .insert({
+    // 1. 게스트 모드 (localhost 인증 우회 환경): 브라우저 로컬 저장소에 안전하게 유지
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      const isOther = stockData.market_type === 'OTHER' || stockData.exchange_code === 'OTHER' || (stockData.name || '').includes('금현물') || (stockData.code || '').toUpperCase() === 'GOLD';
+      const newSec = {
+        security_id: `guest-sec-${Date.now()}`,
         ...stockData,
+        exchange_code: stockData.exchange_code || (isOther ? 'OTHER' : ''),
+        market_type: isOther ? 'OTHER' : (stockData.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS'),
         user_id: userId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      })
+      };
+
+      if (typeof window !== 'undefined') {
+        try {
+          const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
+          custom.push(newSec);
+          localStorage.setItem('guest_custom_securities', JSON.stringify(custom));
+        } catch (e) {
+          console.error('[TransactionManager] 로컬 저장 오류:', e);
+        }
+      }
+
+      return newSec;
+    }
+
+    // 2. 실제 로그인 사용자: Supabase Cloud DB의 security 테이블에 저장
+    const isOtherMarket = stockData.market_type === 'OTHER' || stockData.exchange_code === 'OTHER' || (stockData.name || '').includes('금현물') || (stockData.code || '').toUpperCase() === 'GOLD';
+    const insertPayload = {
+      name: stockData.name,
+      code: stockData.code,
+      sector: stockData.sector,
+      currency: stockData.currency,
+      exchange_code: stockData.exchange_code || (isOtherMarket ? 'OTHER' : ''),
+      user_id: userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('security')
+      .insert(insertPayload)
       .select();
 
+    if (error) {
+      console.error('[TransactionManager.addStock] Supabase error:', error);
+      throw new Error(error.message || error.details || '종목 저장 중 DB 오류가 발생했습니다.');
+    }
+    const saved = data?.[0] ?? null;
+    if (saved) {
+      saved.market_type = isOtherMarket ? 'OTHER' : (saved.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS');
+    }
+    return saved;
+  }
+
+  // 종목 삭제
+  static async deleteStock(securityId) {
+    const userId = await this.getCurrentUserId();
+    if (!userId) throw new Error('로그인이 필요합니다.');
+
+    // 게스트 모드
+    if (userId === '00000000-0000-0000-0000-000000000000') {
+      if (typeof window !== 'undefined') {
+        try {
+          const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
+          const filtered = custom.filter(s => s.security_id !== securityId);
+          localStorage.setItem('guest_custom_securities', JSON.stringify(filtered));
+        } catch (e) {
+          // ignore
+        }
+      }
+      return true;
+    }
+
+    // 실제 로그인 사용자
+    const { error } = await supabase
+      .from('security')
+      .delete()
+      .eq('security_id', securityId)
+      .eq('user_id', userId);
+
     if (error) throw error;
-    return data?.[0] ?? null;
+    return true;
   }
 
   // 이름으로 종목 검색
@@ -302,7 +455,8 @@ export class TransactionManager {
         GUEST_HOLDINGS = [],
         GUEST_DOMESTIC_TRANSACTIONS = [],
         GUEST_OVERSEAS_TRANSACTIONS = [],
-        GUEST_DIVIDEND_TRANSACTIONS = []
+        GUEST_DIVIDEND_TRANSACTIONS = [],
+        GUEST_OTHER_TRANSACTIONS = []
       } = await import('./guestMockData');
 
       const map = new Map();
@@ -310,21 +464,37 @@ export class TransactionManager {
         if (!s || !s.name) return;
         const key = `${s.name}_${s.code || ''}`;
         if (!map.has(key)) {
+          const isOther = s.market_type === 'OTHER' || 
+                          s.exchange_code === 'OTHER' || 
+                          (s.name || '').includes('금현물') || 
+                          (s.code || '').toUpperCase() === 'GOLD';
           map.set(key, {
             security_id: s.security_id || `guest-sec-${map.size + 1}`,
             name: s.name,
             code: s.code || '',
             sector: s.sector || '기타',
             currency: s.currency || 'KRW',
-            exchange_code: s.exchange_code || s.exchange_nm || (s.currency === 'KRW' ? 'KRX' : 'NASDAQ')
+            exchange_code: s.exchange_code || (isOther ? 'OTHER' : (s.currency === 'KRW' ? 'KRX' : 'NASDAQ')),
+            market_type: isOther ? 'OTHER' : (s.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS')
           });
         }
       };
+
+      // 게스트 모드에서 사용자가 직접 추가한 종목도 검색 결과에 포함
+      if (typeof window !== 'undefined') {
+        try {
+          const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
+          custom.forEach(addSec);
+        } catch (e) {
+          // ignore
+        }
+      }
 
       GUEST_HOLDINGS.forEach(h => addSec({ name: h.stock, code: h.stockCode, currency: h.currency, sector: h.sector, security_id: h.security_id }));
       GUEST_DOMESTIC_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id }));
       GUEST_OVERSEAS_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'USD', security_id: t.security_id }));
       GUEST_DIVIDEND_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: t.currency, security_id: t.security_id }));
+      GUEST_OTHER_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id, exchange_code: 'OTHER', market_type: 'OTHER' }));
 
       let list = Array.from(map.values());
 
@@ -354,9 +524,17 @@ export class TransactionManager {
     } else if (currency) {
       query = query.eq('currency', currency);
     }
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    const { data: secData, error: secError } = await query;
+    if (secError) throw secError;
+    return (secData || []).map(s => {
+      const isOther = s.exchange_code === 'OTHER' || 
+                      (s.name || '').includes('금현물') || 
+                      (s.code || '').toUpperCase() === 'GOLD';
+      return {
+        ...s,
+        market_type: isOther ? 'OTHER' : (s.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS')
+      };
+    });
   }
 
   static async getLatestExchangeRates() {

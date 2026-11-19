@@ -25,6 +25,21 @@ class MarketPriceManager {
     }
 
     try {
+      // KRX 금현물 등 기타 귀금속 자산인 경우 내부 /api/gold-price 호출
+      if (symbol === 'KRX_GOLD' || symbol === 'GOLD.OTHER' || symbol === 'GOLD_KRW') {
+        const goldRes = await fetch('/api/gold-price');
+        if (goldRes.ok) {
+          const goldData = await goldRes.json();
+          if (goldData && goldData.price) {
+            this.priceCache.set(symbol, {
+              price: goldData.price,
+              timestamp: Date.now()
+            });
+            return goldData.price;
+          }
+        }
+      }
+
       // CORS 문제 해결을 위해 내부 API 프록시 (/api/stock-price) 사용
       const url = `/api/stock-price?symbol=${symbol}`;
       
@@ -90,6 +105,11 @@ class MarketPriceManager {
     
     const mkt = market?.toUpperCase() || '';
     
+    // 기타 자산 (KRX 금현물 등)
+    if (mkt === 'OTHER' || (code === 'GOLD' && (mkt === 'OTHER' || mkt === 'KRX'))) {
+      return 'KRX_GOLD';
+    }
+
     // KIS 시장 코드 또는 매핑된 코드 처리
     if (mkt === 'STK' || mkt === 'KOSPI' || mkt === 'KS') {
       return `${code}.KS`;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowLeftRight, Plus, Search, ChevronDown, PlusCircle, Wallet, ArrowUpDown, CheckCircle2, TrendingUp, Scale, Award } from "lucide-react";
+import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowLeftRight, Plus, Search, ChevronDown, PlusCircle, Wallet, ArrowUpDown, CheckCircle2, TrendingUp, Scale, Award, Coins } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
@@ -31,9 +31,42 @@ const SORT_OPTIONS = [
   { value: "name_asc", label: "종목명 가나다순" },
 ];
 
+// ── 금괴(Gold Bar) 전용 아이콘 ──
+function GoldBarIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* 금괴 윗면 (빛 반사 하이라이트) */}
+      <path d="M5.5 8.5L8 6H16L18.5 8.5H5.5Z" fill="#FFFBEB" fillOpacity="0.95" />
+      {/* 금괴 전면 */}
+      <path d="M5.5 8.5H18.5L20 15H4L5.5 8.5Z" fill="#FEF08A" />
+      {/* 금괴 하단/측면 베이스 */}
+      <path d="M4 15H20L18 18.5H6L4 15Z" fill="#D97706" />
+      {/* 외곽선 및 패싯 라인 */}
+      <path d="M8 6H16L18.5 8.5L20 15L18 18.5H6L4 15L5.5 8.5L8 6Z" stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="5.5" y1="8.5" x2="18.5" y2="8.5" stroke="#78350F" strokeWidth="1" />
+      <line x1="4" y1="15" x2="20" y2="15" stroke="#78350F" strokeWidth="1" />
+      {/* 999.9 순금 각인 */}
+      <text x="12" y="13" textAnchor="middle" fontSize="3.3" fontWeight="900" fill="#78350F" letterSpacing="0.4">999.9</text>
+    </svg>
+  );
+}
+
 // ── 종목 로고 컴포넌트 ──
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
+  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+
+  if (isGold) {
+    return (
+      <div 
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border border-amber-300 shadow-sm shadow-amber-500/20"
+        title="KRX 금현물"
+      >
+        <GoldBarIcon className="w-5 h-5 drop-shadow-xs" />
+      </div>
+    );
+  }
+
   const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
 
@@ -338,7 +371,7 @@ const transliterateKOtoEN = (text) => {
 export default function TransactionsPage() {
 
   const { user } = useAuth();
-  const { refreshAssets, domesticTransactions, overseasTransactions, isTransactionsLoading, refreshTransactions, accounts, accountNameById, isAccountsLoading, refreshAccounts } = useAssets();
+  const { refreshAssets, domesticTransactions, overseasTransactions, otherTransactions, isTransactionsLoading, refreshTransactions, accounts, accountNameById, isAccountsLoading, refreshAccounts } = useAssets();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -357,7 +390,7 @@ export default function TransactionsPage() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isAccountTypeDropdownOpen, setIsAccountTypeDropdownOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
-  const [stockMarketType, setStockMarketType] = useState('DOMESTIC'); // 'DOMESTIC' | 'OVERSEAS'
+  const [stockMarketType, setStockMarketType] = useState('DOMESTIC'); // 'DOMESTIC' | 'OVERSEAS' | 'OTHER'
   const [isSectorDropdownOpen, setIsSectorDropdownOpen] = useState(false);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
   const [accountForm, setAccountForm] = useState({ institution: '', type: '일반' });
@@ -667,7 +700,9 @@ export default function TransactionsPage() {
     currency: 'KRW',
     exchangeRate: '',
     totalKRW: '',
-    exchange_code: ''
+    exchange_code: '',
+    market_type: '',
+    transaction_type: ''
   });
 
   const [focusedAccountIndex, setFocusedAccountIndex] = useState(-1);
@@ -733,7 +768,7 @@ export default function TransactionsPage() {
     }
   };
 
-  // ── 종목 추가 모달: 국내/해외 마켓 전환 ──
+  // ── 종목 추가 모달: 국내/해외/기타 마켓 전환 ──
   const handleStockMarketTypeChange = (type) => {
     if (type === stockMarketType) return;
     setStockMarketType(type);
@@ -745,8 +780,8 @@ export default function TransactionsPage() {
       ...prev,
       name: '',
       code: '',
-      exchange_code: '',
-      currency: type === 'DOMESTIC' ? 'KRW' : (prev.currency === 'KRW' ? 'USD' : prev.currency || 'USD')
+      exchange_code: type === 'OTHER' ? 'KRX' : '',
+      currency: type === 'OVERSEAS' ? (prev.currency === 'KRW' ? 'USD' : prev.currency || 'USD') : 'KRW'
     }));
   };
 
@@ -824,7 +859,7 @@ export default function TransactionsPage() {
       return;
     }
     if (!stockForm.code.trim()) {
-      showAlert("입력 오류", stockMarketType === 'DOMESTIC' ? "종목코드를 입력해 주세요." : "티커를 입력해 주세요.", "error", stockModalCodeRef);
+      showAlert("입력 오류", stockMarketType === 'DOMESTIC' ? "종목코드를 입력해 주세요." : stockMarketType === 'OVERSEAS' ? "티커를 입력해 주세요." : "종목코드를 입력해 주세요.", "error", stockModalCodeRef);
       return;
     }
     if (!stockForm.sector.trim()) {
@@ -838,6 +873,9 @@ export default function TransactionsPage() {
     if (stockMarketType === 'OVERSEAS' && !stockForm.currency.trim()) {
       showAlert("입력 오류", "통화를 선택해 주세요.", "error");
       return;
+    }
+    if (stockMarketType === 'OTHER' && !stockForm.currency.trim()) {
+      stockForm.currency = 'KRW';
     }
 
     try {
@@ -854,12 +892,14 @@ export default function TransactionsPage() {
     }
 
     try {
+      const isOther = stockMarketType === 'OTHER';
       const newStock = await TransactionManager.addStock({
         name: stockForm.name.trim(),
         code: stockForm.code.trim(),
         sector: stockForm.sector.trim(),
         currency: stockForm.currency.trim(),
-        exchange_code: stockForm.exchange_code || ''
+        exchange_code: isOther ? 'OTHER' : (stockForm.exchange_code || ''),
+        market_type: stockMarketType
       });
 
       if (newStock) {
@@ -868,6 +908,8 @@ export default function TransactionsPage() {
           security_id: newStock.security_id || newStock.id,
           stock: `[${newStock.code}] ${newStock.name}`,
           stockCode: newStock.code,
+          exchange_code: newStock.exchange_code || (isOther ? 'OTHER' : ''),
+          market_type: newStock.market_type || stockMarketType,
           currency: newStock.currency || prev.currency
         }));
       }
@@ -876,14 +918,15 @@ export default function TransactionsPage() {
         name: '', 
         code: '', 
         sector: '', 
-        currency: stockMarketType === 'DOMESTIC' ? 'KRW' : 'USD', 
+        currency: stockMarketType === 'OVERSEAS' ? 'USD' : 'KRW', 
         exchange_code: '' 
       });
       setIsStockModalOpen(false);
       showAlert("등록 완료", "종목이 성공적으로 등록되었습니다.", "success");
     } catch (error) {
       console.error('종목 등록 오류:', error);
-      showAlert("등록 오류", "종목 등록 중 오류가 발생했습니다.", "error");
+      const errMsg = error?.message || error?.details || (typeof error === 'string' ? error : '종목 등록 중 오류가 발생했습니다.');
+      showAlert("등록 오류", errMsg, "error");
     }
   };
 
@@ -908,6 +951,33 @@ export default function TransactionsPage() {
     }
   };
 
+  const getStockType = (item) => {
+    if (!item) return 'DOMESTIC';
+    const txType = item.transaction_type || '';
+    if (txType === 'other') return 'OTHER';
+    if (txType === 'overseas') return 'OVERSEAS';
+    if (txType === 'domestic') return 'DOMESTIC';
+
+    const name = item.stock_name || item.security?.name || item.name || item.stock || '';
+    const code = item.stock_code || item.security?.code || item.code || item.stockCode || '';
+    const exchangeCode = item.security?.exchange_code || item.exchange_code || '';
+    const marketType = item.security?.market_type || item.market_type || '';
+    const currency = item.currency || item.security?.currency || '';
+
+    if (
+      marketType === 'OTHER' ||
+      exchangeCode === 'OTHER' ||
+      name.includes('금현물') ||
+      (code && code.toUpperCase() === 'GOLD' && currency === 'KRW')
+    ) {
+      return 'OTHER';
+    }
+    if (currency && currency !== 'KRW') {
+      return 'OVERSEAS';
+    }
+    return 'DOMESTIC';
+  };
+
   const handleStockSearch = async (val) => {
     const searchTerm = val ? val.trim() : '';
     // 빈 칸이어도 전체 조회를 위해 검색 허용 (등록 팝업과 동일)
@@ -927,13 +997,15 @@ export default function TransactionsPage() {
     }
   };
 
-  // 국내/해외 거래내역 통합 (게스트 모드 포함)
+  // 국내/해외/기타 거래내역 통합 (게스트 모드 포함)
   const allTransactions = useMemo(() => {
     if (!user) return [];
     const dt = domesticTransactions || [];
     const ot = overseasTransactions || [];
-    return [...dt, ...ot];
-  }, [user, domesticTransactions, overseasTransactions]);
+    const other = otherTransactions || [];
+    // 제목(종목명)이 누락된 불완전한 테스트 자료 자동 필터링
+    return [...dt, ...ot, ...other].filter(tx => Boolean(tx.stock_name || tx.security?.name || tx.stock));
+  }, [user, domesticTransactions, overseasTransactions, otherTransactions]);
 
   // 전역 상태가 변경되면 로컬 필터링용 데이터 업데이트
   useEffect(() => {
@@ -944,11 +1016,11 @@ export default function TransactionsPage() {
   // 사용자 데이터 로드
   useEffect(() => {
     if (user) {
-      if (domesticTransactions.length === 0 && overseasTransactions.length === 0) {
+      if (domesticTransactions.length === 0 && overseasTransactions.length === 0 && (otherTransactions || []).length === 0) {
         refreshTransactions();
       }
     }
-  }, [user, domesticTransactions.length, overseasTransactions.length]);
+  }, [user, domesticTransactions.length, overseasTransactions.length, (otherTransactions || []).length]);
 
   // 환율 조회
   useEffect(() => {
@@ -1183,23 +1255,24 @@ export default function TransactionsPage() {
 
 
   const sectorOptions = [
-    '에너지',
-    '부동산',
+    '정보기술',
+    '금융',
+    '헬스케어',
     '소재',
     '산업재',
-    '운송물류',
+    '에너지',
     '경기소비재',
     '필수소비재',
-    '헬스케어',
-    '금융',
-    'IT',
-    '첨단기술',
-    '통신',
     '유틸리티',
-    '기타',
+    '통신서비스',
+    '부동산',
     '리츠',
     '채권',
-    'ETF'
+    '기타',
+    'ETF 지수',
+    'ETF 배당',
+    'ETF 테마',
+    'ETF 기타'
   ];
 
   const formatCurrency = (value, currency = 'USD') => {
@@ -1240,7 +1313,7 @@ export default function TransactionsPage() {
         day: now.getDate().toString().padStart(2, '0'),
         account: '', stock: '', stockCode: '', security_id: '',
         type: '매수', quantity: '', price: '', amount: '', currency: initialCurrency,
-        exchangeRate: '', totalKRW: '', exchange_code: ''
+        exchangeRate: '', totalKRW: '', exchange_code: '', market_type: '', transaction_type: ''
       });
     }
     setIsModalOpen(!isModalOpen);
@@ -1437,8 +1510,14 @@ export default function TransactionsPage() {
         exchangeTotalRate = Math.round((amount * exchangeRate) / 10) * 10;
       }
 
+      const isOtherStock = getStockType(formData) === 'OTHER' || formData.transaction_type === 'other';
+      const txType = isOtherStock 
+        ? TRANSACTION_TYPES.OTHER 
+        : (isKRWCurrency ? TRANSACTION_TYPES.DOMESTIC : TRANSACTION_TYPES.OVERSEAS);
+
+      const rawStockName = (formData.stock || '').replace(/\[.*?\]\s*/, '').trim();
       const transactionData = {
-        transaction_type: isKRWCurrency ? TRANSACTION_TYPES.DOMESTIC : TRANSACTION_TYPES.OVERSEAS,
+        transaction_type: txType,
         date: dateStr,
         currency: formData.currency || 'KRW',
         trade_type: formData.type === '매수' ? TRADE_TYPES.BUY : TRADE_TYPES.SELL,
@@ -1448,7 +1527,18 @@ export default function TransactionsPage() {
         exchange_rate: exchangeRate,
         exchange_total_rate: exchangeTotalRate,
         account_id: selectedAccountId,
-        security_id: formData.security_id || null
+        security_id: formData.security_id || null,
+        stock_name: rawStockName,
+        stock_code: formData.stockCode || '',
+        stock: formData.stock || '',
+        security: {
+          security_id: formData.security_id,
+          name: rawStockName,
+          code: formData.stockCode || '',
+          currency: formData.currency || 'KRW',
+          exchange_code: formData.exchange_code || (isOtherStock ? 'OTHER' : ''),
+          market_type: isOtherStock ? 'OTHER' : (isKRWCurrency ? 'DOMESTIC' : 'OVERSEAS')
+        }
       };
 
 
@@ -1523,7 +1613,9 @@ export default function TransactionsPage() {
       currency: txCurrency,
       exchangeRate: tx.exchange_rate ? tx.exchange_rate.toString() : '',
       totalKRW: tx.exchange_total_rate ? tx.exchange_total_rate.toLocaleString('ko-KR') : '',
-      exchange_code: tx.security?.exchange_code || ''
+      exchange_code: tx.security?.exchange_code || tx.exchange_code || '',
+      market_type: tx.security?.market_type || tx.market_type || '',
+      transaction_type: tx.transaction_type || ''
     });
     setSelectedAccountId(tx.account_id || null);
     setIsModalOpen(true);
@@ -1627,10 +1719,15 @@ export default function TransactionsPage() {
         if (typeStr !== activeFilters.type) return false;
       }
 
-      // 2. 통화 필터 (currencyFilter: ALL, KRW, OVERSEAS)
-      const isKRW = (tx.currency || 'KRW') === 'KRW';
-      if (currencyFilter === 'KRW' && !isKRW) return false;
-      if (currencyFilter === 'OVERSEAS' && isKRW) return false;
+      // 2. 거래유형(시장) 필터 (currencyFilter: ALL, KRW/DOMESTIC, OVERSEAS, OTHER)
+      const txType = (tx.transaction_type ? tx.transaction_type.toUpperCase() : getStockType(tx));
+      if (currencyFilter === 'KRW' || currencyFilter === 'DOMESTIC') {
+        if (txType !== 'DOMESTIC') return false;
+      } else if (currencyFilter === 'OVERSEAS') {
+        if (txType !== 'OVERSEAS') return false;
+      } else if (currencyFilter === 'OTHER') {
+        if (txType !== 'OTHER') return false;
+      }
 
       // 3. 종목 검색어 필터 (상단 검색창 searchQuery)
       if (searchQuery.trim()) {
@@ -2080,6 +2177,9 @@ export default function TransactionsPage() {
                     {currencyFilter === "OVERSEAS" && (
                       <>약 {formatSubKRW(summary.buyAmountForeignKRW)}</>
                     )}
+                    {currencyFilter === "OTHER" && (
+                      <>체결수량 {summary.buyQtyKRW.toLocaleString('ko-KR')}g</>
+                    )}
                   </span>
                   <span className="font-semibold text-slate-500">
                     매수 투자금액
@@ -2132,6 +2232,9 @@ export default function TransactionsPage() {
                     )}
                     {currencyFilter === "OVERSEAS" && (
                       <>약 {formatSubKRW(summary.sellAmountForeignKRW)}</>
+                    )}
+                    {currencyFilter === "OTHER" && (
+                      <>체결수량 {summary.sellQtyKRW.toLocaleString('ko-KR')}g</>
                     )}
                   </span>
                   <span className="font-semibold text-slate-500">
@@ -2188,6 +2291,9 @@ export default function TransactionsPage() {
                         {currencyFilter === "OVERSEAS" && (
                           <>약 {formatSubKRW(summary.buyAmountForeignKRW - summary.sellAmountForeignKRW)}</>
                         )}
+                        {currencyFilter === "OTHER" && (
+                          <>매수금액 - 매도금액</>
+                        )}
                       </span>
                       <span className="font-semibold text-indigo-600">
                         순 투자금액
@@ -2239,7 +2345,7 @@ export default function TransactionsPage() {
                     <span className="text-xs font-bold text-slate-500">총 거래대금</span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                        총 {currencyFilter === "ALL" ? summary.totalTxCount : (summary.buyCountKRW + summary.sellCountKRW)}건
+                        총 {currencyFilter === "ALL" || currencyFilter === "OTHER" ? summary.totalTxCount : (summary.buyCountKRW + summary.sellCountKRW)}건
                       </span>
                       <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
                         <ArrowUpDown size={12} strokeWidth={2.5} />
@@ -2265,6 +2371,8 @@ export default function TransactionsPage() {
                     >
                       {currencyFilter === "ALL" ? (
                         <>국내 {summary.buyCountKRW + summary.sellCountKRW}건 · 해외 {summary.buyCountForeign + summary.sellCountForeign}건</>
+                      ) : currencyFilter === "OTHER" ? (
+                        <>기타 총 {summary.totalTxCount}건 매매</>
                       ) : (
                         <>매수 {summary.buyCountKRW}건 · 매도 {summary.sellCountKRW}건</>
                       )}
@@ -2759,6 +2867,7 @@ export default function TransactionsPage() {
           <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
             <div className="flex bg-slate-100 p-0.5 rounded-xl h-9 items-center">
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("ALL")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
@@ -2767,6 +2876,7 @@ export default function TransactionsPage() {
                 전체
               </button>
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("KRW")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
@@ -2775,12 +2885,22 @@ export default function TransactionsPage() {
                 국내
               </button>
               <button
+                type="button"
                 onClick={() => setCurrencyFilter("OVERSEAS")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
                 }`}
               >
                 해외
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrencyFilter("OTHER")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OTHER" ? 'bg-emerald-500 text-white shadow-xs' : 'text-slate-500 hover:text-emerald-600'
+                }`}
+              >
+                기타
               </button>
             </div>
 
@@ -2896,15 +3016,22 @@ export default function TransactionsPage() {
                               <span className="font-mono text-slate-400 font-medium text-[11px] w-[62px] shrink-0 truncate">
                                 {formatStockCode(code)}
                               </span>
-                              <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
-                                  isKRW
-                                    ? "bg-blue-50 text-blue-600 border-blue-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
-                                }`}
-                              >
-                                {isKRW ? "국내" : "해외"}
-                              </span>
+                              {(() => {
+                                const rowType = getStockType(tx);
+                                return (
+                                  <span
+                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
+                                      rowType === 'OTHER'
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : rowType === 'OVERSEAS'
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                        : "bg-blue-50 text-blue-600 border-blue-200"
+                                    }`}
+                                  >
+                                    {rowType === 'OTHER' ? "기타" : rowType === 'OVERSEAS' ? "해외" : "국내"}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -2926,7 +3053,7 @@ export default function TransactionsPage() {
 
                       {/* 4. 수량 */}
                       <td className="px-6 py-2 text-center text-sm font-bold text-slate-700 tabular-nums">
-                        {Number(tx.quantity || 0).toLocaleString('ko-KR')}주
+                        {Number(tx.quantity || 0).toLocaleString('ko-KR')}{(displayName || '').includes('금현물') || code === 'GOLD' ? 'g' : '주'}
                       </td>
 
                       {/* 5. 단가 */}
@@ -3292,15 +3419,20 @@ export default function TransactionsPage() {
               <div>
                 <div className="flex items-center gap-1.5 ml-0.5 mb-1.5">
                   <label className="block text-xs font-black text-slate-600 tracking-tight">종목</label>
-                  {formData.security_id && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
-                      formData.currency === 'KRW'
-                        ? 'bg-blue-50 text-blue-600 border-blue-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}>
-                      {formData.currency === 'KRW' ? '국내' : '해외'}
-                    </span>
-                  )}
+                  {formData.security_id && (() => {
+                    const stType = getStockType(formData);
+                    return (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
+                        stType === 'OTHER'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : stType === 'OVERSEAS'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-blue-50 text-blue-600 border-blue-200'
+                      }`}>
+                        {stType === 'OTHER' ? '기타' : stType === 'OVERSEAS' ? '해외' : '국내'}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1" ref={stockDropdownRef}>
@@ -3350,13 +3482,15 @@ export default function TransactionsPage() {
                               e.preventDefault();
                               if (isStockDropdownOpen && focusedStockIndex >= 0 && searchedStocks[focusedStockIndex]) {
                                 const stock = searchedStocks[focusedStockIndex];
+                                const isOther = stock.market_type === 'OTHER' || stock.exchange_code === 'OTHER' || (stock.name || '').includes('금현물') || (stock.code || '').toUpperCase() === 'GOLD';
                                 const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
                                 setFormData(prev => ({
                                   ...prev,
                                   security_id: stock.security_id,
                                   stock: `[${stock.code}] ${stock.name}`,
                                   stockCode: stock.code,
-                                  exchange_code: stock.exchange_code || '',
+                                  exchange_code: stock.exchange_code || (isOther ? 'OTHER' : ''),
+                                  market_type: isOther ? 'OTHER' : (stockCur === 'KRW' ? 'DOMESTIC' : 'OVERSEAS'),
                                   currency: stockCur
                                 }));
                                 setIsStockDropdownOpen(false);
@@ -3467,12 +3601,15 @@ export default function TransactionsPage() {
                                 }`}
                                 onMouseEnter={() => setFocusedStockIndex(index)}
                                 onClick={() => {
+                                  const isOther = stock.market_type === 'OTHER' || stock.exchange_code === 'OTHER' || (stock.name || '').includes('금현물') || (stock.code || '').toUpperCase() === 'GOLD';
                                   const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
                                   setFormData(prev => ({ 
                                     ...prev, 
                                     stock: `[${stock.code}] ${stock.name}`, 
                                     stockCode: stock.code, 
                                     security_id: stock.security_id, 
+                                    exchange_code: stock.exchange_code || (isOther ? 'OTHER' : ''),
+                                    market_type: isOther ? 'OTHER' : (stockCur === 'KRW' ? 'DOMESTIC' : 'OVERSEAS'),
                                     currency: stockCur 
                                   }));
                                   setIsStockDropdownOpen(false);
@@ -3482,13 +3619,20 @@ export default function TransactionsPage() {
                                 <span className={`font-semibold text-sm leading-tight break-words truncate mr-2 ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
                                   {stock.name} <span className={`text-[13px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
                                 </span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
-                                  (stock.currency === 'KRW' || stock.exchange_code === 'KRX')
-                                    ? 'bg-blue-50 text-blue-600 border-blue-200' 
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}>
-                                  {stock.currency === 'KRW' || stock.exchange_code === 'KRX' ? '국내' : '해외'}
-                                </span>
+                                {(() => {
+                                  const itemType = getStockType(stock);
+                                  return (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
+                                      itemType === 'OTHER'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : itemType === 'OVERSEAS'
+                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                        : 'bg-blue-50 text-blue-600 border-blue-200'
+                                    }`}>
+                                      {itemType === 'OTHER' ? '기타' : itemType === 'OVERSEAS' ? '해외' : '국내'}
+                                    </span>
+                                  );
+                                })()}
                               </button>
                             ))
                           )}
@@ -3547,35 +3691,40 @@ export default function TransactionsPage() {
               <div className="grid grid-cols-5 gap-3">
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">수량</label>
-                  <input
-                    ref={quantityRef}
-                    type="text"
-                    placeholder="0"
-                    value={formData.quantity}
-                    onChange={(e) => handleNumberInput(e, 'quantity')}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        priceRef.current?.focus();
-                        priceRef.current?.select();
-                      } else if (e.key === 'Tab' && e.shiftKey) {
-                        e.preventDefault();
-                        setIsStockDropdownOpen(false);
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          security_id: '', 
-                          stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' 
-                        }));
-                        setTimeout(() => {
-                          stockRef.current?.focus();
-                          stockRef.current?.select();
-                        }, 50);
-                      }
-                    }}
-                    className={`w-full h-12 px-4 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 text-right text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
-                      !formData.quantity || formData.quantity === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
-                    }`}
-                  />
+                  <div className="flex items-center w-full h-12 px-4 rounded-2xl border border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-all bg-slate-50/70 gap-1.5 shadow-xs">
+                    <input
+                      ref={quantityRef}
+                      type="text"
+                      placeholder="0"
+                      value={formData.quantity}
+                      onChange={(e) => handleNumberInput(e, 'quantity')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          priceRef.current?.focus();
+                          priceRef.current?.select();
+                        } else if (e.key === 'Tab' && e.shiftKey) {
+                          e.preventDefault();
+                          setIsStockDropdownOpen(false);
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            security_id: '', 
+                            stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' 
+                          }));
+                          setTimeout(() => {
+                            stockRef.current?.focus();
+                            stockRef.current?.select();
+                          }, 50);
+                        }
+                      }}
+                      className={`flex-1 bg-transparent outline-none text-right text-xs min-w-0 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
+                        !formData.quantity || formData.quantity === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
+                      }`}
+                    />
+                    <span className="text-slate-400 font-medium text-xs shrink-0">
+                      {(formData.stock || '').includes('금현물') || formData.stockCode === 'GOLD' ? 'g' : '주'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="col-span-3">
@@ -3705,7 +3854,7 @@ export default function TransactionsPage() {
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-white rounded-t-3xl">
               <div className="flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-                  stockMarketType === 'DOMESTIC' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'
+                  stockMarketType === 'DOMESTIC' ? 'bg-blue-50 text-blue-600' : stockMarketType === 'OVERSEAS' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                 }`}>
                   <PlusCircle size={18} strokeWidth={2.5} />
                 </div>
@@ -3720,12 +3869,12 @@ export default function TransactionsPage() {
             </div>
 
             <div className="p-5 md:p-6 flex-1 overflow-visible space-y-4">
-              {/* 1. 국내 / 해외 선택 세그먼트 버튼 (높이 및 바닥화면 테마 색상 적용) */}
-              <div className="grid grid-cols-2 p-1.5 bg-slate-100/90 rounded-2xl gap-1.5">
+              {/* 1. 국내 / 해외 / 기타 선택 세그먼트 버튼 (높이 및 바닥화면 테마 색상 적용) */}
+              <div className="grid grid-cols-3 p-1.5 bg-slate-100/90 rounded-2xl gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleStockMarketTypeChange('DOMESTIC')}
-                  className={`h-11 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  className={`h-11 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     stockMarketType === 'DOMESTIC'
                       ? 'bg-blue-500 text-white shadow-xs'
                       : 'text-slate-500 hover:text-blue-600 font-bold'
@@ -3737,7 +3886,7 @@ export default function TransactionsPage() {
                 <button
                   type="button"
                   onClick={() => handleStockMarketTypeChange('OVERSEAS')}
-                  className={`h-11 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  className={`h-11 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     stockMarketType === 'OVERSEAS'
                       ? 'bg-amber-500 text-white shadow-xs'
                       : 'text-slate-500 hover:text-amber-600 font-bold'
@@ -3746,104 +3895,149 @@ export default function TransactionsPage() {
                   <span className={`w-2 h-2 rounded-full ${stockMarketType === 'OVERSEAS' ? 'bg-white' : 'bg-slate-300'}`} />
                   해외 종목
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleStockMarketTypeChange('OTHER')}
+                  className={`h-11 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    stockMarketType === 'OTHER'
+                      ? 'bg-emerald-500 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-emerald-600 font-bold'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${stockMarketType === 'OTHER' ? 'bg-white' : 'bg-slate-300'}`} />
+                  기타 종목
+                </button>
               </div>
 
-              {/* 2. 종목코드(티커) & 종목명 */}
-              <div className="grid grid-cols-5 gap-3 items-end">
-                {/* 종목코드 / 티커 */}
-                <div className="col-span-2 relative">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">
-                    {stockMarketType === 'DOMESTIC' ? '종목코드' : '티커(코드)'}
-                  </label>
-                  <div className="relative">
+              {/* 2. 종목코드(티커) & 종목명 (기타 마켓일 경우 종목명 좌측, 종목코드 우측으로 위치 교체 및 직접 입력) */}
+              {stockMarketType === 'OTHER' ? (
+                <div className="grid grid-cols-5 gap-3 items-end">
+                  {/* 종목명 (좌측 3칸) */}
+                  <div className="col-span-3 relative">
+                    <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">종목명</label>
                     <input
                       type="text"
-                      placeholder={stockMarketType === 'DOMESTIC' ? '6자리' : '예: AAPL'}
+                      placeholder="예 : KRX 금현물 등"
+                      value={stockForm.name}
+                      onChange={(e) => setStockForm(prev => ({ ...prev, name: e.target.value }))}
+                      ref={stockModalNameRef}
+                      className="w-full h-12 px-3.5 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 font-bold text-xs text-center text-slate-800 shadow-xs transition-all placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                    />
+                  </div>
+
+                  {/* 종목코드 (우측 2칸) */}
+                  <div className="col-span-2 relative">
+                    <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">종목코드</label>
+                    <input
+                      type="text"
+                      placeholder="GOLD"
                       value={stockForm.code}
                       onChange={(e) => {
-                        const transliterated = transliterateKOtoEN(e.target.value).toUpperCase();
-                        const maxLen = stockMarketType === 'DOMESTIC' ? 6 : 10;
-                        if (transliterated.length <= maxLen) {
-                          setStockForm(prev => ({ ...prev, code: transliterated }));
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && stockForm.code) {
-                          e.preventDefault();
-                          searchStockByCode(stockForm.code);
-                        }
+                        const val = e.target.value.toUpperCase();
+                        setStockForm(prev => ({ ...prev, code: val }));
                       }}
                       ref={stockModalCodeRef}
-                      className={`w-full h-12 pl-3 pr-8 rounded-2xl border border-slate-200 focus:outline-none font-bold text-xs text-slate-800 text-center bg-white shadow-xs transition-all placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs uppercase ${
-                        stockMarketType === 'DOMESTIC' ? 'focus:border-blue-500' : 'focus:border-amber-500'
-                      }`}
+                      className="w-full h-12 px-3 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 font-bold text-xs text-center text-slate-800 shadow-xs transition-all placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs uppercase"
                     />
-                    <button
-                      type="button"
-                      onClick={() => searchStockByCode(stockForm.code)}
-                      className={`absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors cursor-pointer ${
-                        stockMarketType === 'DOMESTIC' ? 'hover:text-blue-600' : 'hover:text-amber-600'
-                      }`}
-                      title="종목 조회"
-                    >
-                      <Search size={14} />
-                    </button>
                   </div>
                 </div>
-
-                {/* 종목명 */}
-                <div className="col-span-3 relative" ref={searchDropdownRef}>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">종목명</label>
-                  <input
-                    type="text"
-                    placeholder={stockForm.name ? '' : (stockMarketType === 'DOMESTIC' ? '좌측 코드 입력 후 조회' : '좌측 티커 입력 후 조회')}
-                    value={stockForm.name}
-                    readOnly={stockForm.name === '검색 중...'}
-                    onChange={(e) => setStockForm(prev => ({ ...prev, name: e.target.value }))}
-                    onFocus={() => setIsNameFocused(true)}
-                    onBlur={() => setIsNameFocused(false)}
-                    ref={stockModalNameRef}
-                    className={`w-full h-12 px-3.5 rounded-2xl border focus:outline-none transition-all font-bold text-xs text-center box-border shadow-xs placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs ${
-                      stockForm.name === '검색 중...' 
-                        ? 'bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed' 
-                        : `bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-300 focus:bg-white ${
-                            stockMarketType === 'DOMESTIC' 
-                              ? 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100' 
-                              : 'focus:border-amber-500 focus:ring-2 focus:ring-amber-100'
-                          } ${isNameFocused ? 'cursor-text' : 'cursor-pointer'}`
-                    }`}
-                  />
-                  {/* 검색 결과 다중 건 드롭다운 (정렬 드롭다운 스타일 적용) */}
-                  {isSearchDropdownOpen && stockSearchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-[60] p-1.5 max-h-[160px] overflow-y-auto animate-fade-in">
-                      <div className="space-y-0.5">
-                        {stockSearchResults.map((res, i) => (
-                          <button
-                            key={`${res.code}-${i}`}
-                            type="button"
-                            className="w-full px-2.5 py-2 text-xs rounded-xl hover:bg-slate-100/70 text-left transition-all flex justify-between items-center group cursor-pointer tracking-tight"
-                            onClick={() => {
-                              setStockForm({
-                                ...stockForm,
-                                name: res.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
-                                code: res.code,
-                                exchange_code: res.exchange_code || ''
-                              });
-                              setIsSearchDropdownOpen(false);
-                              setStockSearchResults([]);
-                            }}
-                          >
-                            <span className={`font-semibold text-slate-700 text-xs tracking-tight truncate mr-2 ${
-                              stockMarketType === 'DOMESTIC' ? 'group-hover:text-blue-600' : 'group-hover:text-amber-600'
-                            }`}>{res.name}</span>
-                            <span className="text-[11px] font-semibold text-slate-400 shrink-0 tracking-tight">[{res.code}]{['KOSPI', 'KOSDAQ', 'KONEX'].includes(res.market) ? '' : ` ${res.market}`}</span>
-                          </button>
-                        ))}
-                      </div>
+              ) : (
+                <div className="grid grid-cols-5 gap-3 items-end">
+                  {/* 종목코드 / 티커 */}
+                  <div className="col-span-2 relative">
+                    <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">
+                      {stockMarketType === 'DOMESTIC' ? '종목코드' : '티커(코드)'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder={stockMarketType === 'DOMESTIC' ? '6자리' : '예: AAPL'}
+                        value={stockForm.code}
+                        onChange={(e) => {
+                          const transliterated = transliterateKOtoEN(e.target.value).toUpperCase();
+                          const maxLen = stockMarketType === 'DOMESTIC' ? 6 : 10;
+                          if (transliterated.length <= maxLen) {
+                            setStockForm(prev => ({ ...prev, code: transliterated }));
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && stockForm.code) {
+                            e.preventDefault();
+                            searchStockByCode(stockForm.code);
+                          }
+                        }}
+                        ref={stockModalCodeRef}
+                        className={`w-full h-12 pl-3 pr-8 rounded-2xl border border-slate-200 focus:outline-none font-bold text-xs text-slate-800 text-center bg-white shadow-xs transition-all placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs uppercase ${
+                          stockMarketType === 'DOMESTIC' ? 'focus:border-blue-500' : 'focus:border-amber-500'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => searchStockByCode(stockForm.code)}
+                        className={`absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors cursor-pointer ${
+                          stockMarketType === 'DOMESTIC' ? 'hover:text-blue-600' : 'hover:text-amber-600'
+                        }`}
+                        title="종목 조회"
+                      >
+                        <Search size={14} />
+                      </button>
                     </div>
-                  )}
+                  </div>
+
+                  {/* 종목명 */}
+                  <div className="col-span-3 relative" ref={searchDropdownRef}>
+                    <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">종목명</label>
+                    <input
+                      type="text"
+                      placeholder={stockForm.name ? '' : (stockMarketType === 'DOMESTIC' ? '좌측 코드 입력 후 조회' : '좌측 티커 입력 후 조회')}
+                      value={stockForm.name}
+                      readOnly={stockForm.name === '검색 중...'}
+                      onChange={(e) => setStockForm(prev => ({ ...prev, name: e.target.value }))}
+                      onFocus={() => setIsNameFocused(true)}
+                      onBlur={() => setIsNameFocused(false)}
+                      ref={stockModalNameRef}
+                      className={`w-full h-12 px-3.5 rounded-2xl border focus:outline-none transition-all font-bold text-xs text-center box-border shadow-xs placeholder:text-center placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs ${
+                        stockForm.name === '검색 중...' 
+                          ? 'bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed' 
+                          : `bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-300 focus:bg-white ${
+                              stockMarketType === 'DOMESTIC' 
+                                ? 'focus:border-blue-500 focus:ring-2 focus:ring-blue-100' 
+                                : 'focus:border-amber-500 focus:ring-2 focus:ring-amber-100'
+                            } ${isNameFocused ? 'cursor-text' : 'cursor-pointer'}`
+                      }`}
+                    />
+                    {/* 검색 결과 다중 건 드롭다운 (정렬 드롭다운 스타일 적용) */}
+                    {isSearchDropdownOpen && stockSearchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-[60] p-1.5 max-h-[160px] overflow-y-auto animate-fade-in">
+                        <div className="space-y-0.5">
+                          {stockSearchResults.map((res, i) => (
+                            <button
+                              key={`${res.code}-${i}`}
+                              type="button"
+                              className="w-full px-2.5 py-2 text-xs rounded-xl hover:bg-slate-100/70 text-left transition-all flex justify-between items-center group cursor-pointer tracking-tight"
+                              onClick={() => {
+                                setStockForm({
+                                  ...stockForm,
+                                  name: res.name.replace(/\s*[㈜|주식|코스닥|코스피]\s*$/g, ''),
+                                  code: res.code,
+                                  exchange_code: res.exchange_code || ''
+                                });
+                                setIsSearchDropdownOpen(false);
+                                setStockSearchResults([]);
+                              }}
+                            >
+                              <span className={`font-semibold text-slate-700 text-xs tracking-tight truncate mr-2 ${
+                                stockMarketType === 'DOMESTIC' ? 'group-hover:text-blue-600' : 'group-hover:text-amber-600'
+                              }`}>{res.name}</span>
+                              <span className="text-[11px] font-semibold text-slate-400 shrink-0 tracking-tight">[{res.code}]{['KOSPI', 'KOSDAQ', 'KONEX'].includes(res.market) ? '' : ` ${res.market}`}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* 3. 섹터 & 통화 */}
               <div className="grid grid-cols-5 gap-3 items-end">
@@ -3906,6 +4100,12 @@ export default function TransactionsPage() {
                     <div className="w-full h-12 px-3.5 rounded-2xl border border-blue-200 bg-blue-50/70 flex items-center justify-center shadow-xs cursor-default">
                       <span className="text-center text-xs font-bold text-blue-600 tracking-tight flex items-center justify-center gap-1">
                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md font-bold">₩</span> KRW
+                      </span>
+                    </div>
+                  ) : stockMarketType === 'OTHER' ? (
+                    <div className="w-full h-12 px-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 flex items-center justify-center shadow-xs cursor-default">
+                      <span className="text-center text-xs font-bold text-emerald-600 tracking-tight flex items-center justify-center gap-1">
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-md font-bold">₩</span> KRW
                       </span>
                     </div>
                   ) : (
@@ -3977,9 +4177,13 @@ export default function TransactionsPage() {
                     <>
                       <strong className="text-slate-700 font-bold">국내 종목:</strong> 종목코드 입력 후 <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600">Enter</kbd>를 누르면 종목정보가 조회됩니다.
                     </>
-                  ) : (
+                  ) : stockMarketType === 'OVERSEAS' ? (
                     <>
                       <strong className="text-slate-700 font-bold">해외 종목:</strong> 영문 티커(예: AAPL) 입력 후 <kbd className="px-1 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600">Enter</kbd>를 누르면 종목명이 조회됩니다.
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-slate-700 font-bold">기타 종목:</strong> 금현물 등 자산의 종목명, 종목코드, 섹터 입력 후 등록합니다.
                     </>
                   )}
                 </p>
@@ -4000,7 +4204,9 @@ export default function TransactionsPage() {
                   className={`flex-1 h-12 rounded-2xl text-white font-bold text-sm transition-all shadow-md cursor-pointer ${
                     stockMarketType === 'DOMESTIC'
                       ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/25'
-                      : 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/25'
+                      : stockMarketType === 'OVERSEAS'
+                        ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/25'
+                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/25'
                   }`}
                 >
                   등록
@@ -4631,7 +4837,7 @@ export default function TransactionsPage() {
                                     </span>
                                   </div>
                                   <span className={`text-[9px] px-1.5 py-0.5 rounded-lg ${originalIndex === focusedStockIndex ? 'bg-indigo-100 text-indigo-700 font-bold' : 'bg-slate-50 text-slate-400'}`}>
-                                    {stock.exchange_nm || '국내'}
+                                    {stock.exchange_nm || (getStockType(stock) === 'OTHER' ? '기타' : (stock.currency === 'KRW' ? '국내' : '해외'))}
                                   </span>
                                 </button>
                               );

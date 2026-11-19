@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const krwDates = getPastDaysIncludingWeekends(3).reverse(); 
     const usdDates = getPastDaysIncludingWeekends(1).reverse(); // 👈 나중에 여기를 1로 바꾸세요!
 
-    // --- [SECTION A: 해외 종목 수집] ---
+    // --- [SECTION A: 해외 종목 수집] (원본 유지) ---
     if (!requestType || requestType !== "KRW") {
       const usdStocks = securities.filter(s => s.currency !== "KRW");
       if (usdStocks.length > 0 && MS_KEYS.length > 0) {
@@ -83,43 +83,51 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- [SECTION B: 국내 종목 수집] ---
+    // --- [SECTION B: 국내 종목 수집] (수정됨: beginBasDt 1회 호출 + 5개씩 병렬 처리) ---
     if (!requestType || requestType === "KRW") {
       const krwStocks = securities.filter(s => s.currency === "KRW");
-      console.log(`\n🇰🇷 [국내] 최근 ${krwDates.length}일 데이터 수집 시작...`);
-      for (const stock of krwStocks) {
-        let lastPrice: any = null;
-        for (const dateObj of krwDates) {
-          let priceData = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, dateObj.krwApiYmd, stock.code);
-          if (!priceData) {
-            for (const apiName of ["getETFPriceInfo", "getETNPriceInfo", "getELWPriceInfo"]) {
-              priceData = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, dateObj.krwApiYmd, stock.code);
-              if (priceData) break;
-            }
-          }
-          if (priceData) lastPrice = priceData;
-          const final = priceData || lastPrice;
-          if (final) {
-            await supabase.from("stock_prices").upsert({
-              security_id: stock.security_id,
-              price_date: dateObj.krwApiYmd,
-              close_price: Math.round(final.close),
-              open_price: Math.round(final.open),
-              high_price: Math.round(final.high),
-              low_price: Math.round(final.low),
-              volume: (dateObj.isWeekend || !priceData) ? 0 : Math.round(final.volume),
-              currency: "KRW",
-              updated_at: new Date().toISOString()
-            }, { onConflict: "security_id,price_date" });
+      const beginBasDt = krwDates[0].krwApiYmd.replace(/-/g, "");
+      console.log(`\n🇰🇷 [국내] 최근 ${krwDates.length}일 데이터 수집 시작 (시작일: ${beginBasDt})...`);
 
-            const icon = !priceData ? "📋" : "✅";
-            console.log(`${icon} [국내] ${stock.name.padEnd(10)} | ${dateObj.krwApiYmd} | 종가: ${Math.round(final.close).toLocaleString().padStart(8)}`);
-          }
-        }
+      const CHUNK_SIZE = 5;
+      for (let i = 0; i < krwStocks.length; i += CHUNK_SIZE) {
+        const chunk = krwStocks.slice(i, i + CHUNK_SIZE);
+
+        await Promise.all(
+          chunk.map(async (stock) => {
+            let priceList = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, beginBasDt, stock.code);
+            if (priceList.length === 0) {
+              for (const apiName of ["getETFPriceInfo", "getETNPriceInfo", "getELWPriceInfo"]) {
+                priceList = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, beginBasDt, stock.code);
+                if (priceList.length > 0) break;
+              }
+            }
+
+            if (priceList.length > 0) {
+              const rowsToUpsert = priceList.map((item) => ({
+                security_id: stock.security_id,
+                price_date: item.date,
+                close_price: Math.round(item.close),
+                open_price: Math.round(item.open),
+                high_price: Math.round(item.high),
+                low_price: Math.round(item.low),
+                volume: Math.round(item.volume),
+                currency: "KRW",
+                updated_at: new Date().toISOString()
+              }));
+
+              await supabase.from("stock_prices").upsert(rowsToUpsert, { onConflict: "security_id,price_date" });
+
+              for (const row of rowsToUpsert) {
+                console.log(`✅ [국내] ${stock.name.padEnd(10)} | ${row.price_date} | 종가: ${row.close_price.toLocaleString().padStart(8)}`);
+              }
+            }
+          })
+        );
       }
     }
 
-    // --- [SECTION C: 보완 로직] ---
+    // --- [SECTION C: 보완 로직] (원본 유지) ---
     console.log(`\n🔍 [보완] 점검 시작...`);
     await runOptimizedPatch(supabase, securities);
     
@@ -218,14 +226,26 @@ function getDatesInRange(s: Date, e: Date) {
 
 function formatDateToISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-async function fetchFromPublic(apiUrl: string, key: string, ymd: string, code: string) {
+// [수정됨] beginBasDt를 사용해 기준일 이후 영업일 데이터를 한 번에 배열로 조회
+async function fetchFromPublic(apiUrl: string, key: string, beginYmd: string, code: string) {
   try {
-    const url = `${apiUrl}?serviceKey=${key}&resultType=json&basDt=${ymd.replace(/-/g, '')}&likeSrtnCd=${code}&numOfRows=10`;
+    const url = `${apiUrl}?serviceKey=${key}&resultType=json&beginBasDt=${beginYmd}&likeSrtnCd=${code}&numOfRows=100`;
     const res = await fetch(url);
     const data = await res.json();
     const item = data.response?.body?.items?.item;
     const list = Array.isArray(item) ? item : (item ? [item] : []);
-    const exact = list.find((i: any) => i.srtnCd === code);
-    return exact ? { close: Number(exact.clpr), open: Number(exact.mkp || exact.basPrc), high: Number(exact.hipr), low: Number(exact.lopr), volume: Number(exact.trqu) } : null;
-  } catch { return null; }
+    return list
+      .filter((i: any) => i.srtnCd === code)
+      .map((i: any) => {
+        const rawDt = String(i.basDt);
+        return {
+          date: `${rawDt.slice(0, 4)}-${rawDt.slice(4, 6)}-${rawDt.slice(6, 8)}`,
+          close: Number(i.clpr),
+          open: Number(i.mkp || i.basPrc),
+          high: Number(i.hipr),
+          low: Number(i.lopr),
+          volume: Number(i.trqu)
+        };
+      });
+  } catch { return []; }
 }

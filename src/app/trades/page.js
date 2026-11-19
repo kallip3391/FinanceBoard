@@ -21,9 +21,34 @@ import { TransactionManager } from "@/lib/transactionManager";
 import MobileDividendDashboard from "@/app/components/mobile/MobileDividendDashboard";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
+// ── 입체 골드바(금괴) SVG 아이콘 ──
+function GoldBarIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.5 8.5L8 6H16L18.5 8.5H5.5Z" fill="#FFFBEB" fillOpacity="0.95" />
+      <path d="M5.5 8.5H18.5L20 15H4L5.5 8.5Z" fill="#FEF08A" />
+      <path d="M4 15H20L18 18.5H6L4 15Z" fill="#D97706" />
+      <path d="M8 6H16L18.5 8.5L20 15L18 18.5H6L4 15L5.5 8.5L8 6Z" stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="5.5" y1="8.5" x2="18.5" y2="8.5" stroke="#78350F" strokeWidth="1" />
+      <line x1="4" y1="15" x2="20" y2="15" stroke="#78350F" strokeWidth="1" />
+      <text x="12" y="13" textAnchor="middle" fontSize="3.3" fontWeight="900" fill="#78350F" letterSpacing="0.4">999.9</text>
+    </svg>
+  );
+}
+
 // ── 종목 로고 컴포넌트 ──
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
+  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+
+  if (isGold) {
+    return (
+      <div className="w-9 h-9 rounded-xl shrink-0 overflow-hidden flex items-center justify-center bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border border-amber-300 shadow-sm shadow-amber-500/20">
+        <GoldBarIcon className="w-5 h-5 drop-shadow-xs" />
+      </div>
+    );
+  }
+
   const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
 
@@ -336,6 +361,19 @@ const SAMPLE_TRADE_DATA = [
     dividend: 0,
     totalRealizedProfit: 295000,
   },
+  {
+    name: "KRX 금현물",
+    code: "GOLD",
+    currency: "KRW",
+    transaction_type: "other",
+    quantity: 10,
+    avgBuyPrice: 125000,
+    avgSellPrice: 135000,
+    realizedProfit: 100000,
+    realizedRate: 8.00,
+    dividend: 0,
+    totalRealizedProfit: 100000,
+  },
 ];
 
 // ── view_closed_trades_pnl 뷰 정규화 함수 ──
@@ -349,6 +387,14 @@ const normalizeTradeItem = (row) => {
   const isKRW = currency === 'KRW';
   const quantity = Number(isFromView ? row['수량'] : row.quantity) || 100;
   const sector = (isFromView ? row['섹터'] : row.sector) || '';
+
+  // 거래 유형 (transaction_type) 판정
+  const rawTxType = (row.transaction_type || row['거래유형'] || '').toLowerCase();
+  const isOther = rawTxType === 'other' || 
+    (name.includes('금현물')) || 
+    (code === 'GOLD' && isKRW) || 
+    sector === '기타';
+  const txType = isOther ? 'OTHER' : (rawTxType.toUpperCase() || (isKRW ? 'DOMESTIC' : 'OVERSEAS'));
 
   // 원화 수치
   const avgBuyPrice = Number(isFromView ? row['평균매수_원화'] : row.avgBuyPrice) || 0;
@@ -391,6 +437,9 @@ const normalizeTradeItem = (row) => {
     isKRW,
     quantity,
     sector,
+    txType,
+    isOther,
+    transaction_type: txType,
 
     // 원화
     avgBuyPrice,
@@ -433,13 +482,13 @@ export default function TradesPnLPage() {
 
   // 검색 & 필터 상태
   const [searchQuery, setSearchQuery] = useState("");
-  const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
+  const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS, OTHER
   const [sortBy, setSortBy] = useState("totalProfit_desc"); // totalProfit_desc, totalProfit_asc, rate_desc, rate_asc, name_asc
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const sortDropdownRef = useRef(null);
 
-  // 검색 패널 접힘/펼침 상태 (최초 로딩 시 기본 접힘 상태)
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  // 검색 패널 접힘/펼침 상태 (최초 로딩 시 기본 열린 상태 - 매매/배당 화면과 통일)
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
   const { mounted: isFilterPanelMounted, isClosing: isFilterPanelClosing } = useAnimatedModal(isFilterPanelOpen, 220);
   const searchInputRef = useRef(null);
 
@@ -527,13 +576,15 @@ export default function TradesPnLPage() {
     return closedTrades.map(normalizeTradeItem).filter(Boolean);
   }, [closedTrades]);
 
-  // 상단 요약 통계 (전체 / 국내 / 해외 탭 연동)
+  // 상단 요약 통계 (전체 / 국내 / 해외 / 기타 탭 연동)
   const summary = useMemo(() => {
     let targetList = allTradesList;
-    if (currencyFilter === "KRW") {
-      targetList = allTradesList.filter(item => item.isKRW);
+    if (currencyFilter === "KRW" || currencyFilter === "DOMESTIC") {
+      targetList = allTradesList.filter(item => item.txType === 'DOMESTIC');
     } else if (currencyFilter === "OVERSEAS") {
-      targetList = allTradesList.filter(item => !item.isKRW);
+      targetList = allTradesList.filter(item => item.txType === 'OVERSEAS');
+    } else if (currencyFilter === "OTHER") {
+      targetList = allTradesList.filter(item => item.txType === 'OTHER');
     }
 
     let sumTotalProfit = 0;
@@ -596,11 +647,13 @@ export default function TradesPnLPage() {
       );
     }
 
-    // 통화 필터
-    if (currencyFilter === "KRW") {
-      list = list.filter(item => item.isKRW);
+    // 거래유형 필터
+    if (currencyFilter === "KRW" || currencyFilter === "DOMESTIC") {
+      list = list.filter(item => item.txType === 'DOMESTIC');
     } else if (currencyFilter === "OVERSEAS") {
-      list = list.filter(item => !item.isKRW);
+      list = list.filter(item => item.txType === 'OVERSEAS');
+    } else if (currencyFilter === "OTHER") {
+      list = list.filter(item => item.txType === 'OTHER');
     }
 
     // 정렬
@@ -934,11 +987,14 @@ export default function TradesPnLPage() {
           </div>
 
           <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
-            {/* 국내/해외 탭 필터 */}
+            {/* 전체/국내/해외/기타 탭 필터 */}
             <div className="flex bg-slate-100 p-0.5 rounded-xl h-9 items-center">
               <button
                 type="button"
-                onClick={() => setCurrencyFilter("ALL")}
+                onClick={() => {
+                  setCurrencyFilter("ALL");
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -947,7 +1003,10 @@ export default function TradesPnLPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setCurrencyFilter("KRW")}
+                onClick={() => {
+                  setCurrencyFilter("KRW");
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
                 }`}
@@ -956,12 +1015,27 @@ export default function TradesPnLPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setCurrencyFilter("OVERSEAS")}
+                onClick={() => {
+                  setCurrencyFilter("OVERSEAS");
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
                 }`}
               >
                 해외
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrencyFilter("OTHER");
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OTHER" ? 'bg-emerald-500 text-white shadow-xs' : 'text-slate-500 hover:text-emerald-600'
+                }`}
+              >
+                기타
               </button>
             </div>
 
@@ -1081,12 +1155,14 @@ export default function TradesPnLPage() {
                               </span>
                               <span
                                 className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
-                                  item.isKRW
+                                  item.txType === 'OTHER'
+                                    ? "bg-amber-50 text-amber-700 border-amber-300"
+                                    : item.isKRW
                                     ? "bg-blue-50 text-blue-600 border-blue-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 }`}
                               >
-                                {item.isKRW ? "국내" : "해외"}
+                                {item.txType === 'OTHER' ? "기타" : (item.isKRW ? "국내" : "해외")}
                               </span>
                             </div>
                           </div>
@@ -1095,7 +1171,7 @@ export default function TradesPnLPage() {
 
                       {/* 2열: 수량 */}
                       <td className="px-4 py-2 text-center text-sm font-bold text-slate-700 tabular-nums">
-                        {item.quantity.toLocaleString()}주
+                        {item.quantity.toLocaleString()}{item.txType === 'OTHER' || (item.name && item.name.includes('금현물')) ? 'g' : '주'}
                       </td>
 
                       {/* 3열: 평균 매수가 */}

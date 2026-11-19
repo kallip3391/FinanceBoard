@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore, memo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import {
@@ -43,9 +43,37 @@ import {
   ReferenceLine
 } from "recharts";
 
+// ── 금괴(Gold Bar) 전용 아이콘 ──
+function GoldBarIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.5 8.5L8 6H16L18.5 8.5H5.5Z" fill="#FFFBEB" fillOpacity="0.95" />
+      <path d="M5.5 8.5H18.5L20 15H4L5.5 8.5Z" fill="#FEF08A" />
+      <path d="M4 15H20L18 18.5H6L4 15Z" fill="#D97706" />
+      <path d="M8 6H16L18.5 8.5L20 15L18 18.5H6L4 15L5.5 8.5L8 6Z" stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="5.5" y1="8.5" x2="18.5" y2="8.5" stroke="#78350F" strokeWidth="1" />
+      <line x1="4" y1="15" x2="20" y2="15" stroke="#78350F" strokeWidth="1" />
+      <text x="12" y="13" textAnchor="middle" fontSize="3.3" fontWeight="900" fill="#78350F" letterSpacing="0.4">999.9</text>
+    </svg>
+  );
+}
+
 // ── 종목 로고 컴포넌트 ──
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
+  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+
+  if (isGold) {
+    return (
+      <div 
+        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border border-amber-300 shadow-sm shadow-amber-500/20"
+        title="KRX 금현물"
+      >
+        <GoldBarIcon className="w-5 h-5 drop-shadow-xs" />
+      </div>
+    );
+  }
+
   const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
 
@@ -226,6 +254,146 @@ function formatKoreanWon(amount) {
 
 const emptySubscribe = () => () => {};
 
+const PIE_COLORS = [
+  '#4F46E5', '#10B981', '#F59E0B', '#EF4444',
+  '#8B5CF6', '#EC4899', '#06B6D4', '#F97316',
+  '#6366F1', '#14B8A6', '#84CC16', '#7C3AED'
+];
+
+const CustomPieTooltip = memo(function CustomPieTooltip({ active, payload, total }) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const percent = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
+    const formatKRW = (v) => new Intl.NumberFormat('ko-KR').format(Math.round(v) || 0);
+    return (
+      <div className="bg-white/95 backdrop-blur-md p-3 border border-slate-100 rounded-xl shadow-xl">
+        <p className="text-sm font-bold text-slate-800 mb-1 flex items-baseline">
+          {data.name.includes(' (') ? data.name.split(' (')[0] : data.name}
+          {data.name.includes(' (') && (
+            <span className="text-[11px] text-slate-400 ml-1.5 font-bold">
+              ({data.name.split(' (')[1]}
+            </span>
+          )}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: payload[0].fill }}></span>
+          <span className="text-xs font-bold text-slate-600">
+            {formatKRW(data.value)}원 ({percent}%)
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+});
+
+const CustomDashboardLegend = memo(function CustomDashboardLegend({ data, colors, total }) {
+  const formatKRW = (v) => new Intl.NumberFormat('ko-KR').format(Math.round(v) || 0);
+  return (
+    <div className="mt-2 w-full h-[108px] overflow-y-auto pr-2 custom-scrollbar shrink-0">
+      <div className="flex flex-col gap-2">
+        {data.map((item, index) => {
+          const percent = total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
+          const displayTitle = (item.currency === 'USD' && item.sector === 'ETF' && item.code)
+            ? item.code
+            : (item.name.includes(' (') ? item.name.split(' (')[0] : item.name);
+          return (
+            <div 
+              key={item.name || index} 
+              className="flex items-center justify-between group py-1 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors rounded-lg px-2 animate-legend-item"
+              style={{ animationDelay: `${750 + index * 60}ms` }}
+            >
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: colors[index % colors.length] }}></div>
+                <span className="text-sm font-bold text-slate-700 group-hover:text-brand transition-colors truncate">{displayTitle}</span>
+              </div>
+              <div className="flex items-center justify-end gap-1.5 flex-shrink-0 w-[185px]">
+                <div className="w-[65px] flex justify-end">
+                  <span className="text-[12px] font-black text-brand shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>{percent}%</span>
+                </div>
+                <span className="text-[14px] font-black text-slate-700 w-[110px] text-right shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatKRW(item.value)}원</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+// 종목별 보유현황 등의 조작으로 인한 도넛 및 하단 범례의 불필요한 재호출/재애니메이션을 원천 방지
+const AllocationDonutSection = memo(function AllocationDonutSection({
+  sectorData,
+  currencyData,
+  stockData,
+  isClient,
+  chartReady
+}) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+        <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0">
+          <PieChartIcon size={24} className="text-brand" />
+          <h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3>
+        </div>
+        <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
+          {isClient && chartReady && (
+            <ResponsiveContainer width="100%" height={270} minWidth={0}>
+              <PieChart>
+                <Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">
+                  {sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <CustomDashboardLegend data={sectorData} colors={PIE_COLORS} total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />
+      </div>
+
+      <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+        <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0">
+          <Globe size={24} className="text-brand" />
+          <h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3>
+        </div>
+        <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
+          {isClient && chartReady && (
+            <ResponsiveContainer width="100%" height={270} minWidth={0}>
+              <PieChart>
+                <Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">
+                  {currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <CustomDashboardLegend data={currencyData} colors={PIE_COLORS.slice(4).concat(PIE_COLORS.slice(0, 4))} total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />
+      </div>
+
+      <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
+        <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0">
+          <LayoutList size={24} className="text-brand" />
+          <h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3>
+        </div>
+        <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
+          {isClient && chartReady && (
+            <ResponsiveContainer width="100%" height={270} minWidth={0}>
+              <PieChart>
+                <Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">
+                  {stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <CustomDashboardLegend data={stockData} colors={PIE_COLORS.slice(8).concat(PIE_COLORS.slice(0, 8))} total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />
+      </div>
+    </div>
+  );
+});
+
 export default function HoldingsPage() {
   const { user } = useAuth();
   const { holdings, holdingsByAccount, summary, trendData, isTrendLoading, refreshTrendData, domesticTransactions, overseasTransactions } = useAssets();
@@ -325,9 +493,22 @@ export default function HoldingsPage() {
       : (holdings || []);
 
     if (currencyFilter === "KRW") {
-      list = list.filter(h => h.currency === "KRW");
+      list = list.filter(h => {
+        const txType = (h.transaction_type || '').toLowerCase();
+        const isOther = txType === 'other' || (h.code === 'GOLD' && h.currency === 'KRW') || (h.name && h.name.includes('금현물'));
+        return h.currency === "KRW" && !isOther;
+      });
     } else if (currencyFilter === "OVERSEAS") {
-      list = list.filter(h => h.currency !== "KRW");
+      list = list.filter(h => {
+        const txType = (h.transaction_type || '').toLowerCase();
+        const isOther = txType === 'other' || (h.code === 'GOLD' && h.currency === 'KRW') || (h.name && h.name.includes('금현물'));
+        return h.currency !== "KRW" && !isOther;
+      });
+    } else if (currencyFilter === "OTHER") {
+      list = list.filter(h => {
+        const txType = (h.transaction_type || '').toLowerCase();
+        return txType === 'other' || (h.code === 'GOLD' && h.currency === 'KRW') || (h.name && h.name.includes('금현물'));
+      });
     }
     return list;
   }, [holdingTab, holdings, holdingsByAccount, selectedAccount, currencyFilter]);
@@ -579,10 +760,18 @@ export default function HoldingsPage() {
       const bRate = parseFloat(b.returnRate) || 0;
 
       if (sortBy === "region") {
-        const aIsKRW = a.currency === "KRW" ? 0 : 1;
-        const bIsKRW = b.currency === "KRW" ? 0 : 1;
-        if (aIsKRW !== bIsKRW) {
-          return aIsKRW - bIsKRW; // 국내(KRW) 우선, 해외 나중
+        const getRegionOrder = (item) => {
+          const txType = (item.transaction_type || '').toLowerCase();
+          const isOther = txType === 'other' || (item.code === 'GOLD' && item.currency === 'KRW') || (item.name && item.name.includes('금현물'));
+          if (isOther) return 3; // 3. 기타
+          if (item.currency === "KRW") return 1; // 1. 국내
+          return 2; // 2. 해외
+        };
+
+        const aOrder = getRegionOrder(a);
+        const bOrder = getRegionOrder(b);
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder; // 국내(1) -> 해외(2) -> 기타(3) 순 정렬
         }
         const aEval = a.evaluationAmountKRW ?? ((a.currentPrice || a.purchasePrice || 0) * (a.totalQuantity || 0));
         const bEval = b.evaluationAmountKRW ?? ((b.currentPrice || b.purchasePrice || 0) * (b.totalQuantity || 0));
@@ -676,7 +865,9 @@ export default function HoldingsPage() {
   const currencyData = useMemo(() => {
     return holdings.reduce((acc, h) => {
       const isKRW = (h.currency || "KRW") === "KRW";
-      const name = isKRW ? "국내" : "해외";
+      const txType = (h.transaction_type || '').toLowerCase();
+      const isOther = txType === 'other' || (h.code === 'GOLD' && isKRW) || (h.name && h.name.includes('금현물'));
+      const name = isOther ? "기타" : (isKRW ? "국내" : "해외");
       const amount = h.evaluationAmountKRW || 0;
       if (amount > 0) {
         const idx = acc.findIndex(item => item.name === name);
@@ -745,73 +936,8 @@ export default function HoldingsPage() {
   const getCurrencyStyle = (currency) => {
     switch (currency) {
       case 'KRW': return { border: 'border-blue-200', bg: 'bg-blue-50/30', accent: 'bg-blue-500', text: 'text-blue-600', light: 'bg-blue-50' };
-      case 'USD': return { border: 'border-emerald-200', bg: 'bg-emerald-50/30', accent: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50' };
-      case 'JPY': return { border: 'border-rose-200', bg: 'bg-rose-50/30', accent: 'bg-rose-500', text: 'text-rose-600', light: 'bg-rose-50' };
-      case 'EUR': return { border: 'border-indigo-200', bg: 'bg-indigo-50/30', accent: 'bg-indigo-500', text: 'text-indigo-600', light: 'bg-indigo-50' };
-      case 'GBP': return { border: 'border-violet-200', bg: 'bg-violet-50/30', accent: 'bg-violet-500', text: 'text-violet-600', light: 'bg-violet-50' };
-      case 'HKD': return { border: 'border-amber-200', bg: 'bg-amber-50/30', accent: 'bg-amber-500', text: 'text-amber-600', light: 'bg-amber-50' };
-      case 'CNY': return { border: 'border-red-200', bg: 'bg-red-50/30', accent: 'bg-red-500', text: 'text-red-600', light: 'bg-red-50' };
-      default: return { border: 'border-slate-200', bg: 'bg-slate-50/30', accent: 'bg-slate-400', text: 'text-slate-600', light: 'bg-slate-50' };
+      default: return { border: 'border-amber-200', bg: 'bg-amber-50/30', accent: 'bg-amber-500', text: 'text-amber-700', light: 'bg-amber-50' };
     }
-  };
-
-  const CustomPieTooltip = ({ active, payload, total }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const percent = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
-      return (
-        <div className="bg-white/95 backdrop-blur-md p-3 border border-slate-100 rounded-xl shadow-xl">
-          <p className="text-sm font-bold text-slate-800 mb-1 flex items-baseline">
-            {data.name.includes(' (') ? data.name.split(' (')[0] : data.name}
-            {data.name.includes(' (') && (
-              <span className="text-[11px] text-slate-400 ml-1.5 font-bold">
-                ({data.name.split(' (')[1]}
-              </span>
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: payload[0].fill }}></span>
-            <span className="text-xs font-bold text-slate-600">
-              {formatCurrency(data.value, 'KRW')}원 ({percent}%)
-            </span>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const CustomDashboardLegend = ({ data, colors, total }) => {
-    return (
-      <div className="mt-2 w-full h-[108px] overflow-y-auto pr-2 custom-scrollbar shrink-0">
-        <div className="flex flex-col gap-2">
-          {data.map((item, index) => {
-            const percent = total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
-            const displayTitle = (item.currency === 'USD' && item.sector === 'ETF' && item.code)
-              ? item.code
-              : (item.name.includes(' (') ? item.name.split(' (')[0] : item.name);
-            return (
-              <div 
-                key={index} 
-                className="flex items-center justify-between group py-1 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors rounded-lg px-2 animate-legend-item"
-                style={{ animationDelay: `${750 + index * 60}ms` }}
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: colors[index % colors.length] }}></div>
-                  <span className="text-sm font-bold text-slate-700 group-hover:text-brand transition-colors truncate">{displayTitle}</span>
-                </div>
-                <div className="flex items-center justify-end gap-1.5 flex-shrink-0 w-[185px]">
-                  <div className="w-[65px] flex justify-end">
-                    <span className="text-[12px] font-black text-brand shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>{percent}%</span>
-                  </div>
-                  <span className="text-[14px] font-black text-slate-700 w-[110px] text-right shrink-0" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(item.value, 'KRW')}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
   };
 
   const formatTrendCurrency = (value) => {
@@ -1231,41 +1357,14 @@ export default function HoldingsPage() {
 
           {chartTab === "allocation" ? (
             holdings.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
-                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><PieChartIcon size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">섹터</h3></div>
-                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
-                    {isClient && chartReady && (
-                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                  <CustomDashboardLegend data={sectorData} colors={PIE_COLORS} total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />
-                </div>
-                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
-                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><Globe size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">지역</h3></div>
-                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
-                    {isClient && chartReady && (
-                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                  <CustomDashboardLegend data={currencyData} colors={PIE_COLORS.slice(4).concat(PIE_COLORS.slice(0, 4))} total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />
-                </div>
-                <div className="glass-card p-6 flex flex-col items-center justify-between h-[500px]">
-                  <div className="flex items-center gap-2 self-start mb-2 pb-2 border-b-2 border-slate-100 w-full shrink-0"><LayoutList size={24} className="text-brand" /><h3 className="text-[18px] font-black text-slate-800 uppercase tracking-tighter">종목</h3></div>
-                  <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
-                    {isClient && chartReady && (
-                      <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                  <CustomDashboardLegend data={stockData} colors={PIE_COLORS.slice(8).concat(PIE_COLORS.slice(0, 8))} total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />
-                </div>
-              </div>
+              <AllocationDonutSection
+                key={chartTab}
+                sectorData={sectorData}
+                currencyData={currencyData}
+                stockData={stockData}
+                isClient={isClient}
+                chartReady={chartReady}
+              />
             ) : (
               <div className="glass-card p-12 text-center text-slate-400 font-medium h-[500px] flex items-center justify-center">
                 보유 중인 자산이 없습니다.
@@ -2099,11 +2198,14 @@ export default function HoldingsPage() {
             </div>
           )}
 
-          {/* 우측: 전체/국내/해외 탭 + 정렬 드롭다운 */}
+          {/* 우측: 전체/국내/해외/기타 탭 + 정렬 드롭다운 */}
           <div className="flex items-center gap-3 w-full md:w-auto justify-end shrink-0">
             <div className="flex bg-slate-100 p-1 rounded-xl">
               <button
-                onClick={() => setCurrencyFilter("ALL")}
+                onClick={() => {
+                  setCurrencyFilter("ALL");
+                  setCurrentStockPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "ALL" ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -2111,7 +2213,10 @@ export default function HoldingsPage() {
                 전체
               </button>
               <button
-                onClick={() => setCurrencyFilter("KRW")}
+                onClick={() => {
+                  setCurrencyFilter("KRW");
+                  setCurrentStockPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "KRW" ? 'bg-blue-500 text-white shadow-xs' : 'text-slate-500 hover:text-blue-600'
                 }`}
@@ -2119,12 +2224,26 @@ export default function HoldingsPage() {
                 국내
               </button>
               <button
-                onClick={() => setCurrencyFilter("OVERSEAS")}
+                onClick={() => {
+                  setCurrencyFilter("OVERSEAS");
+                  setCurrentStockPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   currencyFilter === "OVERSEAS" ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-amber-600'
                 }`}
               >
                 해외
+              </button>
+              <button
+                onClick={() => {
+                  setCurrencyFilter("OTHER");
+                  setCurrentStockPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  currencyFilter === "OTHER" ? 'bg-emerald-500 text-white shadow-xs' : 'text-slate-500 hover:text-emerald-600'
+                }`}
+              >
+                기타
               </button>
             </div>
 
@@ -2191,8 +2310,14 @@ export default function HoldingsPage() {
               ) : (
                 <>
                   {paginatedHoldings.map((h, i) => {
-                    const s = getCurrencyStyle(h.currency);
-                    const isKRW = h.currency === 'KRW';
+                    const txType = (h.transaction_type || '').toLowerCase();
+                    const isOther = txType === 'other' || (h.code === 'GOLD' && h.currency === 'KRW') || (h.name && h.name.includes('금현물'));
+                    const isKRW = h.currency === 'KRW' && !isOther;
+                    const s = isOther 
+                      ? { border: 'border-emerald-300 ring-1 ring-emerald-400/20 shadow-emerald-500/5', bg: 'bg-emerald-50/30', accent: 'bg-emerald-500', text: 'text-emerald-700', light: 'bg-emerald-50' }
+                      : (isKRW 
+                          ? { border: 'border-blue-200', bg: 'bg-blue-50/30', accent: 'bg-blue-500', text: 'text-blue-600', light: 'bg-blue-50' }
+                          : { border: 'border-amber-200', bg: 'bg-amber-50/30', accent: 'bg-amber-500', text: 'text-amber-700', light: 'bg-amber-50' });
                     return (
                       <div key={`stock-card-${h.code || ''}-${h.name || ''}-${i}`} className={`relative bg-white p-4 pt-5 rounded-2xl border ${s.border} hover:shadow-lg transition-all h-[200px] flex flex-col justify-between opacity-0 animate-page-slide stagger-${i + 1} overflow-hidden`}>
                         <div className={`absolute top-0 left-0 right-0 h-1.5 ${s.accent}`}></div>
@@ -2201,7 +2326,18 @@ export default function HoldingsPage() {
                              <StockLogo code={h.code} name={h.name} isKRW={isKRW} />
                              <div className="flex-1 min-w-0">
                                <div className="font-bold text-slate-800 truncate mb-0.5" title={h.name}>{h.name}</div>
-                               <div className="text-[12px] text-slate-400 font-mono truncate">{formatStockCode(h.code)}</div>
+                               <div className="flex items-center gap-1.5">
+                                 <span className="text-[12px] text-slate-400 font-mono truncate">{formatStockCode(h.code)}</span>
+                                 <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 leading-tight ${
+                                   isOther
+                                     ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                     : isKRW
+                                     ? "bg-blue-50 text-blue-600 border-blue-200"
+                                     : "bg-amber-50 text-amber-700 border-amber-300"
+                                 }`}>
+                                   {isOther ? "기타" : (isKRW ? "국내" : "해외")}
+                                 </span>
+                               </div>
                              </div>
                            </div>
                            <div className="text-right shrink-0">
@@ -2210,7 +2346,7 @@ export default function HoldingsPage() {
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}주</div></div>
+                          <div className="flex justify-between items-center text-sm"><div className="text-slate-600">보유수량</div><div className="font-medium">{formatCurrency(h.totalQuantity, 'QTY')}{isOther ? 'g' : '주'}</div></div>
                           <div className="flex justify-between items-center text-sm"><div className="text-slate-600">매수가</div><div className="font-medium">{getCurrencySymbol(h.currency)}{formatCurrency(h.purchasePrice, h.currency)}</div></div>
                           <div className="pt-2 border-t flex justify-between items-center"><div className="text-sm font-bold text-brand-dark">평가액</div><div className="text-xl font-black text-brand-dark">{formatCurrency(h.evaluationAmountKRW, 'KRW')}</div></div>
                         </div>
@@ -2386,6 +2522,9 @@ export default function HoldingsPage() {
                       const isTotalProfit = totalProfitVal > 0;
                       const isTotalLoss = totalProfitVal < 0;
 
+                      const txType = (h.transaction_type || '').toLowerCase();
+                      const isOther = txType === 'other' || (h.code === 'GOLD' && isKRW) || (h.name && h.name.includes('금현물'));
+
                       return (
                         <tr
                           key={`stock-row-${h.code || ''}-${h.name || ''}-${i}`}
@@ -2406,12 +2545,14 @@ export default function HoldingsPage() {
                                   </span>
                                   <span
                                     className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center leading-none ${
-                                      isKRW
+                                      isOther
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                        : isKRW
                                         ? "bg-blue-50 text-blue-600 border-blue-200"
-                                        : "bg-amber-50 text-amber-700 border-amber-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-300"
                                     }`}
                                   >
-                                    {isKRW ? "국내" : "해외"}
+                                    {isOther ? "기타" : (isKRW ? "국내" : "해외")}
                                   </span>
                                 </div>
                               </div>
@@ -2421,7 +2562,7 @@ export default function HoldingsPage() {
                           {/* 2열: 수량 */}
                           <td className="px-4 py-2.5 text-center">
                             <span className="text-sm font-bold text-slate-700 tabular-nums">
-                              {formatCurrency(qty, 'QTY')}주
+                              {formatCurrency(qty, 'QTY')}{isOther ? 'g' : '주'}
                             </span>
                           </td>
 

@@ -423,7 +423,26 @@ export default function TransactionsPage() {
     exchange_code: ''
   });
 
-  const sectorOptions = ['에너지', '부동산', '소재', '산업재', '운송물류', '경기소비재', '필수소비재', '헬스케어', '금융', 'IT', '첨단기술', '통신', '유틸리티', '기타', '리츠', '채권', 'ETF'];
+  const sectorOptions = [
+    '정보기술',
+    '금융',
+    '헬스케어',
+    '소재',
+    '산업재',
+    '에너지',
+    '경기소비재',
+    '필수소비재',
+    '유틸리티',
+    '통신서비스',
+    '부동산',
+    '리츠',
+    '채권',
+    '기타',
+    'ETF 지수',
+    'ETF 배당',
+    'ETF 테마',
+    'ETF 기타'
+  ];
 
   const [activeFilters, setActiveFilters] = useState({
     dateFrom: '',

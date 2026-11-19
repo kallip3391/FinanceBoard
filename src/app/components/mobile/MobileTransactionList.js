@@ -14,8 +14,36 @@ import {
   Calendar,
 } from "lucide-react";
 
+// ── 금괴(Gold Bar) 전용 아이콘 ──
+function GoldBarIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.5 8.5L8 6H16L18.5 8.5H5.5Z" fill="#FFFBEB" fillOpacity="0.95" />
+      <path d="M5.5 8.5H18.5L20 15H4L5.5 8.5Z" fill="#FEF08A" />
+      <path d="M4 15H20L18 18.5H6L4 15Z" fill="#D97706" />
+      <path d="M8 6H16L18.5 8.5L20 15L18 18.5H6L4 15L5.5 8.5L8 6Z" stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="5.5" y1="8.5" x2="18.5" y2="8.5" stroke="#78350F" strokeWidth="1" />
+      <line x1="4" y1="15" x2="20" y2="15" stroke="#78350F" strokeWidth="1" />
+      <text x="12" y="13" textAnchor="middle" fontSize="3.3" fontWeight="900" fill="#78350F" letterSpacing="0.4">999.9</text>
+    </svg>
+  );
+}
+
 function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
+  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+
+  if (isGold) {
+    return (
+      <div 
+        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border border-amber-300 shadow-sm shadow-amber-500/20"
+        title="KRX 금현물"
+      >
+        <GoldBarIcon className="w-5 h-5 drop-shadow-xs" />
+      </div>
+    );
+  }
+
   const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
 
@@ -510,7 +538,7 @@ export default function MobileTransactionList({
                               {/* 중: 수량(우측라인 맞춤) + 매수가(우측라인 맞춤, 420px 이하 숨김) */}
                               <div className="w-auto min-[421px]:w-[122px] flex items-center justify-end gap-1.5 pr-2 shrink-0">
                                 <span className="w-[44px] text-right text-slate-700 font-semibold tabular-nums truncate">
-                                  {formattedQuantity}주
+                                  {formattedQuantity}{(stockName || '').includes('금현물') || stockCode === 'GOLD' ? 'g' : '주'}
                                 </span>
                                 <span className="w-[64px] text-right text-slate-500 font-medium tabular-nums truncate hide-under-420 max-[420px]:hidden">
                                   {formattedPrice}
