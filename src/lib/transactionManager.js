@@ -194,11 +194,13 @@ export class TransactionManager {
       return newTx;
     }
 
-    // 2. 실제 로그인 사용자
+    // 2. 실제 로그인 사용자 (DB 전용 컬럼만 전송하여 PGRST204 스키마 캐시 에러 방지)
+    const { security, stock, stock_name, stock_code, ...dbInsertData } = transactionData;
+
     const { data, error } = await supabase
       .from('transactions')
       .insert({
-        ...transactionData,
+        ...dbInsertData,
         mate_stat: '01',
         alt_sync: true,
         user_id: userId,
@@ -234,11 +236,13 @@ export class TransactionManager {
       return { id: transactionId, ...updateData };
     }
 
-    // 2. 실제 로그인 사용자
+    // 2. 실제 로그인 사용자 (DB 전용 컬럼만 전송하여 PGRST204 스키마 캐시 에러 방지)
+    const { security, stock, stock_name, stock_code, ...dbUpdateData } = updateData;
+
     const { data, error } = await supabase
       .from('transactions')
       .update({
-        ...updateData,
+        ...dbUpdateData,
         alt_sync: true,
         updated_at: new Date().toISOString()
       })
