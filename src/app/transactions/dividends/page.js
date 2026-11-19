@@ -386,6 +386,7 @@ export default function TransactionsPage() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   const [stockForm, setStockForm] = useState({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
+  const [isStockSubmitting, setIsStockSubmitting] = useState(false);
 
   const calendarRef = useRef(null);
   const calendarButtonRef = useRef(null);
@@ -943,7 +944,8 @@ export default function TransactionsPage() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (loading) return;
 
     // Validation
     if (!formData.year || !formData.month || !formData.day) {
@@ -2927,6 +2929,7 @@ export default function TransactionsPage() {
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           priceRef.current?.blur();
+                          handleSubmit(e);
                         } else if (e.key === 'Tab' && e.shiftKey) {
                           e.preventDefault();
                           setIsStockDropdownOpen(false);
@@ -3255,7 +3258,10 @@ export default function TransactionsPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={isStockSubmitting}
                   onClick={async () => {
+                    if (isStockSubmitting) return;
+
                     if (!stockForm.name.trim()) {
                       showAlert("입력 오류", "종목명을 입력해 주세요.", "error", stockModalNameRef);
                       return;
@@ -3270,6 +3276,7 @@ export default function TransactionsPage() {
                     }
 
                     try {
+                      setIsStockSubmitting(true);
                       const isDuplicate = await TransactionManager.checkStockDuplicate(
                         stockForm.name.trim(),
                         stockForm.code.trim()
@@ -3278,10 +3285,7 @@ export default function TransactionsPage() {
                         showAlert("등록 오류", "이미 등록된 종목명 또는 종목코드입니다.", "error");
                         return;
                       }
-                    } catch (err) {
-                      console.error('중복 체크 오류:', err);
-                    }
-                    try {
+
                       const newStock = await TransactionManager.addStock({
                         name: stockForm.name.trim(),
                         code: stockForm.code.trim(),
@@ -3306,11 +3310,17 @@ export default function TransactionsPage() {
                     } catch (error) {
                       console.error('종목 등록 오류:', error);
                       showAlert("등록 오류", "종목 등록 중 오류가 발생했습니다.", "error");
+                    } finally {
+                      setIsStockSubmitting(false);
                     }
                   }}
-                  className="flex-1 h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-all shadow-md shadow-blue-500/25 cursor-pointer"
+                  className={`flex-1 h-12 rounded-2xl font-bold text-sm transition-all shadow-md ${
+                    isStockSubmitting 
+                      ? 'bg-slate-300 text-white cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25 cursor-pointer'
+                  }`}
                 >
-                  등록
+                  {isStockSubmitting ? '처리 중...' : '등록'}
                 </button>
               </div>
             </div>

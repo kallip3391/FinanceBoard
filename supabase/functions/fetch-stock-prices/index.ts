@@ -8,6 +8,11 @@ const corsHeaders = {
 const MARKETSTACK_URL = "https://api.marketstack.com/v1/eod";
 const BASE_STOCK = "https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService";
 const BASE_PRODUCT = "https://apis.data.go.kr/1160100/service/GetSecuritiesProductInfoService";
+// 💡 [수정 1] 공공데이터포털 공식 최신 V2 엔드포인트 적용
+const BASE_GENERAL_V2 = "https://apis.data.go.kr/1160100/GetGeneralProductInfoService_V2";
+
+// KRX 금현물 대표 종목코드 (금 99.99% 1kg: 04020000, 미니금 100g: 04020100)
+const GOLD_SPOT_CODES = ["04020000", "04020100"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -19,7 +24,6 @@ Deno.serve(async (req) => {
     );
     const PUB_KEY = Deno.env.get("PUBLIC_DATA_SERVICE_KEY");
     
-    // API 키 6개 탄창 로드
     const MS_KEYS = [
       Deno.env.get("MARKETSTACK_API_KEY"),
       Deno.env.get("MARKETSTACK_API_KEY_1"),
@@ -35,12 +39,10 @@ Deno.serve(async (req) => {
     const { data: securities } = await supabase.from("security").select("*");
     if (!securities) throw new Error("종목 리스트를 불러올 수 없습니다.");
 
-    // 💡 [수집 범위 설정] 
-    // 국내는 그대로 3일, 해외(USD)는 현재 2일치 수집 (나중에 1로 변경 가능)
     const krwDates = getPastDaysIncludingWeekends(3).reverse(); 
-    const usdDates = getPastDaysIncludingWeekends(1).reverse(); // 👈 나중에 여기를 1로 바꾸세요!
+    const usdDates = getPastDaysIncludingWeekends(1).reverse();
 
-    // --- [SECTION A: 해외 종목 수집] (원본 유지) ---
+    // --- [SECTION A: 해외 종목 수집] ---
     if (!requestType || requestType !== "KRW") {
       const usdStocks = securities.filter(s => s.currency !== "KRW");
       if (usdStocks.length > 0 && MS_KEYS.length > 0) {
@@ -65,7 +67,7 @@ Deno.serve(async (req) => {
             if (finalData) {
               await supabase.from("stock_prices").upsert({
                 security_id: stock.security_id,
-                price_date: dateObj.usdApiYmd, // 미국 현지 날짜로 저장
+                price_date: dateObj.usdApiYmd,
                 close_price: finalData.close,
                 open_price: finalData.open || 0,
                 high_price: finalData.high || 0,
@@ -83,11 +85,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- [SECTION B: 국내 종목 수집] (수정됨: beginBasDt 1회 호출 + 5개씩 병렬 처리) ---
+    // --- [SECTION B: 국내 종목 및 금현물 수집] ---
     if (!requestType || requestType === "KRW") {
       const krwStocks = securities.filter(s => s.currency === "KRW");
       const beginBasDt = krwDates[0].krwApiYmd.replace(/-/g, "");
-      console.log(`\n🇰🇷 [국내] 최근 ${krwDates.length}일 데이터 수집 시작 (시작일: ${beginBasDt})...`);
+      console.log(`\n🇰🇷 [국내/금현물] 최근 ${krwDates.length}일 데이터 수집 시작 (시작일: ${beginBasDt})...`);
 
       const CHUNK_SIZE = 5;
       for (let i = 0; i < krwStocks.length; i += CHUNK_SIZE) {
@@ -95,11 +97,42 @@ Deno.serve(async (req) => {
 
         await Promise.all(
           chunk.map(async (stock) => {
-            let priceList = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, beginBasDt, stock.code);
-            if (priceList.length === 0) {
-              for (const apiName of ["getETFPriceInfo", "getETNPriceInfo", "getELWPriceInfo"]) {
-                priceList = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, beginBasDt, stock.code);
-                if (priceList.length > 0) break;
+            const cleanCode = stock.code.trim();
+            const upperCode = cleanCode.toUpperCase();
+            const name = stock.name || "";
+
+            // 💡 [수정 2] 다양한 종목코드('GOLD', '04020000' 등) 및 이름('금현물') 판별 강화
+            const isGoldSpot =
+              GOLD_SPOT_CODES.includes(cleanCode) ||
+              upperCode === "GOLD" ||
+              upperCode === "KRX_GOLD" ||
+              name.includes("금현물") ||
+              (stock.sector === "원자재" && name.includes("금")) ||
+              stock.exchange_code === "OTHER" ||
+              stock.market_type === "OTHER" ||
+              stock.type?.toUpperCase() === "GOLD" ||
+              stock.asset_type?.toUpperCase() === "GOLD";
+
+            let priceList: any[] = [];
+
+            if (isGoldSpot) {
+              // 1. KRX 금현물 전용 API 호출 (V2 엔드포인트 + 코드 자동 매핑)
+              priceList = await fetchGoldPriceFromPublic(PUB_KEY!, beginBasDt, cleanCode);
+            } else {
+              // 2. 일반 주식 조회
+              priceList = await fetchFromPublic(`${BASE_STOCK}/getStockPriceInfo`, PUB_KEY!, beginBasDt, cleanCode);
+
+              // 3. 없으면 ETF / ETN / ELW 순으로 조회
+              if (priceList.length === 0) {
+                for (const apiName of ["getETFPriceInfo", "getETNPriceInfo", "getELWPriceInfo"]) {
+                  priceList = await fetchFromPublic(`${BASE_PRODUCT}/${apiName}`, PUB_KEY!, beginBasDt, cleanCode);
+                  if (priceList.length > 0) break;
+                }
+              }
+
+              // 4. 그래도 없으면 혹시 미분류 금현물일 수 있으므로 금현물 폴백 조회
+              if (priceList.length === 0) {
+                priceList = await fetchGoldPriceFromPublic(PUB_KEY!, beginBasDt, cleanCode);
               }
             }
 
@@ -118,8 +151,9 @@ Deno.serve(async (req) => {
 
               await supabase.from("stock_prices").upsert(rowsToUpsert, { onConflict: "security_id,price_date" });
 
+              const label = isGoldSpot ? "[금현물]" : "[국내]";
               for (const row of rowsToUpsert) {
-                console.log(`✅ [국내] ${stock.name.padEnd(10)} | ${row.price_date} | 종가: ${row.close_price.toLocaleString().padStart(8)}`);
+                console.log(`✅ ${label} ${stock.name.padEnd(10)} | ${row.price_date} | 종가: ${row.close_price.toLocaleString().padStart(8)}`);
               }
             }
           })
@@ -127,19 +161,63 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- [SECTION C: 보완 로직] (원본 유지) ---
+    // --- [SECTION C: 보완 로직] ---
     console.log(`\n🔍 [보완] 점검 시작...`);
     await runOptimizedPatch(supabase, securities);
     
     return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("🚨 에러:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 });
 
 /** --- [Helper Functions] --- **/
+
+// 💡 [수정 3] 금현물 전용 시세 조회 함수 신설 (V2 API + 'GOLD' 코드 대응)
+async function fetchGoldPriceFromPublic(key: string, beginYmd: string, code: string) {
+  try {
+    // 100g 미니금이 아닌 경우 기본 대표 종목 '04020000'(금 1Kg)으로 조회
+    const targetCode = (code === "04020100" || code.includes("100g")) ? "04020100" : "04020000";
+    const url = `${BASE_GENERAL_V2}/getGoldPriceInfo_V2?serviceKey=${key}&resultType=json&beginBasDt=${beginYmd}&numOfRows=100`;
+    
+    const res = await fetch(url, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      }
+    });
+    const data = await res.json();
+    const item = data.response?.body?.items?.item;
+    const list = Array.isArray(item) ? item : (item ? [item] : []);
+
+    return list
+      .filter((i: any) => {
+        // 단축코드가 맞거나(04020000), 종목명이 1Kg인 항목 매칭
+        const srtnCd = String(i.srtnCd || "");
+        const itmsNm = String(i.itmsNm || "");
+        if (targetCode === "04020100") {
+          return srtnCd === "04020100" || itmsNm.includes("100g");
+        }
+        return srtnCd === "04020000" || itmsNm.includes("1Kg") || itmsNm.includes("1kg");
+      })
+      .map((i: any) => {
+        const rawDt = String(i.basDt);
+        return {
+          date: `${rawDt.slice(0, 4)}-${rawDt.slice(4, 6)}-${rawDt.slice(6, 8)}`,
+          close: Number(i.clpr), // 1g당 원화 시세
+          open: Number(i.mkp || i.clpr),
+          high: Number(i.hipr || i.clpr),
+          low: Number(i.lopr || i.clpr),
+          volume: Number(i.trqu || 0)
+        };
+      });
+  } catch (err) {
+    console.error("[금현물 조회 오류]", err);
+    return [];
+  }
+}
 
 async function fetchBulkWithSwitching(tickers: string[], date: string, keys: string[]) {
   console.log(`📡 [해외 통신] ${date}자 데이터 요청 중...`);
@@ -226,7 +304,7 @@ function getDatesInRange(s: Date, e: Date) {
 
 function formatDateToISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-// [수정됨] beginBasDt를 사용해 기준일 이후 영업일 데이터를 한 번에 배열로 조회
+// 일반 국내 주식 / ETF 전용
 async function fetchFromPublic(apiUrl: string, key: string, beginYmd: string, code: string) {
   try {
     const url = `${apiUrl}?serviceKey=${key}&resultType=json&beginBasDt=${beginYmd}&likeSrtnCd=${code}&numOfRows=100`;

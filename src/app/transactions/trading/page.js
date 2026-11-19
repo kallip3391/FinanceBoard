@@ -396,6 +396,7 @@ export default function TransactionsPage() {
   const [accountForm, setAccountForm] = useState({ institution: '', type: '일반' });
   const [stockForm, setStockForm] = useState({ name: '', code: '', sector: '', currency: 'KRW', exchange_code: '' });
   const [selectedAccountId, setSelectedAccountId] = useState(null);
+  const [isStockSubmitting, setIsStockSubmitting] = useState(false);
 
   // ── 상단 툴바 및 필터 상태 ──
   const [currencyFilter, setCurrencyFilter] = useState("ALL"); // ALL, KRW, OVERSEAS
@@ -854,6 +855,8 @@ export default function TransactionsPage() {
 
   // ── 종목 추가 모달: 최종 등록 ──
   const handleAddStockSubmit = async () => {
+    if (isStockSubmitting) return;
+
     if (!stockForm.name.trim()) {
       showAlert("입력 오류", "종목명을 입력해 주세요.", "error", stockModalNameRef);
       return;
@@ -879,6 +882,7 @@ export default function TransactionsPage() {
     }
 
     try {
+      setIsStockSubmitting(true);
       const isDuplicate = await TransactionManager.checkStockDuplicate(
         stockForm.name.trim(),
         stockForm.code.trim()
@@ -887,11 +891,7 @@ export default function TransactionsPage() {
         showAlert("등록 오류", "이미 등록된 종목명 또는 종목코드입니다.", "error");
         return;
       }
-    } catch (err) {
-      console.error('중복 체크 오류:', err);
-    }
 
-    try {
       const isOther = stockMarketType === 'OTHER';
       const newStock = await TransactionManager.addStock({
         name: stockForm.name.trim(),
@@ -927,6 +927,8 @@ export default function TransactionsPage() {
       console.error('종목 등록 오류:', error);
       const errMsg = error?.message || error?.details || (typeof error === 'string' ? error : '종목 등록 중 오류가 발생했습니다.');
       showAlert("등록 오류", errMsg, "error");
+    } finally {
+      setIsStockSubmitting(false);
     }
   };
 
@@ -1459,7 +1461,8 @@ export default function TransactionsPage() {
   // Handle clicking outside of calendar 상단 통합으로 인한 중복 제거
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (loading) return;
 
     // Validation
     if (!formData.year || !formData.month || !formData.day) {
@@ -1501,7 +1504,9 @@ export default function TransactionsPage() {
       const isKRWCurrency = (formData.currency || 'KRW') === 'KRW';
       const qty = parseFloat(formData.quantity.replace(/,/g, ''));
       const price = isKRWCurrency ? Math.round(parseFloat(formData.price.replace(/,/g, ''))) : parseFloat(formData.price.replace(/,/g, ''));
-      const amount = isKRWCurrency ? Math.round(parseFloat(formData.amount.replace(/,/g, ''))) : parseFloat(formData.amount.replace(/,/g, ''));
+      const parsedAmount = parseFloat((formData.amount || '').replace(/,/g, ''));
+      const calcAmount = isKRWCurrency ? Math.round(qty * price) : Number((qty * price).toFixed(2));
+      const amount = (!isNaN(parsedAmount) && parsedAmount > 0) ? (isKRWCurrency ? Math.round(parsedAmount) : parsedAmount) : calcAmount;
 
       let exchangeRate = 1;
       let exchangeTotalRate = amount;
@@ -3740,6 +3745,7 @@ export default function TransactionsPage() {
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           priceRef.current?.blur();
+                          handleSubmit(e);
                         }
                       }}
                       onBlur={(e) => {
@@ -4200,16 +4206,19 @@ export default function TransactionsPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={isStockSubmitting}
                   onClick={handleAddStockSubmit}
-                  className={`flex-1 h-12 rounded-2xl text-white font-bold text-sm transition-all shadow-md cursor-pointer ${
-                    stockMarketType === 'DOMESTIC'
-                      ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/25'
-                      : stockMarketType === 'OVERSEAS'
-                        ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/25'
-                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/25'
+                  className={`flex-1 h-12 rounded-2xl text-white font-bold text-sm transition-all shadow-md ${
+                    isStockSubmitting
+                      ? 'bg-slate-300 text-white cursor-not-allowed'
+                      : stockMarketType === 'DOMESTIC'
+                        ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/25 cursor-pointer'
+                        : stockMarketType === 'OVERSEAS'
+                          ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/25 cursor-pointer'
+                          : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/25 cursor-pointer'
                   }`}
                 >
-                  등록
+                  {isStockSubmitting ? '처리 중...' : '등록'}
                 </button>
               </div>
             </div>
