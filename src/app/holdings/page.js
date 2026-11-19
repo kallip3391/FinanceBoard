@@ -1237,7 +1237,7 @@ export default function HoldingsPage() {
                   <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
                     {isClient && chartReady && (
                       <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                        <PieChart><Pie data={sectorData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{sectorData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={sectorData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                       </ResponsiveContainer>
                     )}
                   </div>
@@ -1248,7 +1248,7 @@ export default function HoldingsPage() {
                   <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
                     {isClient && chartReady && (
                       <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                        <PieChart><Pie data={currencyData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{currencyData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 4) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={currencyData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                       </ResponsiveContainer>
                     )}
                   </div>
@@ -1259,7 +1259,7 @@ export default function HoldingsPage() {
                   <div className="w-full h-[270px] shrink-0 flex items-center justify-center">
                     {isClient && chartReady && (
                       <ResponsiveContainer width="100%" height={270} minWidth={0}>
-                        <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
+                        <PieChart><Pie data={stockData} cx="50%" cy="50%" innerRadius={0} outerRadius={115} paddingAngle={2} cornerRadius={3} dataKey="value" stroke="none" startAngle={90} endAngle={-270} isAnimationActive={true} animationDuration={750} animationEasing="ease-out">{stockData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 8) % PIE_COLORS.length]} />)}</Pie><Tooltip content={<CustomPieTooltip total={stockData.reduce((acc, cur) => acc + cur.value, 0)} />} /></PieChart>
                       </ResponsiveContainer>
                     )}
                   </div>
