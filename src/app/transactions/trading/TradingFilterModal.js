@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import { CalendarUI, getStockType } from "./TradingModal";
+import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 // 툴바 날짜 포맷터 (YYYY - MM - DD)
 const formatToolbarDate = (dateStr) => {
@@ -54,6 +55,9 @@ function TradingFilterModal({
   const [stockSearchResults, setStockSearchResults] = useState([]);
   const [isSearchingStock, setIsSearchingStock] = useState(false);
   const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
+
+  // 모바일 가상 키보드 스크롤 대응 훅
+  const formRef = useMobileKeyboardModal(isOpen);
 
   const filterDateFromRef = useRef(null);
   const filterDateToRef = useRef(null);
@@ -191,7 +195,7 @@ function TradingFilterModal({
         </div>
 
         {/* 바디 */}
-        <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div ref={formRef} className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <div className="space-y-4">
             {/* 1. 조회 기간 선택 */}
             <div className="relative z-20">

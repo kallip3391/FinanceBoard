@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import { CalendarUI, getCurrencySymbol } from "../trading/TradingModal";
+import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 /**
  * ── 독립 격리 배당 등록/수정 모달 컴포넌트 ──
@@ -59,6 +60,9 @@ function DividendModal({
   const [isSearchingStock, setIsSearchingStock] = useState(false);
   const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
+
+  // 모바일 가상 키보드 스크롤 대응 훅
+  const formRef = useMobileKeyboardModal(isOpen);
 
   // Refs
   const calendarButtonRef = useRef(null);
@@ -380,7 +384,7 @@ function DividendModal({
         </div>
 
         {/* 폼 바디 */}
-        <form onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <form ref={formRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {/* 1. 배당일 & 계좌 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="relative">

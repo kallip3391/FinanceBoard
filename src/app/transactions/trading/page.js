@@ -8,7 +8,6 @@ import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES } from "@/lib/transactionManager";
 import { GUEST_DOMESTIC_TRANSACTIONS, GUEST_OVERSEAS_TRANSACTIONS } from "@/lib/guestMockData";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
-import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 import TradingModal, { getStockType } from "./TradingModal";
 import TradingFilterModal from "./TradingFilterModal";
@@ -602,7 +601,6 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const modalFormRef = useMobileKeyboardModal(isModalOpen);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [stockDeleteConfirm, setStockDeleteConfirm] = useState({ isOpen: false, id: null, name: '' });
@@ -650,7 +648,6 @@ export default function TransactionsPage() {
   }, []);
 
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const filterScrollRef = useMobileKeyboardModal(isFilterModalOpen);
 
   const { mounted: isModalMounted, isClosing: isModalClosing } = useAnimatedModal(isModalOpen);
   const { mounted: isFilterMounted, isClosing: isFilterClosing } = useAnimatedModal(isFilterModalOpen);

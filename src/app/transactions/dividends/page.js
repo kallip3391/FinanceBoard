@@ -445,7 +445,6 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const modalFormRef = useMobileKeyboardModal(isModalOpen);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);

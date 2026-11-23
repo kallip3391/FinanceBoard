@@ -51,9 +51,8 @@ export default function ClientLayout({ children }) {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
         setTimeout(() => {
           const hasOpenModal = document.querySelector('.fixed.inset-0');
-          if (hasOpenModal || document.body.style.position === 'fixed') {
-            window.scrollTo(0, 0);
-          } else {
+          // 모달이 열려 있는 상태에서는 window 스크롤(0,0)을 호출하지 않아 상단바/배경 화면 밀림 방지
+          if (!hasOpenModal && document.body.style.position !== 'fixed') {
             window.scrollTo(window.scrollX, window.scrollY);
           }
         }, 100);
@@ -64,8 +63,8 @@ export default function ClientLayout({ children }) {
       if (window.visualViewport) {
         if (Math.abs(window.visualViewport.height - window.innerHeight) < 40) {
           const hasOpenModal = document.querySelector('.fixed.inset-0');
-          if (hasOpenModal || document.body.style.position === 'fixed') {
-            window.scrollTo(0, 0);
+          if (!hasOpenModal && document.body.style.position !== 'fixed') {
+            window.scrollTo(window.scrollX, window.scrollY);
           }
         }
       }
