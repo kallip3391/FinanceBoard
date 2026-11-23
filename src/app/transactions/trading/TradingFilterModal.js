@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import { CalendarUI, getStockType } from "./TradingModal";
-import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 // 툴바 날짜 포맷터 (YYYY - MM - DD)
 const formatToolbarDate = (dateStr) => {
@@ -55,9 +54,6 @@ function TradingFilterModal({
   const [stockSearchResults, setStockSearchResults] = useState([]);
   const [isSearchingStock, setIsSearchingStock] = useState(false);
   const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
-
-  // 모바일 가상 키보드 스크롤 대응 훅
-  const formRef = useMobileKeyboardModal(isOpen);
 
   const filterDateFromRef = useRef(null);
   const filterDateToRef = useRef(null);
@@ -195,7 +191,9 @@ function TradingFilterModal({
         </div>
 
         {/* 바디 */}
-        <div ref={formRef} className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className={`px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain ${
+          isFilterStockDropdownOpen && stockSearchResults.length > 0 ? 'pb-56' : ''
+        }`}>
           <div className="space-y-4">
             {/* 1. 조회 기간 선택 */}
             <div className="relative z-20">
@@ -480,7 +478,7 @@ function TradingFilterModal({
                 )}
 
                 {isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
-                  <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
+                  <div className="absolute top-full left-0 right-0 z-[100] w-full mt-1.5">
                     <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
                       <div
                         ref={filterStockListRef}

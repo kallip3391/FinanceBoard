@@ -9,7 +9,6 @@ import { useAssets } from "@/contexts/AssetContext";
 import { TransactionManager, TRANSACTION_TYPES, TRADE_TYPES, CURRENCIES } from "@/lib/transactionManager";
 import { GUEST_DIVIDEND_TRANSACTIONS } from "@/lib/guestMockData";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
-import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 import DividendModal from "./DividendModal";
 
@@ -453,7 +452,6 @@ export default function TransactionsPage() {
   }, []);
 
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const filterScrollRef = useMobileKeyboardModal(isFilterModalOpen);
 
   const [editingDividend, setEditingDividend] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
@@ -2985,7 +2983,9 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <div ref={filterScrollRef} className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <div className={`px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain ${
+              isFilterStockDropdownOpen && stockSearchResults.length > 0 ? 'pb-56' : ''
+            }`}>
               <div className="space-y-4">
                 {/* 1. 조회 기간 선택 */}
                 <div className="relative z-20">
@@ -3237,14 +3237,14 @@ export default function TransactionsPage() {
                     )}
                     
                     {isFilterModalOpen && isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
-                      <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
+                      <div className="absolute top-full left-0 right-0 z-[100] w-full mt-1.5">
                         <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
                           <div 
                             ref={filterStockListRef}
                             className="overflow-y-auto overflow-x-hidden py-1 block max-h-[220px]"
                           >
-                            {[...stockSearchResults].reverse().map((stock, i) => {
-                              const originalIndex = stockSearchResults.length - 1 - i;
+                            {stockSearchResults.map((stock, i) => {
+                              const originalIndex = i;
                               return (
                                 <button
                                   key={stock.security_id || originalIndex}
