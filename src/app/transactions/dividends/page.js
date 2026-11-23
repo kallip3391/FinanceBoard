@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 
 import { Edit2, Trash2, Filter, RotateCcw, Plus, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronDown, Coins, Search, PlusCircle, Wallet, TrendingUp, Scale, CheckCircle2, ArrowUpDown, Globe, ArrowLeftRight } from "lucide-react";
@@ -11,6 +11,7 @@ import { GUEST_DIVIDEND_TRANSACTIONS } from "@/lib/guestMockData";
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
 import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
+import DividendModal from "./DividendModal";
 
 // ── 종목 한글 매핑 ──
 const STOCK_KR_NAMES = {
@@ -30,16 +31,35 @@ const SORT_OPTIONS = [
   { value: "name_asc", label: "종목명 가나다순" },
 ];
 
+// ── 로고 로드 실패 캐시 (실패한 URL은 다시 시도하지 않아 성능 저하 방지) ──
+const failedImageUrls = new Set();
+
 // ── 종목 로고 컴포넌트 ──
-function StockLogo({ code, name, isKRW }) {
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
-  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
+  const isGold = (name || '').includes('금현물') || cleanCode === 'GOLD';
+
+  if (isGold) {
+    return (
+      <div 
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border border-amber-300 shadow-sm shadow-amber-500/20"
+        title="KRX 금현물"
+      >
+        <GoldBarIcon className="w-5 h-5 drop-shadow-xs" />
+      </div>
+    );
+  }
+
+  // 국내(KRW)는 6자리 숫자 코드(005930 등), 해외(USD 등)는 티커 심볼(AAPL 등) 기준으로 처리
+  const formattedCode = isKRW && /^\d+$/.test(cleanCode) ? cleanCode.padStart(6, '0') : cleanCode;
+  const logoUrl = formattedCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${formattedCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -63,13 +83,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-xl"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 // ── 통화 기호 헬퍼 ──
 const getCurrencySymbol = (currency) => {
@@ -107,6 +130,18 @@ const formatStockCode = (code) => {
     return str.padStart(6, "0");
   }
   return str;
+};
+
+const formatDisplayDate = (dateStr) => {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const parts = dateStr.includes('/') ? dateStr.split('/') : dateStr.split('-');
+  if (parts.length === 3) {
+    let [y, m, d] = parts;
+    if (y.length === 2) y = '20' + y;
+    return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+  }
+  return dateStr;
 };
 
 // ── 상단 요약 카드 숫자 롤링 카운터 ──
@@ -280,6 +315,129 @@ const transliterateKOtoEN = (text) => {
   return result.toUpperCase();
 };
 
+// ── 고성능 종목 검색 입력 컴포넌트 (부모 대형 컴포넌트 리렌더링 차단 & 한글 IME 끊김 완벽 해결) ──
+const FastStockInput = React.memo(React.forwardRef(function FastStockInput(
+  { value, onChange, onEnter, onTab, onArrowDown, onArrowUp, onEscape, className, placeholder },
+  ref
+) {
+  const [localVal, setLocalVal] = useState(value || '');
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const handleChange = (e) => {
+    const next = e.target.value.toUpperCase();
+    setLocalVal(next);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(next);
+    }, 250);
+  };
+
+  const handleBlur = () => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    onChange(localVal);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onEnter) onEnter(e, localVal);
+    } else if (e.key === 'Tab') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onTab) onTab(e);
+    } else if (e.key === 'ArrowDown') {
+      if (onArrowDown) onArrowDown(e);
+    } else if (e.key === 'ArrowUp') {
+      if (onArrowUp) onArrowUp(e);
+    } else if (e.key === 'Escape') {
+      if (onEscape) onEscape(e);
+    }
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      placeholder={placeholder}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={className}
+    />
+  );
+}));
+
+// ── 고성능 숫자 입력 컴포넌트 (배당금, 수량 고속 입력 시 밀림/버벅임 완벽 방지) ──
+const FastNumberInput = React.memo(React.forwardRef(function FastNumberInput(
+  { value, onChange, onBlur, onKeyDown, className, placeholder, inputMode = "numeric", isDecimal = false, maxLength = 12, ...props },
+  ref
+) {
+  const [localVal, setLocalVal] = useState(value || '');
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const handleChange = (e) => {
+    let raw = e.target.value.replace(/,/g, '');
+    let formatted = "";
+
+    if (isDecimal) {
+      if (/[^0-9.]/.test(raw)) return;
+      const parts = raw.split('.');
+      if (parts.length > 2) return;
+      if (parts[1] && parts[1].length > 2) return;
+      if (parts[0].length > maxLength) return;
+      if (parts[0] !== "") {
+        formatted = Number(parts[0]).toLocaleString('ko-KR');
+      }
+      if (raw.includes('.') || (parts[1] !== undefined)) {
+        formatted += "." + (parts[1] || "");
+      }
+    } else {
+      const digitsOnly = raw.replace(/[^\d]/g, '');
+      if (digitsOnly.length > maxLength) return;
+      formatted = digitsOnly === '' ? '' : Number(digitsOnly).toLocaleString('ko-KR');
+    }
+
+    setLocalVal(formatted);
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      onChange(formatted);
+    }, 120);
+  };
+
+  const handleInputBlur = (e) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    onChange(localVal);
+    if (onBlur) onBlur(e);
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode={inputMode}
+      placeholder={placeholder}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleInputBlur}
+      onKeyDown={onKeyDown}
+      className={className}
+      {...props}
+    />
+  );
+}));
+
 export default function TransactionsPage() {
 
   const { user } = useAuth();
@@ -298,7 +456,7 @@ export default function TransactionsPage() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const filterScrollRef = useMobileKeyboardModal(isFilterModalOpen);
 
-  const [editingId, setEditingId] = useState(null);
+  const [editingDividend, setEditingDividend] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'error', focusRef: null });
   const [stockDeleteConfirm, setStockDeleteConfirm] = useState({ isOpen: false, id: null, name: '' });
@@ -333,31 +491,18 @@ export default function TransactionsPage() {
   const { mounted: accountDeleteMounted, isClosing: accountDeleteClosing } = useAnimatedModal(accountDeleteConfirm.isOpen);
 
   useEffect(() => {
-    const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
-    if (isAnyModalOpen) {
-      const scrollY = window.scrollY;
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = '100%';
-      document.body.style.overflow = 'hidden';
-    } else {
-      const scrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+    // 모바일에서는 body 스타일 변경으로 인한 브라우저 reflow/지연을 방지 (MobileDashboard와 동일)
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
+      if (isAnyModalOpen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
       }
     }
     return () => {
-      const scrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      if (typeof window !== 'undefined') {
+        document.body.style.overflow = '';
       }
     };
   }, [isFilterMounted, isModalMounted, isStockMounted, isAccountMounted, alertMounted, deleteMounted, stockDeleteMounted, accountDeleteMounted]);
@@ -408,21 +553,7 @@ export default function TransactionsPage() {
   const [focusedAccountIndex, setFocusedAccountIndex] = useState(-1);
   const [stockFocusedIndex, setStockFocusedIndex] = useState(-1);
 
-  const [formData, setFormData] = useState({
-    year: '',
-    month: '',
-    day: '',
-    account: '',
-    account_id: '',
-    stock: '',
-    stockCode: '',
-    security_id: '',
-    currency: 'KRW',
-    dividendAmount: '',
-    exchangeRate: '',
-    totalDividend: '',
-    exchange_code: ''
-  });
+
 
   const sectorOptions = [
     '정보기술',
@@ -943,348 +1074,42 @@ export default function TransactionsPage() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (loading) return;
-
-    // Validation
-    if (!formData.year || !formData.month || !formData.day) {
-      showAlert("입력 오류", "배당일을 선택해 주세요.", "error", calendarButtonRef);
-      return;
-    }
-    if (!formData.account_id) {
-      showAlert("입력 오류", "계좌를 선택해 주세요.", "error");
-      return;
-    }
-    if (!formData.security_id) {
-      showAlert("입력 오류", "종목을 선택해 주세요.", "error", stockRef);
-      return;
-    }
-    if (!formData.dividendAmount) {
-      showAlert("입력 오류", "배당금을 입력해 주세요.", "error", priceRef);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const dividendData = {
-        transaction_type: TRANSACTION_TYPES.DIVIDEND,
-        trade_type: TRADE_TYPES.DIV,
-        date: `${formData.year}-${formData.month.padStart(2, '0')}-${formData.day.padStart(2, '0')}`,
-        account_id: formData.account_id,
-        security_id: formData.security_id,
-        currency: formData.currency,
-        dividend_amount: parseFloat(formData.dividendAmount.replace(/,/g, '')),
-        exchange_rate: parseFloat((formData.exchangeRate || '1').replace(/,/g, '')),
-        total_dividend: parseFloat(formData.totalDividend.replace(/,/g, ''))
-      };
-
-      if (editingId) {
-        // Update existing transaction with alt_sync flag
-        await TransactionManager.updateTransaction(editingId, {
-          ...dividendData,
-          alt_sync: true
-        });
-        await refreshTransactions();
-        await refreshAssets();
-        setIsModalOpen(false);
-        setEditingId(null);
-        showAlert("수정 완료", "변경 내용이 반영되었습니다.", "success");
-      } else {
-        await TransactionManager.addTransaction(dividendData);
-        await refreshTransactions(); // 전역 거래 데이터 갱신
-        await refreshAssets();      // 자산 요약 및 트렌드 갱신
-        setIsModalOpen(false);
-        setEditingId(null);
-        showAlert("등록 완료", "배당이 성공적으로 등록되었습니다.", "success");
-      }
-    } catch (error) {
-      console.error('배당 처리 중 오류:', error);
-      showAlert("오류", error.message || "배당 처리 중 문제가 발생했습니다.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 통화코드 매핑 함수
-  const getCurrencySymbol = (currency) => {
-    const symbolMap = {
-      'USD': '$',
-      'EUR': '€',
-      'JPY': '¥',
-      'CNY': '¥',
-      'GBP': '£',
-      'HKD': 'HK$'
-      // KRW는 제외 (₩ 표시 안 함)
+  const handleSaveDividend = async (formData) => {
+    const dividendData = {
+      transaction_type: TRANSACTION_TYPES.DIVIDEND,
+      trade_type: TRADE_TYPES.DIV,
+      date: `${formData.year}-${formData.month.padStart(2, '0')}-${formData.day.padStart(2, '0')}`,
+      account_id: formData.account_id,
+      security_id: formData.security_id,
+      currency: formData.currency,
+      dividend_amount: parseFloat((formData.dividendAmount || '0').replace(/,/g, '')),
+      exchange_rate: parseFloat((formData.exchangeRate || '1').replace(/,/g, '')),
+      total_dividend: parseFloat((formData.totalDividend || '0').replace(/,/g, ''))
     };
-    return symbolMap[currency] || '';
-  };
 
-
-
-  const formatDisplayDate = (dateStr) => {
-    if (!dateStr) return '';
-    // Handle YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-    // Handle YY/MM/DD
-    const parts = dateStr.includes('/') ? dateStr.split('/') : dateStr.split('-');
-    if (parts.length === 3) {
-      let [y, m, d] = parts;
-      if (y.length === 2) y = '20' + y;
-      return `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+    if (formData.editingId) {
+      await TransactionManager.updateTransaction(formData.editingId, {
+        ...dividendData,
+        alt_sync: true
+      });
+      await refreshTransactions();
+      await refreshAssets();
+      showAlert("수정 완료", "변경 내용이 반영되었습니다.", "success");
+    } else {
+      await TransactionManager.addTransaction(dividendData);
+      await refreshTransactions();
+      await refreshAssets();
+      showAlert("등록 완료", "배당이 성공적으로 등록되었습니다.", "success");
     }
-    return dateStr;
   };
 
   const toggleModal = () => {
-    if (!isModalOpen) {
-      const now = new Date();
-      setEditingId(null);
-      setFormData({
-        year: now.getFullYear().toString(),
-        month: (now.getMonth() + 1).toString().padStart(2, '0'),
-        day: now.getDate().toString().padStart(2, '0'),
-        account: '', account_id: '',
-        stock: '', stockCode: '',
-        security_id: '',
-        currency: 'KRW',
-        dividendAmount: '',
-        exchangeRate: '', totalDividend: '',
-        exchange_code: ''
-      });
-    }
-    setIsModalOpen(!isModalOpen);
-    setIsCalendarOpen(false);
+    setEditingDividend(null);
+    setIsModalOpen(prev => !prev);
   };
-
-  const handleDateSelect = (y, m, d) => {
-    const yStr = y.toString();
-    const mStr = m.toString().padStart(2, '0');
-    const dStr = d.toString().padStart(2, '0');
-    setFormData(prev => ({
-      ...prev,
-      year: yStr,
-      month: mStr,
-      day: dStr
-    }));
-    setIsCalendarOpen(false);
-    fetchRate({ year: yStr, month: mStr, day: dStr });
-  };
-
-  const handleNumberInput = (e, field) => {
-    let rawValue = e.target.value.replace(/,/g, '');
-
-    // 배당금(세전) 처리
-    if (field === 'dividendAmount') {
-      const [intPart, decPart] = rawValue.split('.');
-      if (intPart && intPart.length > 11) return; // 정수부 최대 11자리
-
-      if (formData.currency === 'KRW') {
-        const digitsOnly = rawValue.replace(/[^\d]/g, '');
-        if (digitsOnly.length > 11) return;
-        const formatted = digitsOnly === '' ? '' : Number(digitsOnly).toLocaleString('ko-KR');
-        setFormData(prev => ({ ...prev, [field]: formatted }));
-        return;
-      } else {
-        if (rawValue !== '' && !/^\d*\.?\d{0,2}$/.test(rawValue)) return; // 소수부 최대 2자리
-        if (rawValue === '' || rawValue === '.') {
-          setFormData(prev => ({ ...prev, [field]: rawValue }));
-          return;
-        }
-        const formattedInt = Number(intPart || 0).toLocaleString('ko-KR');
-        const formattedValue = decPart !== undefined ? `${formattedInt}.${decPart}` : formattedInt;
-        setFormData(prev => ({ ...prev, [field]: formattedValue }));
-        return;
-      }
-    }
-
-    // 기타 필드 (환율 등) - 정수부 11자리, 소수부 4자리 유지
-    if (field === 'exchangeRate' || field === 'price' || field === 'quantity' || field === 'fee') {
-      const [intPart, decPart] = rawValue.split('.');
-      if (intPart && intPart.length > 11) return;
-      if (rawValue !== '' && !/^\d*\.?\d{0,4}$/.test(rawValue)) return;
-
-      if (rawValue === '' || rawValue === '.') {
-        setFormData(prev => ({ ...prev, [field]: rawValue }));
-        return;
-      }
-      const formattedInt = Number(intPart || 0).toLocaleString('ko-KR');
-      const formattedValue = decPart !== undefined ? `${formattedInt}.${decPart}` : formattedInt;
-      setFormData(prev => ({ ...prev, [field]: formattedValue }));
-      return;
-    }
-
-    const digitsOnly = rawValue.replace(/[^\d]/g, '');
-    if (digitsOnly.length > 11) return;
-    const formatted = digitsOnly === '' ? '' : Number(digitsOnly).toLocaleString('ko-KR');
-    setFormData(prev => ({ ...prev, [field]: formatted }));
-  };
-
-  useEffect(() => {
-    const preTax = Number(formData.dividendAmount.replace(/,/g, '')) || 0;
-    const exRate = Number((formData.exchangeRate || '1').replace(/,/g, '')) || 1;
-
-    if (preTax > 0) {
-      const krwTotal = formData.currency === 'KRW' ? preTax : (preTax * exRate);
-      // KRW가 아닌 경우 (해외 배당) 기존대로 10원 단위 반올림
-      // KRW인 경우 (국내 배당) 원 단위까지 모두 표시 (소수점만 반올림)
-      const roundedTotal = formData.currency === 'KRW' 
-        ? Math.round(krwTotal) 
-        : Math.round(krwTotal / 10) * 10;
-
-      setFormData(prev => ({
-        ...prev,
-        totalDividend: roundedTotal.toLocaleString('ko-KR')
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, totalDividend: '' }));
-    }
-  }, [formData.dividendAmount, formData.currency, formData.exchangeRate]);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (calendarRef.current && !calendarRef.current.contains(event.target) && (!calendarButtonRef.current || !calendarButtonRef.current.contains(event.target))) {
-        setIsCalendarOpen(false);
-      }
-      if (currencyRef.current && !currencyRef.current.contains(event.target)) {
-        setIsCurrencyDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutsideStock = (event) => {
-      if (isStockDropdownOpen && stockDropdownRef.current && !stockDropdownRef.current.contains(event.target)) {
-        setIsStockDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutsideStock);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutsideStock);
-    };
-  }, [isStockDropdownOpen]);
-
-  const fetchRate = async (specificDate = null) => {
-    if (!isModalOpen) return;
-
-    const monthStr = specificDate?.month || formData.month;
-    const dayStr = specificDate?.day || formData.day;
-    const yearStr = specificDate?.year || formData.year;
-
-    if (formData.currency === 'KRW') {
-      if (formData.exchangeRate !== '1') {
-        setFormData(prev => ({ ...prev, exchangeRate: '1' }));
-      }
-      return;
-    }
-
-    if (yearStr && yearStr.length === 4 && monthStr && dayStr && formData.currency) {
-      const today = new Date();
-      const inputDate = new Date(`${yearStr}-${monthStr.toString().padStart(2, '0')}-${dayStr.toString().padStart(2, '0')}`);
-
-      if (inputDate > today) {
-        console.warn('Dividend fetchRate blocked: future date');
-        return;
-      }
-
-      try {
-        const paddedMonth = monthStr.toString().padStart(2, '0');
-        const paddedDay = dayStr.toString().padStart(2, '0');
-        const dateStr = `${yearStr}-${paddedMonth}-${paddedDay}`;
-        const rate = await TransactionManager.getExchangeRate(dateStr, formData.currency, 'KRW');
-        if (rate) {
-          setFormData(prev => ({ ...prev, exchangeRate: rate.toFixed(2).toString() }));
-        }
-      } catch (error) {
-        console.error('환율 조회 실패:', error);
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchRate();
-  }, [isModalOpen, formData.currency, formData.year, formData.month, formData.day]);
-
-  useEffect(() => {
-    const handleClickOutsideSector = (event) => {
-      if (isSectorDropdownOpen && sectorRef.current && !sectorRef.current.contains(event.target)) {
-        setIsSectorDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutsideSector);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutsideSector);
-    };
-  }, [isSectorDropdownOpen]);
-
-  useEffect(() => {
-    const handleClickOutsideCurrency = (event) => {
-      if (isCurrencyDropdownOpen && currencyRef.current && !currencyRef.current.contains(event.target)) {
-        setIsCurrencyDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutsideCurrency);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutsideCurrency);
-    };
-  }, [isCurrencyDropdownOpen]);
 
   const handleEdit = (tx) => {
-    const rawDate = tx.transaction_date || tx.date || '';
-    const [year, month, day] = rawDate.split('-');
-
-    setEditingId(tx.id);
-    const stockName = tx.security?.name || tx.stock_name || tx.stock || '';
-    const stockCode = tx.security?.code || tx.stock_code || tx.stockCode || '';
-    const accountNm = accountNameById[tx.account_id] || tx.account || '';
-
-    // 통화 판별: 명시된 currency가 있으면 사용, 없거나 불분명하면 국내 주식 여부로 판별
-    const isKRW = (tx.currency || 'KRW') === 'KRW' || 
-                  ['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(tx.security?.market) || 
-                  tx.security?.exchange_code === 'KRX' || 
-                  (stockCode && /^\d{6}$/.test(stockCode));
-    const txCurrency = tx.currency || (isKRW ? 'KRW' : 'USD');
-
-    // 배당금 산출: tx.dividend_amount가 있으면 사용, 없으면 total_dividend 또는 amount 사용
-    const rawDividend = (tx.dividend_amount != null && tx.dividend_amount !== '' && Number(tx.dividend_amount) > 0)
-      ? Number(tx.dividend_amount)
-      : (txCurrency === 'KRW'
-          ? (Number(tx.total_dividend) || Number(tx.amount) || 0)
-          : (Number(tx.exchange_rate) && Number(tx.total_dividend) 
-              ? (Number(tx.total_dividend) / Number(tx.exchange_rate)) 
-              : (Number(tx.amount) || 0))
-        );
-
-    const rawTotalDividend = Number(tx.total_dividend) || (
-      txCurrency === 'KRW' 
-        ? rawDividend 
-        : (Number(tx.exchange_rate) ? Math.round(rawDividend * Number(tx.exchange_rate)) : 0)
-    );
-
-    setSelectedAccountId(tx.account_id || null);
-
-    setFormData({
-      year: year || '',
-      month: month || '',
-      day: day || '',
-      account: accountNm,
-      account_id: tx.account_id || '',
-      stock: stockCode ? `[${stockCode}] ${stockName}` : stockName,
-      stockCode: stockCode,
-      security_id: tx.security_id || '',
-      currency: txCurrency,
-      dividendAmount: rawDividend > 0 
-        ? (txCurrency === 'KRW' 
-            ? Math.round(rawDividend).toLocaleString('ko-KR') 
-            : rawDividend.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) 
-        : '',
-      exchangeRate: txCurrency === 'KRW' ? '1' : (tx.exchange_rate ? tx.exchange_rate.toString() : ''),
-      totalDividend: rawTotalDividend > 0 ? Math.round(rawTotalDividend).toLocaleString('ko-KR') : '',
-      exchange_code: tx.security?.exchange_code || ''
-    });
-
+    setEditingDividend(tx);
     setIsModalOpen(true);
   };
 
@@ -1513,7 +1338,7 @@ export default function TransactionsPage() {
   };
 
   const filteredTransactions = useMemo(() => {
-    const list = (transactions || []).filter(tx => {
+    const list = (allTransactions || []).filter(tx => {
       const isKRW = (tx.currency || 'KRW') === 'KRW';
 
       // 1. 통화 세그먼트 필터 (ALL, KRW, OVERSEAS)
@@ -1584,7 +1409,7 @@ export default function TransactionsPage() {
           return (b.date || '').localeCompare(a.date || '');
       }
     });
-  }, [transactions, currencyFilter, activeFilters, searchQuery, sortBy, exchangeRates]);
+  }, [allTransactions, currencyFilter, activeFilters, searchQuery, sortBy, exchangeRates]);
 
   const summary = useMemo(() => {
     let targetTxs = filteredTransactions;
@@ -1761,13 +1586,13 @@ export default function TransactionsPage() {
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl border border-amber-100/50 shadow-sm">
-              <Coins size={20} strokeWidth={2.5} />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+              <Coins size={22} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-slate-800">거래 내역</h1>
+                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">거래내역</h1>
                 {user && (
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
                     <CheckCircle2 size={13} className="text-slate-400" />
@@ -1775,7 +1600,7 @@ export default function TransactionsPage() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">국내 · 해외 주식 배당 내역</p>
+              <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">국내 · 해외 주식 배당 내역</p>
             </div>
           </div>
 
@@ -2569,473 +2394,18 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Add Transaction Modal */}
-      {isModalMounted && mounted && createPortal(
-        <div 
-          className={`fixed inset-0 z-[9990] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 ${
-            isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
-          }`} 
-          onClick={toggleModal}
-        >
-          <div 
-            className={`relative bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col pointer-events-auto ${
-              isModalClosing ? 'animate-modal-out' : 'animate-page-slide'
-            }`} 
-            onClick={(e) => e.stopPropagation()}
-          >
-
-            <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  {editingId ? <Edit2 size={16} strokeWidth={2.5} /> : <PlusCircle size={18} strokeWidth={2.5} />}
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">{editingId ? '수정' : '등록'}</h3>
-              </div>
-              <button 
-                onClick={toggleModal} 
-                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-              >
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            <form ref={modalFormRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-              {/* 1. 배당일 & 계좌 (2열 나란히 배치, 거래내역-매매 등록 팝업 양식) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당일</label>
-                  <button
-                    ref={calendarButtonRef}
-                    type="button"
-                    onClick={() => setIsCalendarOpen(prev => !prev)}
-                    className={`w-full h-12 px-3.5 rounded-2xl border transition-all relative flex items-center justify-center text-xs font-extrabold cursor-pointer shadow-xs ${
-                      isCalendarOpen
-                        ? 'border-blue-600 bg-white ring-2 ring-blue-100 text-blue-600'
-                        : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
-                    }`}
-                  >
-                    <span className="text-center font-extrabold text-xs">
-                      {formData.year && formData.month && formData.day ? `${formData.year}-${formData.month.toString().padStart(2, '0')}-${formData.day.toString().padStart(2, '0')}` : '배당일 선택'}
-                    </span>
-                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                      <Calendar size={18} className={isCalendarOpen ? 'text-blue-500' : 'text-slate-400'} />
-                    </span>
-                  </button>
-
-                  {isCalendarOpen && (
-                    <div
-                      ref={calendarRef}
-                      className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 animate-slide-up w-[245px]"
-                      style={{ backgroundColor: '#ffffff' }}
-                    >
-                      <CalendarUI
-                        initialYear={parseInt(formData.year) || new Date().getFullYear()}
-                        initialMonth={parseInt(formData.month) || (new Date().getMonth() + 1)}
-                        onSelect={handleDateSelect}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="relative" ref={accountDropdownRef}>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">계좌</label>
-                  <button
-                    ref={accountRef}
-                    type="button"
-                    onClick={async () => {
-                      const next = !isAccountDropdownOpen;
-                      setIsAccountDropdownOpen(next);
-                      if (next) await refreshAccounts();
-                    }}
-                    className={`w-full h-12 px-3.5 rounded-2xl border transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs text-left ${
-                      isAccountDropdownOpen
-                        ? 'border-blue-500 ring-2 ring-blue-100 bg-white text-blue-600'
-                        : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
-                    }`}
-                  >
-                    <span className={`truncate text-xs tracking-tight ${formData.account ? 'text-slate-800 font-bold' : 'text-slate-400 font-medium'}`}>
-                      {formData.account || '계좌선택'}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={`text-slate-400 shrink-0 ml-2 transition-transform duration-200 ${
-                        isAccountDropdownOpen ? 'rotate-180 text-blue-500' : ''
-                      }`}
-                    />
-                  </button>
-                  {isAccountDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
-                      <div ref={accountListRef} className="py-1 max-h-52 overflow-y-auto space-y-0.5">
-                        {isAccountsLoading ? (
-                          <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">불러오는 중...</div>
-                        ) : accounts.length === 0 ? (
-                          <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">등록된 계좌가 없습니다</div>
-                        ) : (
-                          accounts.map((acc, index) => {
-                            const isSelected = selectedAccountId === acc.account_id || formData.account === acc.account_nm;
-                            const isFocused = focusedAccountIndex === index;
-                            return (
-                              <button
-                                key={acc.account_id}
-                                type="button"
-                                className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all flex items-center justify-between cursor-pointer tracking-tight ${
-                                  isSelected
-                                    ? 'bg-blue-50 text-blue-600 font-black'
-                                    : isFocused
-                                      ? 'bg-slate-100/80 text-slate-900 font-semibold'
-                                      : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
-                                }`}
-                                onMouseEnter={() => setFocusedAccountIndex(index)}
-                                onClick={() => {
-                                  setFormData(prev => ({ ...prev, account: acc.account_nm, account_id: acc.account_id }));
-                                  setSelectedAccountId(acc.account_id);
-                                  setIsAccountDropdownOpen(false);
-                                  setTimeout(() => stockRef.current?.focus(), 50);
-                                }}
-                              >
-                                <span className="truncate">{acc.account_nm}</span>
-                                {isSelected && <Check size={14} className="text-blue-600 shrink-0 ml-1.5" strokeWidth={2.5} />}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 2. 종목 & 배당금 (가로 비율 조정: 종목 확대 col-span-3, 배당금 축소 col-span-2) */}
-              <div className="grid grid-cols-5 gap-3">
-                <div className="relative col-span-3">
-                  <div className="flex items-center gap-1.5 ml-0.5 mb-1.5">
-                    <label className="block text-xs font-black text-slate-600 tracking-tight">종목</label>
-                    {formData.security_id && (
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
-                        formData.currency === 'KRW'
-                          ? 'bg-blue-50 text-blue-600 border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {formData.currency === 'KRW' ? '국내' : '해외'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative" ref={stockDropdownRef}>
-                    {formData.security_id ? (
-                      <div
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock.replace(`[${prev.stockCode}] `, '') }));
-                          setTimeout(() => {
-                            stockRef.current?.focus();
-                            stockRef.current?.select();
-                          }, 50);
-                        }}
-                        ref={stockRef}
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setIsStockDropdownOpen(false);
-                            setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' }));
-                            setTimeout(() => {
-                              stockRef.current?.focus();
-                              stockRef.current?.select();
-                            }, 50);
-                          } else if (e.key === 'Tab' && !e.shiftKey) {
-                            e.preventDefault();
-                            priceRef.current?.focus();
-                          }
-                        }}
-                        className="w-full h-12 px-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer transition-all hover:border-blue-400 shadow-xs"
-                      >
-                        <span className="truncate">
-                          {formData.stock.replace(`[${formData.stockCode}] `, '')}
-                          <span className="text-[11px] text-slate-400 font-medium ml-1">({formData.stockCode})</span>
-                        </span>
-                        <Search size={16} className="text-slate-400 shrink-0 ml-1.5" />
-                      </div>
-                    ) : (
-                      <div className="relative w-full">
-                        <input
-                          ref={stockRef}
-                          type="text"
-                          placeholder="종목명 입력 (엔터로 검색)"
-                          value={formData.stock}
-                          onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value.toUpperCase(), security_id: '' }))}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              if (isStockDropdownOpen && focusedStockIndex >= 0 && searchedStocks[focusedStockIndex]) {
-                                const stock = searchedStocks[focusedStockIndex];
-                                const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
-                                setFormData(prev => ({
-                                  ...prev,
-                                  security_id: stock.security_id,
-                                  stock: `[${stock.code}] ${stock.name}`,
-                                  stockCode: stock.code,
-                                  exchange_code: stock.exchange_code || '',
-                                  currency: stockCur
-                                }));
-                                setIsStockDropdownOpen(false);
-                                setFocusedStockIndex(-1);
-                                setTimeout(() => priceRef.current?.focus(), 50);
-                              } else {
-                                setIsSearchingStock(true);
-                                setIsStockDropdownOpen(true);
-                                setFocusedStockIndex(-1);
-                                try {
-                                  let searchTerm = formData.stock.trim();
-                                  const match = searchTerm.match(/\[(.*?)\]/);
-                                  if (match && match[1]) {
-                                    searchTerm = match[1];
-                                  } else {
-                                    const parts = searchTerm.split('] ');
-                                    if (parts.length > 1) searchTerm = parts[1];
-                                  }
-
-                                  const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                                  setSearchedStocks(results);
-                                  if (results.length > 0) setFocusedStockIndex(0);
-                                } catch (err) {
-                                  console.error(err);
-                                  setSearchedStocks([]);
-                                } finally {
-                                  setIsSearchingStock(false);
-                                }
-                              }
-                            } else if (e.key === 'Tab') {
-                              if (isStockDropdownOpen) {
-                                setIsStockDropdownOpen(false);
-                                setFocusedStockIndex(-1);
-                              }
-                              if (!e.shiftKey) {
-                                e.preventDefault();
-                                priceRef.current?.focus();
-                              }
-                            } else if (e.key === 'ArrowDown') {
-                              e.preventDefault();
-                              if (!isStockDropdownOpen) {
-                                setIsStockDropdownOpen(true);
-                                setFocusedStockIndex(0);
-                              } else {
-                                setFocusedStockIndex(prev => Math.min(prev + 1, searchedStocks.length - 1));
-                              }
-                            } else if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              if (isStockDropdownOpen) {
-                                setFocusedStockIndex(prev => Math.max(prev - 1, 0));
-                              }
-                            } else if (e.key === 'Escape') {
-                              setIsStockDropdownOpen(false);
-                              setFocusedStockIndex(-1);
-                            }
-                          }}
-                          className="w-full h-12 pl-3.5 pr-9 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-bold text-slate-800 text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
-                        />
-                        <button
-                          type="button"
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer text-slate-400 hover:text-slate-600"
-                          onClick={async () => {
-                            const next = !isStockDropdownOpen;
-                            if (next) {
-                              setIsSearchingStock(true);
-                              setIsStockDropdownOpen(true);
-                              try {
-                                let searchTerm = formData.stock ? formData.stock.trim() : '';
-                                const match = searchTerm.match(/\[(.*?)\]/);
-                                if (match && match[1]) {
-                                  searchTerm = match[1];
-                                } else {
-                                  const parts = searchTerm.split('] ');
-                                  if (parts.length > 1) searchTerm = parts[1];
-                                }
-
-                                const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                                setSearchedStocks(results);
-                              } catch (err) {
-                                console.error(err);
-                                setSearchedStocks([]);
-                              } finally {
-                                setIsSearchingStock(false);
-                              }
-                            } else {
-                              setIsStockDropdownOpen(false);
-                            }
-                          }}
-                        >
-                          <Search size={16} />
-                        </button>
-                      </div>
-                    )}
-                    {isStockDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden">
-                        <div ref={stockListRef} className="py-2 max-h-[286px] overflow-y-auto block overflow-x-hidden">
-                          {isSearchingStock ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 중...</div>
-                          ) : searchedStocks.length === 0 ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 결과가 없습니다</div>
-                          ) : (
-                            searchedStocks.map((stock, index) => (
-                              <button
-                                key={stock.security_id || stock.code}
-                                type="button"
-                                className={`w-full px-3 py-2 text-left transition-colors flex items-center justify-between cursor-pointer ${
-                                  focusedStockIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
-                                }`}
-                                onMouseEnter={() => setFocusedStockIndex(index)}
-                                onClick={() => {
-                                  const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    stock: `[${stock.code}] ${stock.name}`, 
-                                    stockCode: stock.code, 
-                                    security_id: stock.security_id, 
-                                    exchange_code: stock.exchange_code || '',
-                                    currency: stockCur 
-                                  }));
-                                  setIsStockDropdownOpen(false);
-                                  setTimeout(() => priceRef.current?.focus(), 50);
-                                }}
-                              >
-                                <span className={`font-semibold text-xs leading-tight break-words truncate mr-2 ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
-                                  {stock.name} <span className={`text-[11px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
-                                </span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
-                                  (stock.currency === 'KRW' || stock.exchange_code === 'KRX')
-                                    ? 'bg-blue-50 text-blue-600 border-blue-200' 
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}>
-                                  {(stock.currency === 'KRW' || stock.exchange_code === 'KRX') ? '국내' : '해외'}
-                                </span>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">배당금</label>
-                  <div className="flex items-center w-full h-12 px-3 rounded-2xl border border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-all bg-slate-50/70 gap-1 shadow-xs">
-                    <input
-                      ref={priceRef}
-                      type="text"
-                      placeholder="0"
-                      value={formData.dividendAmount}
-                      onChange={(e) => handleNumberInput(e, 'dividendAmount')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          priceRef.current?.blur();
-                          handleSubmit(e);
-                        } else if (e.key === 'Tab' && e.shiftKey) {
-                          e.preventDefault();
-                          setIsStockDropdownOpen(false);
-                          setFormData(prev => ({
-                            ...prev,
-                            security_id: '',
-                            stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : ''
-                          }));
-                          setTimeout(() => {
-                            stockRef.current?.focus();
-                            stockRef.current?.select();
-                          }, 50);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        const val = e.target.value.replace(/,/g, '');
-                        if (val && !isNaN(parseFloat(val)) && formData.currency !== 'KRW') {
-                          const formatted = parseFloat(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                          setFormData(prev => ({ ...prev, dividendAmount: formatted }));
-                        }
-                      }}
-                      className={`flex-1 bg-transparent outline-none text-right text-xs min-w-0 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
-                        !formData.dividendAmount || formData.dividendAmount === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
-                      }`}
-                    />
-                    {formData.currency && formData.currency !== 'KRW' ? (
-                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold shrink-0 leading-none">
-                        {getCurrencySymbol(formData.currency)}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 font-medium text-xs shrink-0">원</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. 총 배당금 (매매 거래금액 카드와 동일 양식) */}
-              {formData.currency && formData.currency !== 'KRW' ? (
-                <div className="px-5 py-3 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-2 shadow-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">적용 환율</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-slate-700 text-sm tabular-nums">
-                        {formData.exchangeRate ? Number(formData.exchangeRate).toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-'}
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">원</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">총 배당금</span>
-                      {formData.totalDividend && (
-                        <span className="text-[11px] font-semibold text-slate-400 ml-0.5">
-                          ≈ {formData.totalDividend}원
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-amber-600 tabular-nums">{formData.dividendAmount || '0'}</span>
-                      <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold leading-none">
-                        {getCurrencySymbol(formData.currency)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">총 배당금</label>
-                  <div className="px-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 shadow-xs flex justify-end items-center h-14">
-                    <div className="text-right flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-blue-600 tabular-nums">
-                        {formData.totalDividend || '0'}
-                      </span>
-                      <span className="text-sm font-bold text-slate-400">원</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 4. Footer 버튼 */}
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={toggleModal}
-                  className="flex-1 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className={`flex-1 h-12 rounded-2xl font-bold text-sm transition-all shadow-md ${
-                    loading 
-                      ? 'bg-slate-300 text-white cursor-not-allowed' 
-                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25 cursor-pointer'
-                  } focus:outline-none`}
-                >
-                  {loading ? '처리 중...' : (editingId ? '수정 완료' : '등록 완료')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Add Dividend Modal */}
+      <DividendModal
+        isOpen={isModalMounted}
+        isClosing={isModalClosing}
+        onClose={() => setIsModalOpen(false)}
+        editingDividend={editingDividend}
+        accounts={accounts}
+        accountNameById={accountNameById}
+        isAccountsLoading={isAccountsLoading}
+        onSave={handleSaveDividend}
+        showAlert={showAlert}
+      />
 
       {isStockMounted && mounted && createPortal(
         <div className={`fixed inset-0 z-[9995] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-opacity ${isStockClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`} onClick={() => setIsStockModalOpen(false)}>
@@ -3593,7 +2963,7 @@ export default function TransactionsPage() {
           onClick={() => setIsFilterModalOpen(false)}
         >
           <div 
-            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden pointer-events-auto ${isFilterClosing ? 'animate-sheet-down md:animate-modal-out' : 'animate-sheet-up md:animate-page-slide'}`}
+            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden ${isFilterClosing ? 'animate-sheet-down md:animate-modal-out pointer-events-none' : 'animate-sheet-up md:animate-page-slide pointer-events-auto'}`}
             onClick={(e) => e.stopPropagation()}
           >
             

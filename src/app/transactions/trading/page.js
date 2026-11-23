@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Edit2, Trash2, Filter, RotateCcw, X, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ArrowLeftRight, Plus, Search, ChevronDown, PlusCircle, Wallet, ArrowUpDown, CheckCircle2, TrendingUp, Scale, Award, Coins } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,6 +10,8 @@ import { GUEST_DOMESTIC_TRANSACTIONS, GUEST_OVERSEAS_TRANSACTIONS } from "@/lib/
 import MobileTransactionList from "@/app/components/mobile/MobileTransactionList";
 import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
+import TradingModal, { getStockType } from "./TradingModal";
+import TradingFilterModal from "./TradingFilterModal";
 
 // ── 종목 한글 매핑 ──
 const STOCK_KR_NAMES = {
@@ -51,10 +53,14 @@ function GoldBarIcon({ className = "w-5 h-5" }) {
   );
 }
 
+// ── 로고 로드 실패 캐시 (실패한 URL은 다시 시도하지 않아 성능 저하 방지) ──
+const failedImageUrls = new Set();
+
 // ── 종목 로고 컴포넌트 ──
-function StockLogo({ code, name, isKRW }) {
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
+  const isGold = (name || '').includes('금현물') || cleanCode === 'GOLD';
 
   if (isGold) {
     return (
@@ -67,13 +73,15 @@ function StockLogo({ code, name, isKRW }) {
     );
   }
 
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
-  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  // 국내(KRW)는 6자리 숫자 코드(005930 등), 해외(USD 등)는 티커 심볼(AAPL 등) 기준으로 처리
+  const formattedCode = isKRW && /^\d+$/.test(cleanCode) ? cleanCode.padStart(6, '0') : cleanCode;
+  const logoUrl = formattedCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${formattedCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -97,13 +105,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-xl"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 // ── 통화 기호 헬퍼 ──
 const getCurrencySymbol = (currency) => {
@@ -368,6 +379,222 @@ const transliterateKOtoEN = (text) => {
   return result.toUpperCase();
 };
 
+const calculateAmountAndKRW = (qtyStr, priceStr, currency, rateStr) => {
+  const qty = parseFloat((qtyStr || '').replace(/,/g, '')) || 0;
+  const price = parseFloat((priceStr || '').replace(/,/g, '')) || 0;
+  const isOverseas = currency && currency !== 'KRW';
+
+  let amount = '';
+  let totalKRW = '';
+
+  if (qty > 0 && price > 0) {
+    const total = qty * price;
+    if (isOverseas) {
+      // 해외 거래의 경우 소수점 2자리 포맷팅
+      const fixedTotal = total.toFixed(2);
+      const [intPart, decPart] = fixedTotal.split('.');
+      amount = Number(intPart).toLocaleString('ko-KR') + "." + decPart;
+    } else {
+      // 국내 거래(KRW)이므로 소수점 없이 반올림 처리
+      amount = Math.round(total).toLocaleString('ko-KR');
+    }
+
+    const amountVal = parseFloat(amount.replace(/,/g, '')) || 0;
+    const rateVal = parseFloat((rateStr || '0').replace(/,/g, '')) || 0;
+    if (amountVal > 0) {
+      const krw = amountVal * (isOverseas ? rateVal : 1);
+      const rounded = Math.round(krw / 10) * 10;
+      totalKRW = rounded.toLocaleString('ko-KR');
+    }
+  }
+
+  return { amount, totalKRW };
+};
+
+// ── 고성능 종목 검색 입력 컴포넌트 (부모 5000줄 전체 리렌더링 차단 & 한글 IME 끊김/두두둑 버퍼링 완벽 해결) ──
+const FastStockInput = React.memo(React.forwardRef(function FastStockInput(
+  { value, onChange, onEnter, onTab, onArrowDown, onArrowUp, onEscape, className, placeholder },
+  ref
+) {
+  const [localVal, setLocalVal] = useState(value || '');
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const handleChange = (e) => {
+    const next = e.target.value.toUpperCase();
+    setLocalVal(next);
+
+    // 부모 대형 컴포넌트 리렌더링으로 인한 타이핑 렉 방지 (입력 멈춘 후 부모 동기화)
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(next);
+    }, 250);
+  };
+
+  const handleBlur = () => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    onChange(localVal);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onEnter) onEnter(e, localVal);
+    } else if (e.key === 'Tab') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onTab) onTab(e);
+    } else if (e.key === 'ArrowDown') {
+      if (onArrowDown) onArrowDown(e);
+    } else if (e.key === 'ArrowUp') {
+      if (onArrowUp) onArrowUp(e);
+    } else if (e.key === 'Escape') {
+      if (onEscape) onEscape(e);
+    }
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      placeholder={placeholder}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={className}
+    />
+  );
+}));
+
+const FastFilterStockInput = React.memo(React.forwardRef(function FastFilterStockInput(
+  { value, onChange, onEnter, onTab, onArrowDown, onArrowUp, onEscape, className, placeholder },
+  ref
+) {
+  const [localVal, setLocalVal] = useState(value || '');
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const handleChange = (e) => {
+    const next = e.target.value.toUpperCase();
+    setLocalVal(next);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(next);
+    }, 250);
+  };
+
+  const handleBlur = () => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    onChange(localVal);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onEnter) onEnter(e, localVal);
+    } else if (e.key === 'Tab') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      onChange(localVal);
+      if (onTab) onTab(e);
+    } else if (e.key === 'ArrowDown') {
+      if (onArrowDown) onArrowDown(e);
+    } else if (e.key === 'ArrowUp') {
+      if (onArrowUp) onArrowUp(e);
+    } else if (e.key === 'Escape') {
+      if (onEscape) onEscape(e);
+    }
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      placeholder={placeholder}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={className}
+    />
+  );
+}));
+
+// ── 고성능 숫자 입력 컴포넌트 (수량, 단가 연속 고속 입력 시 밀림/버벅임 완벽 방지) ──
+const FastNumberInput = React.memo(React.forwardRef(function FastNumberInput(
+  { value, onChange, onBlur, onKeyDown, className, placeholder, inputMode = "numeric", isDecimal = false, maxLength = 12, ...props },
+  ref
+) {
+  const [localVal, setLocalVal] = useState(value || '');
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalVal(value || '');
+  }, [value]);
+
+  const handleChange = (e) => {
+    let raw = e.target.value.replace(/,/g, '');
+    let formatted = "";
+
+    if (isDecimal) {
+      if (/[^0-9.]/.test(raw)) return;
+      const parts = raw.split('.');
+      if (parts.length > 2) return;
+      if (parts[1] && parts[1].length > 2) return;
+      if (parts[0].length > maxLength) return;
+      if (parts[0] !== "") {
+        formatted = Number(parts[0]).toLocaleString('ko-KR');
+      }
+      if (raw.includes('.') || (parts[1] !== undefined)) {
+        formatted += "." + (parts[1] || "");
+      }
+    } else {
+      const digitsOnly = raw.replace(/[^\d]/g, '');
+      if (digitsOnly.length > maxLength) return;
+      formatted = digitsOnly === '' ? '' : Number(digitsOnly).toLocaleString('ko-KR');
+    }
+
+    // 1. 로컬 인풋 즉시 갱신 (0ms 지연 없음)
+    setLocalVal(formatted);
+
+    // 2. 부모 대형 컴포넌트 리렌더링 디바운스 (연속 빠른 입력 시 끊김 완벽 방지)
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      onChange(formatted);
+    }, 120);
+  };
+
+  const handleInputBlur = (e) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    onChange(localVal);
+    if (onBlur) onBlur(e);
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode={inputMode}
+      placeholder={placeholder}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleInputBlur}
+      onKeyDown={onKeyDown}
+      className={className}
+      {...props}
+    />
+  );
+}));
+
 export default function TransactionsPage() {
 
   const { user } = useAuth();
@@ -376,7 +603,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const modalFormRef = useMobileKeyboardModal(isModalOpen);
-  const [editingId, setEditingId] = useState(null);
+  const [editingTransaction, setEditingTransaction] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, id: null });
   const [stockDeleteConfirm, setStockDeleteConfirm] = useState({ isOpen: false, id: null, name: '' });
   const [accountDeleteConfirm, setAccountDeleteConfirm] = useState({ isOpen: false, name: '' });
@@ -436,31 +663,18 @@ export default function TransactionsPage() {
   const { mounted: isFilterPanelMounted, isClosing: isFilterPanelClosing } = useAnimatedModal(isFilterPanelOpen, 220);
 
   useEffect(() => {
-    const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
-    if (isAnyModalOpen) {
-      const scrollY = window.scrollY;
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = '100%';
-      document.body.style.overflow = 'hidden';
-    } else {
-      const scrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+    // 모바일에서는 body 스타일 변경으로 인한 브라우저 reflow/지연을 방지 (MobileDashboard와 동일하게 즉시 오픈)
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
+      if (isAnyModalOpen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
       }
     }
     return () => {
-      const scrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      document.body.style.overflow = '';
-      if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      if (typeof window !== 'undefined') {
+        document.body.style.overflow = '';
       }
     };
   }, [isFilterMounted, isModalMounted, isStockMounted, isAccountMounted, alertMounted, deleteMounted, stockDeleteMounted, accountDeleteMounted]);
@@ -659,14 +873,10 @@ export default function TransactionsPage() {
     }));
     setCurrentPage(1);
   };
-  const [isFilterStockDropdownOpen, setIsFilterStockDropdownOpen] = useState(false);
-  const [tempFilters, setTempFilters] = useState({ ...activeFilters });
   const accountTypeRef = useRef(null);
   const accountDropdownRef = useRef(null);
   const calendarRef = useRef(null);
   const calendarButtonRef = useRef(null);
-  const filterFromCalendarRef = useRef(null);
-  const filterToCalendarRef = useRef(null);
   const institutionRef = useRef(null);
   const accountTypeInputRef = useRef(null);
   const sectorRef = useRef(null);
@@ -680,94 +890,7 @@ export default function TransactionsPage() {
   const accountListRef = useRef(null);
   const stockListRef = useRef(null);
   const accountRef = useRef(null);
-   const filterDateFromRef = useRef(null);
-  const filterDateToRef = useRef(null);
   const typeDropdownRef = useRef(null);
-  const filterStockDropdownRef = useRef(null);
-  const filterStockListRef = useRef(null);
-
-  const [formData, setFormData] = useState({
-    year: '',
-    month: '',
-    day: '',
-    account: '',
-    stock: '',
-    stockCode: '',
-    security_id: '',
-    type: '매수',
-    quantity: '',
-    price: '',
-    amount: '',
-    currency: 'KRW',
-    exchangeRate: '',
-    totalKRW: '',
-    exchange_code: '',
-    market_type: '',
-    transaction_type: ''
-  });
-
-  const [focusedAccountIndex, setFocusedAccountIndex] = useState(-1);
-  const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
-  const [selectedQuickPeriod, setSelectedQuickPeriod] = useState('1개월');
-
-  const handleFilterStockEnter = async (val) => {
-    const query = val ? val.trim() : '';
-    if (!query) {
-      setIsFilterStockDropdownOpen(false);
-      return;
-    }
-
-    if (isFilterStockDropdownOpen && focusedStockIndex >= 0 && stockSearchResults[focusedStockIndex]) {
-      const selected = stockSearchResults[focusedStockIndex];
-      setTempFilters(prev => ({ 
-        ...prev, 
-        stockName: `${selected.name}(${selected.code})`,
-        stockCode: selected.code,
-        security_id: selected.security_id
-      }));
-      setIsFilterStockDropdownOpen(false);
-      if (typeof document !== 'undefined') {
-        document.activeElement?.blur();
-      }
-      return;
-    }
-
-    setIsSearchingStock(true);
-    try {
-      const results = await TransactionManager.searchStocksByName(query, null);
-      if (results && results.length > 0) {
-        const upperQuery = query.toUpperCase();
-        const exactMatch = results.find(
-          s => s.name?.toUpperCase() === upperQuery || s.code?.toUpperCase() === upperQuery
-        );
-        const target = exactMatch || (results.length === 1 ? results[0] : null);
-
-        if (target) {
-          setTempFilters(prev => ({ 
-            ...prev, 
-            stockName: `${target.name}(${target.code})`,
-            stockCode: target.code,
-            security_id: target.security_id
-          }));
-          setIsFilterStockDropdownOpen(false);
-          setStockSearchResults([]);
-        } else {
-          setStockSearchResults(results);
-          setFocusedStockIndex(0);
-          setIsFilterStockDropdownOpen(true);
-        }
-      } else {
-        setIsFilterStockDropdownOpen(false);
-        setStockSearchResults([]);
-      }
-    } catch (err) {
-      console.error('종목 검색 오류:', err);
-      setStockSearchResults([]);
-      setIsFilterStockDropdownOpen(false);
-    } finally {
-      setIsSearchingStock(false);
-    }
-  };
 
   // ── 종목 추가 모달: 국내/해외/기타 마켓 전환 ──
   const handleStockMarketTypeChange = (type) => {
@@ -903,15 +1026,21 @@ export default function TransactionsPage() {
       });
 
       if (newStock) {
-        setFormData(prev => ({
-          ...prev,
-          security_id: newStock.security_id || newStock.id,
-          stock: `[${newStock.code}] ${newStock.name}`,
-          stockCode: newStock.code,
-          exchange_code: newStock.exchange_code || (isOther ? 'OTHER' : ''),
-          market_type: newStock.market_type || stockMarketType,
-          currency: newStock.currency || prev.currency
-        }));
+        setFormData(prev => {
+          const stockCur = newStock.currency || prev.currency;
+          const { amount, totalKRW } = calculateAmountAndKRW(prev.quantity, prev.price, stockCur, prev.exchangeRate);
+          return {
+            ...prev,
+            security_id: newStock.security_id || newStock.id,
+            stock: `[${newStock.code}] ${newStock.name}`,
+            stockCode: newStock.code,
+            exchange_code: newStock.exchange_code || (isOther ? 'OTHER' : ''),
+            market_type: newStock.market_type || stockMarketType,
+            currency: stockCur,
+            amount,
+            totalKRW
+          };
+        });
       }
 
       setStockForm({ 
@@ -953,51 +1082,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const getStockType = (item) => {
-    if (!item) return 'DOMESTIC';
-    const txType = item.transaction_type || '';
-    if (txType === 'other') return 'OTHER';
-    if (txType === 'overseas') return 'OVERSEAS';
-    if (txType === 'domestic') return 'DOMESTIC';
 
-    const name = item.stock_name || item.security?.name || item.name || item.stock || '';
-    const code = item.stock_code || item.security?.code || item.code || item.stockCode || '';
-    const exchangeCode = item.security?.exchange_code || item.exchange_code || '';
-    const marketType = item.security?.market_type || item.market_type || '';
-    const currency = item.currency || item.security?.currency || '';
-
-    if (
-      marketType === 'OTHER' ||
-      exchangeCode === 'OTHER' ||
-      name.includes('금현물') ||
-      (code && code.toUpperCase() === 'GOLD' && currency === 'KRW')
-    ) {
-      return 'OTHER';
-    }
-    if (currency && currency !== 'KRW') {
-      return 'OVERSEAS';
-    }
-    return 'DOMESTIC';
-  };
-
-  const handleStockSearch = async (val) => {
-    const searchTerm = val ? val.trim() : '';
-    // 빈 칸이어도 전체 조회를 위해 검색 허용 (등록 팝업과 동일)
-    
-    setIsSearchingStock(true);
-    setIsFilterStockDropdownOpen(true);
-    try {
-      const results = await TransactionManager.searchStocksByName(searchTerm, null);
-      setStockSearchResults(results);
-      if (results.length > 0) setFocusedStockIndex(0);
-      else setFocusedStockIndex(-1);
-    } catch (err) {
-      console.error('종목 검색 오류:', err);
-      setStockSearchResults([]);
-    } finally {
-      setIsSearchingStock(false);
-    }
-  };
 
   // 국내/해외/기타 거래내역 통합 (게스트 모드 포함)
   const allTransactions = useMemo(() => {
@@ -1064,49 +1149,21 @@ export default function TransactionsPage() {
       if (toolbarDateToRef.current && !toolbarDateToRef.current.contains(event.target) && (!toolbarDateToBtnRef.current || !toolbarDateToBtnRef.current.contains(event.target))) {
         setIsToolbarToCalendarOpen(false);
       }
-      // 1. 계좌 선택 드롭다운
-      if (isAccountDropdownOpen && accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
-        setIsAccountDropdownOpen(false);
-      }
-      // 2. 계좌 유형 드롭다운
+      // 1. 계좌 추가 모달 유형 드롭다운
       if (isAccountTypeDropdownOpen && accountTypeRef.current && !accountTypeRef.current.contains(event.target)) {
         setIsAccountTypeDropdownOpen(false);
       }
-      // 3. 섹터 드롭다운
+      // 2. 종목 추가 모달 섹터 드롭다운
       if (isSectorDropdownOpen && sectorRef.current && !sectorRef.current.contains(event.target)) {
         setIsSectorDropdownOpen(false);
       }
-      // 4. 통화 드롭다운
+      // 3. 종목 추가 모달 통화 드롭다운
       if (isCurrencyDropdownOpen && currencyRef.current && !currencyRef.current.contains(event.target)) {
         setIsCurrencyDropdownOpen(false);
       }
-      // 5. 종목 검색 드롭다운
-      if (isStockDropdownOpen && stockDropdownRef.current && !stockDropdownRef.current.contains(event.target)) {
-        setIsStockDropdownOpen(false);
-      }
-      // 6. 상단 검색창 드롭다운
+      // 4. 종목 추가 모달 상단 검색창 드롭다운
       if (isSearchDropdownOpen && searchDropdownRef.current && !searchDropdownRef.current.contains(event.target)) {
         setIsSearchDropdownOpen(false);
-      }
-      // 7. 등록 모달 달력
-      if (isCalendarOpen && calendarRef.current && !calendarRef.current.contains(event.target) && (!calendarButtonRef.current || !calendarButtonRef.current.contains(event.target))) {
-        setIsCalendarOpen(false);
-      }
-      // 8. 필터 모달 시작 달력
-      if (isFilterFromCalendarOpen && filterFromCalendarRef.current && !filterFromCalendarRef.current.contains(event.target) && (!filterDateFromRef.current || !filterDateFromRef.current.contains(event.target))) {
-        setIsFilterFromCalendarOpen(false);
-      }
-      // 9. 필터 모달 종료 달력
-      if (isFilterToCalendarOpen && filterToCalendarRef.current && !filterToCalendarRef.current.contains(event.target) && (!filterDateToRef.current || !filterDateToRef.current.contains(event.target))) {
-        setIsFilterToCalendarOpen(false);
-      }
-      // 10. 필터 모달 구분 드롭다운
-      if (isFilterTypeDropdownOpen && typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
-        setIsFilterTypeDropdownOpen(false);
-      }
-      // 11. 필터 모달 종목 드롭다운
-      if (isFilterStockDropdownOpen && filterStockDropdownRef.current && !filterStockDropdownRef.current.contains(event.target)) {
-        setIsFilterStockDropdownOpen(false);
       }
     };
 
@@ -1125,47 +1182,9 @@ export default function TransactionsPage() {
     };
   }, [
     isSortDropdownOpen, isToolbarFromCalendarOpen, isToolbarToCalendarOpen,
-    isAccountDropdownOpen, isAccountTypeDropdownOpen, isSectorDropdownOpen, 
-    isCurrencyDropdownOpen, isStockDropdownOpen, isSearchDropdownOpen, 
-    isCalendarOpen, isFilterFromCalendarOpen, isFilterToCalendarOpen, isFilterTypeDropdownOpen, isFilterStockDropdownOpen
+    isAccountTypeDropdownOpen, isSectorDropdownOpen, 
+    isCurrencyDropdownOpen, isSearchDropdownOpen
   ]);
-
-  // 드롭다운 스크롤 자동 이동 (계좌)
-  useEffect(() => {
-    if (isAccountDropdownOpen && focusedAccountIndex >= 0 && accountListRef.current) {
-      const container = accountListRef.current;
-      const focusedItem = container.children[focusedAccountIndex];
-      if (focusedItem) {
-        focusedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-  }, [focusedAccountIndex, isAccountDropdownOpen]);
-
-  // 드롭다운 스크롤 자동 이동 (종목)
-  useEffect(() => {
-    if (isStockDropdownOpen && focusedStockIndex >= 0 && stockListRef.current) {
-      const container = stockListRef.current;
-      const focusedItem = container.children[focusedStockIndex];
-      if (focusedItem) {
-        focusedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-  }, [focusedStockIndex, isStockDropdownOpen]);
-
-  // 드롭다운 스크롤 자동 이동 (필터 모달 종목)
-  useEffect(() => {
-    if (isFilterStockDropdownOpen && focusedStockIndex >= 0 && filterStockListRef.current) {
-      const container = filterStockListRef.current;
-      // 역순 렌더링이므로 자식 인덱스를 계산해서 접근
-      // index 0 -> 최하단 자식 (container.children.length - 1)
-      // index N -> 최상단 자식 (0)
-      const visualIndex = stockSearchResults.length - 1 - focusedStockIndex;
-      const focusedItem = container.children[visualIndex];
-      if (focusedItem) {
-        focusedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    }
-  }, [focusedStockIndex, isFilterStockDropdownOpen, stockSearchResults.length]);
 
   // 모달 키보드 이벤트 핸들러 (확인창 엔터/스페이스, 삭제창 엔터/ESC, 취소 ESC)
   useEffect(() => {
@@ -1303,332 +1322,112 @@ export default function TransactionsPage() {
     return dateStr;
   };
 
-  const toggleModal = () => {
-    if (!isModalOpen) {
-      const now = new Date();
-      setEditingId(null);
-      setSelectedAccountId(null);
-      const initialCurrency = currencyFilter === 'OVERSEAS' ? 'USD' : 'KRW';
-      setFormData({
-        year: now.getFullYear().toString(),
-        month: (now.getMonth() + 1).toString().padStart(2, '0'),
-        day: now.getDate().toString().padStart(2, '0'),
-        account: '', stock: '', stockCode: '', security_id: '',
-        type: '매수', quantity: '', price: '', amount: '', currency: initialCurrency,
-        exchangeRate: '', totalKRW: '', exchange_code: '', market_type: '', transaction_type: ''
-      });
-    }
-    setIsModalOpen(!isModalOpen);
-    setIsCalendarOpen(false);
-    setFocusedAccountIndex(-1);
-    setFocusedStockIndex(-1);
-  };
+  const toggleModal = useCallback(() => {
+    setEditingTransaction(null);
+    setIsModalOpen(prev => !prev);
+  }, []);
 
-  const handleDateSelect = (y, m, d) => {
-    setFormData(prev => ({
-      ...prev,
-      year: y.toString(),
-      month: m.toString().padStart(2, '0'),
-      day: d.toString().padStart(2, '0')
-    }));
-    setIsCalendarOpen(false);
-  };
-
-  const handleNumberInput = (e, field) => {
-    let rawValue = e.target.value.replace(/,/g, '');
-
-    if (rawValue === '') {
-      setFormData(prev => ({ ...prev, [field]: '' }));
-      return;
-    }
-
-    const isOverseas = formData.currency && formData.currency !== 'KRW';
-
-    if (field === 'price' && isOverseas) {
-      // 숫자와 마침표만 허용
-      if (/[^0-9.]/.test(rawValue)) return;
-
-      // 마침표 중복 체크
-      const parts = rawValue.split('.');
-      if (parts.length > 2) return;
-
-      // 소수점 2자리 제한
-      if (parts[1] && parts[1].length > 2) return;
-
-      // 자릿수 제한 (정수부)
-      if (parts[0].length > 12) return;
-
-      // 포맷팅 처리 (단가: 소수점 2자리 유지)
-      let formatted = "";
-      if (parts[0] !== "") {
-        formatted = Number(parts[0]).toLocaleString('ko-KR');
-      }
-      if (rawValue.includes('.') || (parts[1] !== undefined)) {
-        formatted += "." + (parts[1] || "");
-      }
-
-      setFormData(prev => ({ ...prev, [field]: formatted }));
-    } else {
-      // 국내 단가 및 수량 등 일반 숫자 (정수만)
-      const digitsOnly = rawValue.replace(/[^\d]/g, '');
-      const maxLength = field === 'price' ? 12 : 6;
-      if (digitsOnly.length > maxLength) return;
-      const formatted = digitsOnly === '' ? '' : Number(digitsOnly).toLocaleString('ko-KR');
-      setFormData(prev => ({ ...prev, [field]: formatted }));
-    }
-  };
-
-  useEffect(() => {
-    const qty = parseFloat(formData.quantity.replace(/,/g, '')) || 0;
-    const price = parseFloat(formData.price.replace(/,/g, '')) || 0;
-    const isOverseas = formData.currency && formData.currency !== 'KRW';
-
-    if (qty > 0 && price > 0) {
-      const total = qty * price;
-      if (isOverseas) {
-        // 해외 거래의 경우 소수점 2자리 포맷팅
-        const fixedTotal = total.toFixed(2);
-        const [intPart, decPart] = fixedTotal.split('.');
-        const formatted = Number(intPart).toLocaleString('ko-KR') + "." + decPart;
-        setFormData(prev => ({ ...prev, amount: formatted }));
-      } else {
-        // 국내 거래(KRW)이므로 소수점 없이 반올림 처리
-        const formatted = Math.round(total).toLocaleString('ko-KR');
-        setFormData(prev => ({ ...prev, amount: formatted }));
-      }
-    } else {
-      setFormData(prev => ({ ...prev, amount: '' }));
-    }
-  }, [formData.quantity, formData.price, formData.currency]);
-
-  // 환율 자동 조회
-  const fetchRate = async (specificDate = null) => {
-    if (!isModalOpen) return;
-    
-    // 월/일이 한 자리인 경우 padStart 처리한 임시 객체 사용 (상태 업데이트 전 즉시 반영 위함)
-    const monthStr = specificDate?.month || formData.month;
-    const dayStr = specificDate?.day || formData.day;
-    const yearStr = specificDate?.year || formData.year;
-    
-    if (formData.currency === 'KRW') {
-      setFormData(prev => ({ ...prev, exchangeRate: '1' }));
-      return;
-    }
-
-    if (yearStr && yearStr.length === 4 && monthStr && dayStr && formData.currency) {
-      const today = new Date();
-      const inputDate = new Date(`${yearStr}-${monthStr.toString().padStart(2, '0')}-${dayStr.toString().padStart(2, '0')}`);
-      
-      if (inputDate > today) {
-        console.warn('fetchRate blocked: future date');
-        return;
-      }
-
-      console.log('fetchRate triggered:', { date: `${yearStr}-${monthStr}-${dayStr}`, currency: formData.currency });
-      try {
-        const paddedMonth = monthStr.toString().padStart(2, '0');
-        const paddedDay = dayStr.toString().padStart(2, '0');
-        const dateStr = `${yearStr}-${paddedMonth}-${paddedDay}`;
-        const rate = await TransactionManager.getExchangeRate(dateStr, formData.currency, 'KRW');
-        if (rate) {
-          setFormData(prev => ({ ...prev, exchangeRate: rate.toString() }));
-        }
-      } catch (error) {
-        console.error('환율 조회 실패:', error);
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchRate();
-  }, [isModalOpen, formData.currency, formData.year, formData.month, formData.day]);
-
-  // 원화 환산 금액 계산
-  useEffect(() => {
-    const amountVal = parseFloat(formData.amount.replace(/,/g, '')) || 0;
-    const rateVal = parseFloat((formData.exchangeRate || '0').replace(/,/g, '')) || 0;
-
-    if (amountVal > 0) {
-      const krw = amountVal * rateVal;
-      // 원 단위 반올림 (10원 단위로 처리)
-      const rounded = Math.round(krw / 10) * 10;
-      setFormData(prev => ({ ...prev, totalKRW: rounded.toLocaleString('ko-KR') }));
-    } else {
-      setFormData(prev => ({ ...prev, totalKRW: '' }));
-    }
-  }, [formData.amount, formData.exchangeRate]);
-
-  // Handle clicking outside of calendar 상단 통합으로 인한 중복 제거
-
-  const handleSubmit = async (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (loading) return;
-
-    // Validation
-    if (!formData.year || !formData.month || !formData.day) {
-      showAlert("입력 오류", "거래일자를 선택해주세요.", 'error', calendarButtonRef);
-      return;
-    }
-    const inputDate = new Date(`${formData.year}-${formData.month.toString().padStart(2, '0')}-${formData.day.toString().padStart(2, '0')}`);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    if (inputDate > today) {
-      showAlert("입력 오류", "미래 일자는 입력할 수 없습니다.", 'error', calendarButtonRef);
-      return;
-    }
-    if (!formData.stock.trim()) {
-      showAlert("입력 오류", "종목명을 입력해주세요.", 'error', stockRef);
-      return;
-    }
-    if (!formData.stockCode.trim()) {
-      showAlert("입력 오류", "종목코드를 입력해주세요.", 'error', stockCodeRef);
-      return;
-    }
-    if (!selectedAccountId) {
-      showAlert("입력 오류", "계좌를 선택해 주세요.", "error");
-      return;
-    }
-    if (!formData.quantity || formData.quantity === '0') {
-      showAlert("입력 오류", "수량을 입력해주세요.", 'error', quantityRef);
-      return;
-    }
-    if (!formData.price || formData.price === '0') {
-      showAlert("입력 오류", "단가를 입력해주세요.", 'error', priceRef);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const dateStr = `${formData.year}-${formData.month}-${formData.day}`;
-
-      const isKRWCurrency = (formData.currency || 'KRW') === 'KRW';
-      const qty = parseFloat(formData.quantity.replace(/,/g, ''));
-      const price = isKRWCurrency ? Math.round(parseFloat(formData.price.replace(/,/g, ''))) : parseFloat(formData.price.replace(/,/g, ''));
-      const parsedAmount = parseFloat((formData.amount || '').replace(/,/g, ''));
-      const calcAmount = isKRWCurrency ? Math.round(qty * price) : Number((qty * price).toFixed(2));
-      const amount = (!isNaN(parsedAmount) && parsedAmount > 0) ? (isKRWCurrency ? Math.round(parsedAmount) : parsedAmount) : calcAmount;
-
-      let exchangeRate = 1;
-      let exchangeTotalRate = amount;
-      if (!isKRWCurrency) {
-        exchangeRate = parseFloat((formData.exchangeRate || '1').replace(/,/g, '')) || 1;
-        exchangeTotalRate = Math.round((amount * exchangeRate) / 10) * 10;
-      }
-
-      const isOtherStock = getStockType(formData) === 'OTHER' || formData.transaction_type === 'other';
-      const txType = isOtherStock 
-        ? TRANSACTION_TYPES.OTHER 
-        : (isKRWCurrency ? TRANSACTION_TYPES.DOMESTIC : TRANSACTION_TYPES.OVERSEAS);
-
-      const rawStockName = (formData.stock || '').replace(/\[.*?\]\s*/, '').trim();
-      const transactionData = {
-        transaction_type: txType,
-        date: dateStr,
-        currency: formData.currency || 'KRW',
-        trade_type: formData.type === '매수' ? TRADE_TYPES.BUY : TRADE_TYPES.SELL,
-        quantity: qty,
-        price: price,
-        amount: amount,
-        exchange_rate: exchangeRate,
-        exchange_total_rate: exchangeTotalRate,
-        account_id: selectedAccountId,
-        security_id: formData.security_id || null,
-        stock_name: rawStockName,
-        stock_code: formData.stockCode || '',
-        stock: formData.stock || '',
-        security: {
-          security_id: formData.security_id,
-          name: rawStockName,
-          code: formData.stockCode || '',
-          currency: formData.currency || 'KRW',
-          exchange_code: formData.exchange_code || (isOtherStock ? 'OTHER' : ''),
-          market_type: isOtherStock ? 'OTHER' : (isKRWCurrency ? 'DOMESTIC' : 'OVERSEAS')
-        }
-      };
-
-
-      if (editingId) {
-        // Update existing transaction with alt_sync flag
-        await TransactionManager.updateTransaction(editingId, { 
-          ...transactionData,
-          alt_sync: true 
-        });
-        await refreshTransactions();
-        await refreshAssets();
-        setIsModalOpen(false);
-        setEditingId(null);
-        showAlert("수정 완료", "변경 내용이 반영되었습니다.", "success");
-      } else {
-        // Add new transaction
-        await TransactionManager.addTransaction(transactionData);
-        await refreshTransactions(); // 전역 거래 데이터 갱신
-        await refreshAssets();      // 자산 요약 및 트렌드 갱신
-        setIsModalOpen(false);
-        setEditingId(null);
-        showAlert("등록 완료", "거래가 성공적으로 등록되었습니다.", "success");
-      }
-    } catch (error) {
-      console.error('거래 저장 오류:', error);
-      const errMsg = error?.message || '';
-      const errDetails = error?.details || '';
-      const errCode = error?.code || '';
-      const fullMsg = `저장 오류: ${errMsg} ${errDetails ? '(' + errDetails + ')' : ''} [코드: ${errCode || '알수없음'}]`;
-      showAlert("오류", fullMsg, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (tx) => {
-    const [year, month, day] = tx.date.includes('-') ? tx.date.split('-') : ['20' + tx.date.split('/')[0], tx.date.split('/')[1], tx.date.split('/')[2]];
-    const txCurrency = tx.currency || tx.security?.currency || 'KRW';
-    const isOverseas = txCurrency !== 'KRW';
-
-    const numPrice = tx.price !== undefined && tx.price !== null && tx.price !== ''
-      ? Number(String(tx.price).replace(/,/g, ''))
-      : NaN;
-    const formattedPrice = !isNaN(numPrice)
-      ? (isOverseas
-          ? numPrice.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : numPrice.toLocaleString('ko-KR'))
-      : (tx.price?.toString() || '');
-
-    const numAmount = tx.amount !== undefined && tx.amount !== null && tx.amount !== ''
-      ? Number(String(tx.amount).replace(/,/g, ''))
-      : NaN;
-    const formattedAmount = !isNaN(numAmount)
-      ? (isOverseas
-          ? numAmount.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : numAmount.toLocaleString('ko-KR'))
-      : (tx.amount?.toString() || '');
-
-    setEditingId(tx.id);
-    setFormData({
-      year: year,
-      month: month,
-      day: day,
-      account: accountNameById[tx.account_id] || tx.account || '',
-      stock: tx.security?.name || tx.stock_name || tx.stock || '',
-      stockCode: tx.security?.code || tx.stock_code || tx.stockCode || '',
-      security_id: tx.security_id || '',
-      type: tx.trade_type === TRADE_TYPES.BUY || tx.trade_type === 'BUY' || tx.type === '매수' ? '매수' : '매도',
-      quantity: typeof tx.quantity === 'number' ? tx.quantity.toLocaleString('ko-KR') : (tx.quantity?.toString() || ''),
-      price: formattedPrice,
-      amount: formattedAmount,
-      currency: txCurrency,
-      exchangeRate: tx.exchange_rate ? tx.exchange_rate.toString() : '',
-      totalKRW: tx.exchange_total_rate ? tx.exchange_total_rate.toLocaleString('ko-KR') : '',
-      exchange_code: tx.security?.exchange_code || tx.exchange_code || '',
-      market_type: tx.security?.market_type || tx.market_type || '',
-      transaction_type: tx.transaction_type || ''
-    });
-    setSelectedAccountId(tx.account_id || null);
+  const handleOpenRegister = useCallback(() => {
+    setEditingTransaction(null);
     setIsModalOpen(true);
+  }, []);
+
+  const handleEdit = useCallback((tx) => {
+    setEditingTransaction(tx);
+    setIsModalOpen(true);
+  }, []);
+
+  const handleSaveTransaction = async (data) => {
+    const isKRWCurrency = (data.currency || 'KRW') === 'KRW';
+    const qty = parseFloat((data.quantity || '0').replace(/,/g, ''));
+    const price = isKRWCurrency
+      ? Math.round(parseFloat((data.price || '0').replace(/,/g, '')))
+      : parseFloat((data.price || '0').replace(/,/g, ''));
+    const parsedAmount = parseFloat((data.amount || '').replace(/,/g, ''));
+    const calcAmount = isKRWCurrency ? Math.round(qty * price) : Number((qty * price).toFixed(2));
+    const amount = (!isNaN(parsedAmount) && parsedAmount > 0)
+      ? (isKRWCurrency ? Math.round(parsedAmount) : parsedAmount)
+      : calcAmount;
+
+    let exchangeRate = 1;
+    let exchangeTotalRate = amount;
+    if (!isKRWCurrency) {
+      exchangeRate = parseFloat((data.exchangeRate || '1').replace(/,/g, '')) || 1;
+      exchangeTotalRate = Math.round((amount * exchangeRate) / 10) * 10;
+    }
+
+    const isOtherStock = getStockType(data) === 'OTHER' || data.transaction_type === 'other';
+    const txType = isOtherStock 
+      ? TRANSACTION_TYPES.OTHER 
+      : (isKRWCurrency ? TRANSACTION_TYPES.DOMESTIC : TRANSACTION_TYPES.OVERSEAS);
+
+    const rawStockName = (data.stock || '').replace(/\[.*?\]\s*/, '').trim();
+    const transactionData = {
+      transaction_type: txType,
+      date: `${data.year}-${data.month.padStart(2, '0')}-${data.day.padStart(2, '0')}`,
+      currency: data.currency || 'KRW',
+      trade_type: data.type === '매수' ? TRADE_TYPES.BUY : TRADE_TYPES.SELL,
+      quantity: qty,
+      price: price,
+      amount: amount,
+      exchange_rate: exchangeRate,
+      exchange_total_rate: exchangeTotalRate,
+      account_id: data.selectedAccountId || accounts.find(a => a.account_nm === data.account)?.account_id,
+      security_id: data.security_id || null,
+      stock_name: rawStockName,
+      stock_code: data.stockCode || '',
+      stock: data.stock || '',
+      security: {
+        security_id: data.security_id,
+        name: rawStockName,
+        code: data.stockCode || '',
+        currency: data.currency || 'KRW',
+        exchange_code: data.exchange_code || (isOtherStock ? 'OTHER' : ''),
+        market_type: isOtherStock ? 'OTHER' : (isKRWCurrency ? 'DOMESTIC' : 'OVERSEAS')
+      }
+    };
+
+    if (data.editingId) {
+      await TransactionManager.updateTransaction(data.editingId, { 
+        ...transactionData,
+        alt_sync: true 
+      });
+      await refreshTransactions();
+      await refreshAssets();
+      showAlert("수정 완료", "변경 내용이 반영되었습니다.", "success");
+    } else {
+      await TransactionManager.addTransaction(transactionData);
+      await refreshTransactions();
+      await refreshAssets();
+      showAlert("등록 완료", "거래가 성공적으로 등록되었습니다.", "success");
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleApplyFilter = useCallback((filters) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      type: filters.type,
+      stockName: filters.stockName,
+      stockCode: filters.stockCode,
+      security_id: filters.security_id,
+      currencyFilter: filters.currencyFilter
+    }));
+    if (filters.currencyFilter) {
+      setCurrencyFilter(filters.currencyFilter);
+    }
+    if (filters.type) {
+      if (filters.type === '매수') setTradeTypeFilter('BUY');
+      else if (filters.type === '매도') setTradeTypeFilter('SELL');
+      else setTradeTypeFilter('ALL');
+    }
+    setCurrentPage(1);
+  }, []);
+
+  const handleDelete = useCallback((id) => {
     setDeleteConfirm({ isOpen: true, id });
-  };
+  }, []);
 
   const confirmDelete = async () => {
     try {
@@ -1712,9 +1511,9 @@ export default function TransactionsPage() {
     }
   };
 
-  // 필터링 및 정렬된 거래 내역
+  // 필터링 및 정렬된 거래 내역 (allTransactions로부터 즉시 계산하여 1회차 렌더 지연 완벽 제거)
   const filteredTransactions = useMemo(() => {
-    let list = (transactions || []).filter(tx => {
+    let list = (allTransactions || []).filter(tx => {
       // 1. 거래구분 필터 (툴바 매수/매도 & 모달 필터)
       const isBuy = tx.trade_type === TRADE_TYPES.BUY || tx.trade_type === 'BUY' || tx.type === '매수';
       if (tradeTypeFilter === 'BUY' && !isBuy) return false;
@@ -1724,14 +1523,14 @@ export default function TransactionsPage() {
         if (typeStr !== activeFilters.type) return false;
       }
 
-      // 2. 거래유형(시장) 필터 (currencyFilter: ALL, KRW/DOMESTIC, OVERSEAS, OTHER)
-      const txType = (tx.transaction_type ? tx.transaction_type.toUpperCase() : getStockType(tx));
+      // 2. 거래유형(시장) 필터 (transactions 테이블 transaction_type 기준: domestic, overseas, other)
+      const txType = (tx.transaction_type || '').toLowerCase();
       if (currencyFilter === 'KRW' || currencyFilter === 'DOMESTIC') {
-        if (txType !== 'DOMESTIC') return false;
+        if (txType !== 'domestic') return false;
       } else if (currencyFilter === 'OVERSEAS') {
-        if (txType !== 'OVERSEAS') return false;
+        if (txType !== 'overseas') return false;
       } else if (currencyFilter === 'OTHER') {
-        if (txType !== 'OTHER') return false;
+        if (txType !== 'other') return false;
       }
 
       // 3. 종목 검색어 필터 (상단 검색창 searchQuery)
@@ -1761,10 +1560,32 @@ export default function TransactionsPage() {
       return true;
     });
 
+    // 거래유형(시장) 우선순위: 국내(1) -> 해외(2) -> 기타(3)
+    const getMarketPriority = (tx) => {
+      const type = (tx.transaction_type || '').toLowerCase();
+      if (type === 'domestic') return 1;
+      if (type === 'overseas') return 2;
+      if (type === 'other') return 3;
+      if (tx.currency === 'KRW' || !tx.currency) return 1;
+      return 2;
+    };
+
     // 정렬
     list.sort((a, b) => {
-      if (sortBy === 'latest') return (b.date || '').localeCompare(a.date || '') || (b.id || 0) - (a.id || 0);
-      if (sortBy === 'oldest') return (a.date || '').localeCompare(b.date || '') || (a.id || 0) - (b.id || 0);
+      if (sortBy === 'latest') {
+        const dateDiff = (b.date || '').localeCompare(a.date || '');
+        if (dateDiff !== 0) return dateDiff;
+        const priorityDiff = getMarketPriority(a) - getMarketPriority(b);
+        if (priorityDiff !== 0) return priorityDiff;
+        return (b.id || 0) - (a.id || 0);
+      }
+      if (sortBy === 'oldest') {
+        const dateDiff = (a.date || '').localeCompare(b.date || '');
+        if (dateDiff !== 0) return dateDiff;
+        const priorityDiff = getMarketPriority(a) - getMarketPriority(b);
+        if (priorityDiff !== 0) return priorityDiff;
+        return (a.id || 0) - (b.id || 0);
+      }
 
       const getAmountKRW = (tx) => {
         const isK = (tx.currency || 'KRW') === 'KRW';
@@ -1790,7 +1611,7 @@ export default function TransactionsPage() {
     });
 
     return list;
-  }, [transactions, activeFilters, currencyFilter, searchQuery, sortBy, tradeTypeFilter]);
+  }, [allTransactions, activeFilters, currencyFilter, searchQuery, sortBy, tradeTypeFilter]);
 
   // 상단 4대 카드용 요약 계산 (추천 A안: 자금 흐름 & 포지션 중심)
   const summary = useMemo(() => {
@@ -2014,84 +1835,104 @@ export default function TransactionsPage() {
     currentPage * ITEMS_PER_PAGE
   );
 
-  const isFilterActive = false; // 화면 조작(기간, 종목명, 통화 등) 시 필터 버튼 모양을 변경하지 않음
-  const isToolbarFilterActive = Boolean(
+  const isFilterActive = Boolean(
     inputDateFrom ||
     inputDateTo ||
     activeFilters.dateFrom ||
     activeFilters.dateTo ||
-    searchQuery.trim() ||
-    tradeTypeFilter !== 'ALL'
+    (activeFilters.type && activeFilters.type !== '전체') ||
+    activeFilters.stockName ||
+    activeFilters.security_id ||
+    currencyFilter !== 'ALL' ||
+    tradeTypeFilter !== 'ALL' ||
+    searchQuery.trim()
   );
+  const isToolbarFilterActive = isFilterActive;
 
-  return (
-    <div className="animate-fade-in text-slate-900">
-      {/* Mobile Transaction View */}
-      <div className="mobile-only-block w-full">
-        <MobileTransactionList
-          type="trading"
-          transactions={filteredTransactions}
-          paginatedTransactions={paginatedTransactions}
-          loading={loading}
-          user={user}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-          totalPages={totalPages}
-          onOpenFilter={() => {
-            if (!activeFilters.dateFrom && !activeFilters.dateTo) {
-              const todayStr = new Date().toLocaleDateString('en-CA');
-              const oneMonthAgo = new Date();
-              oneMonthAgo.setMonth(new Date().getMonth() - 1);
-              setTempFilters({
-                ...activeFilters,
-                dateFrom: oneMonthAgo.toLocaleDateString('en-CA'),
-                dateTo: todayStr
-              });
-            } else {
-              setTempFilters({ ...activeFilters, dateTo: new Date().toLocaleDateString('en-CA') });
-            }
-            setIsFilterModalOpen(true);
-          }}
-          onOpenRegister={() => toggleModal()}
-          isFilterActive={isFilterActive}
-          onResetFilter={() => {
-            const initial = {
-              dateFrom: '',
-              dateTo: '',
-              type: '전체',
-              stockName: '',
-              stockCode: '',
-              security_id: ''
-            };
-            setActiveFilters(initial);
-            setTempFilters(initial);
-            setSearchQuery('');
-            setCurrencyFilter('ALL');
-            setSortBy('latest');
-            setStockSearchResults([]);
-            setIsFilterStockDropdownOpen(false);
-            setCurrentPage(1);
-            showAlert("필터초기화", "설정된 필터가 초기화 되었습니다.", "success");
-          }}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          accountNameById={accountNameById}
-          formatCurrency={formatCurrency}
-          getCurrencyStyle={getCurrencyStyle}
-        />
-      </div>
+  const handleSelectCurrencyFilter = useCallback((val) => {
+    setCurrencyFilter(val);
+    setCurrentPage(1);
+  }, []);
 
-      {/* Desktop Transaction View */}
-      <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
+  const handleOpenFilter = useCallback(() => {
+    setIsFilterModalOpen(true);
+  }, []);
+
+  const handleResetFilter = useCallback(() => {
+    const initial = {
+      dateFrom: '',
+      dateTo: '',
+      type: '전체',
+      stockName: '',
+      stockCode: '',
+      security_id: '',
+      currencyFilter: 'ALL'
+    };
+    setActiveFilters(initial);
+    setInputDateFrom('');
+    setInputDateTo('');
+    setSearchQuery('');
+    setCurrencyFilter('ALL');
+    setTradeTypeFilter('ALL');
+    setSortBy('latest');
+    setStockSearchResults([]);
+    setCurrentPage(1);
+    showAlert('필터 초기화', '모든 필터 조건이 초기화되었습니다.', 'success');
+  }, [showAlert]);
+
+  const mobileTransactionView = useMemo(() => (
+    <div className="mobile-only-block w-full">
+      <MobileTransactionList
+        type="trading"
+        transactions={filteredTransactions}
+        paginatedTransactions={paginatedTransactions}
+        loading={loading}
+        user={user}
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        totalPages={totalPages}
+        currencyFilter={currencyFilter}
+        onSelectCurrencyFilter={handleSelectCurrencyFilter}
+        onOpenFilter={handleOpenFilter}
+        onOpenRegister={handleOpenRegister}
+        isFilterActive={isFilterActive}
+        onResetFilter={handleResetFilter}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        accountNameById={accountNameById}
+        formatCurrency={formatCurrency}
+        getCurrencyStyle={getCurrencyStyle}
+      />
+    </div>
+  ), [
+    filteredTransactions,
+    paginatedTransactions,
+    loading,
+    user,
+    currentPage,
+    totalPages,
+    currencyFilter,
+    handleSelectCurrencyFilter,
+    handleOpenFilter,
+    handleOpenRegister,
+    isFilterActive,
+    handleResetFilter,
+    handleEdit,
+    handleDelete,
+    accountNameById
+  ]);
+
+  const desktopTransactionView = useMemo(() => (
+    <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100/50 shadow-sm">
-              <ArrowLeftRight size={20} strokeWidth={2.5} />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+              <ArrowLeftRight size={22} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-slate-800">거래 내역</h1>
+                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">거래내역</h1>
                 {user && (
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
                     <CheckCircle2 size={13} className="text-slate-400" />
@@ -2099,7 +1940,7 @@ export default function TransactionsPage() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">국내 · 해외 주식 매매 내역</p>
+              <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">국내 · 해외 주식 매매 내역</p>
             </div>
           </div>
 
@@ -3216,632 +3057,79 @@ export default function TransactionsPage() {
           </>
         )}
       </div>
+  ), [
+    filteredTransactions,
+    paginatedTransactions,
+    loading,
+    user,
+    summary,
+    currencyFilter,
+    tradeTypeFilter,
+    isFilterPanelOpen,
+    isFilterPanelMounted,
+    isFilterPanelClosing,
+    searchQuery,
+    sortBy,
+    isSortDropdownOpen,
+    isToolbarFromCalendarOpen,
+    isToolbarToCalendarOpen,
+    currentPage,
+    totalPages,
+    startPage,
+    endPage,
+    activeFilters,
+    inputDateFrom,
+    inputDateTo,
+    isToolbarFilterActive,
+    accountNameById,
+    handleEdit,
+    handleDelete,
+    toggleModal
+  ]);
+
+  return (
+    <div className="animate-fade-in text-slate-900">
+      {/* Mobile Transaction View */}
+      {mobileTransactionView}
+
+      {/* Desktop Transaction View */}
+      {desktopTransactionView}
 
       {/* Add Transaction Modal */}
-      {isModalMounted && mounted && createPortal(
-        <div 
-          className={`fixed inset-0 z-[9990] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 ${
-            isModalClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'
-          }`} 
-          onClick={toggleModal}
-        >
-          <div 
-            className={`relative bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col pointer-events-auto ${
-              isModalClosing ? 'animate-modal-out' : 'animate-page-slide'
-            }`} 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  {editingId ? <Edit2 size={16} strokeWidth={2.5} /> : <PlusCircle size={18} strokeWidth={2.5} />}
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">{editingId ? '수정' : '등록'}</h3>
-              </div>
-              <button 
-                onClick={toggleModal} 
-                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-              >
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            <form ref={modalFormRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-              {/* 1. 거래일 & 구분 (2열 나란히 배치, 거래일 가운데 정렬) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">거래일</label>
-                  <button
-                    ref={calendarButtonRef}
-                    type="button"
-                    onClick={() => setIsCalendarOpen(prev => !prev)}
-                    className={`w-full h-12 px-3.5 rounded-2xl border transition-all relative flex items-center justify-center text-xs font-extrabold cursor-pointer shadow-xs ${
-                      isCalendarOpen
-                        ? 'border-blue-600 bg-white ring-2 ring-blue-100 text-blue-600'
-                        : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
-                    }`}
-                  >
-                    <span className="text-center font-extrabold text-xs">
-                      {formData.year && formData.month && formData.day ? `${formData.year}-${formData.month.toString().padStart(2, '0')}-${formData.day.toString().padStart(2, '0')}` : '거래일 선택'}
-                    </span>
-                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                      <Calendar size={18} className={isCalendarOpen ? 'text-blue-500' : 'text-slate-400'} />
-                    </span>
-                  </button>
-
-                  {isCalendarOpen && (
-                    <div
-                      ref={calendarRef}
-                      className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 w-[245px]"
-                      style={{ backgroundColor: '#ffffff' }}
-                    >
-                      <CalendarUI
-                        initialYear={parseInt(formData.year) || new Date().getFullYear()}
-                        initialMonth={parseInt(formData.month) || (new Date().getMonth() + 1)}
-                        onSelect={handleDateSelect}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">구분</label>
-                  <div className="h-12 p-1 bg-slate-100/90 rounded-2xl flex items-center gap-1 border border-slate-200/50">
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, type: '매수' }))}
-                      className={`flex-1 h-full rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        formData.type === '매수'
-                          ? 'bg-rose-500 text-white shadow-xs font-extrabold'
-                          : 'text-slate-600 hover:text-slate-800'
-                      }`}
-                    >
-                      <span className={formData.type === '매수' ? 'text-white' : 'text-rose-500'}>●</span>
-                      매수
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, type: '매도' }))}
-                      className={`flex-1 h-full rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        formData.type === '매도'
-                          ? 'bg-blue-600 text-white shadow-xs font-extrabold'
-                          : 'text-slate-600 hover:text-slate-800'
-                      }`}
-                    >
-                      <span className={formData.type === '매도' ? 'text-white' : 'text-blue-500'}>●</span>
-                      매도
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. 계좌 */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">계좌</label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1" ref={accountDropdownRef}>
-                    <button
-                      ref={accountRef}
-                      type="button"
-                      onClick={async () => {
-                        const next = !isAccountDropdownOpen;
-                        setIsAccountDropdownOpen(next);
-                        if (next) await refreshAccounts();
-                      }}
-                      className={`w-full h-12 px-3.5 rounded-2xl border transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs text-left ${
-                        isAccountDropdownOpen
-                          ? 'border-blue-500 ring-2 ring-blue-100 bg-white text-blue-600'
-                          : 'border-slate-200 bg-slate-50/70 hover:bg-white text-slate-800'
-                      }`}
-                    >
-                      <span className={`truncate text-xs tracking-tight ${formData.account ? 'text-slate-800 font-bold' : 'text-slate-400 font-medium'}`}>
-                        {formData.account || '계좌선택'}
-                      </span>
-                      <ChevronDown
-                        size={14}
-                        className={`text-slate-400 shrink-0 ml-2 transition-transform duration-200 ${
-                          isAccountDropdownOpen ? 'rotate-180 text-blue-500' : ''
-                        }`}
-                      />
-                    </button>
-                    {isAccountDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white/95 backdrop-blur-xl border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/70 z-50 p-1.5 animate-fade-in">
-                        <div ref={accountListRef} className="py-1 max-h-52 overflow-y-auto space-y-0.5">
-                          {isAccountsLoading ? (
-                            <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">불러오는 중...</div>
-                          ) : accounts.length === 0 ? (
-                            <div className="px-3 py-2 text-xs font-semibold text-slate-400 text-center tracking-tight">등록된 계좌가 없습니다</div>
-                          ) : (
-                            accounts.map((acc, index) => {
-                              const isSelected = selectedAccountId === acc.account_id || formData.account === acc.account_nm;
-                              const isFocused = focusedAccountIndex === index;
-                              return (
-                                <button
-                                  key={acc.account_id}
-                                  type="button"
-                                  className={`w-full px-2.5 py-2 text-xs rounded-xl transition-all flex items-center justify-between cursor-pointer tracking-tight ${
-                                    isSelected
-                                      ? 'bg-blue-50 text-blue-600 font-black'
-                                      : isFocused
-                                        ? 'bg-slate-100/80 text-slate-900 font-semibold'
-                                        : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 font-semibold'
-                                  }`}
-                                  onMouseEnter={() => setFocusedAccountIndex(index)}
-                                  onClick={() => {
-                                    setFormData(prev => ({ ...prev, account: acc.account_nm }));
-                                    setSelectedAccountId(acc.account_id);
-                                    setIsAccountDropdownOpen(false);
-                                    setTimeout(() => stockRef.current?.focus(), 50);
-                                  }}
-                                >
-                                  <span className="truncate">{acc.account_nm}</span>
-                                  {isSelected && <Check size={14} className="text-blue-600 shrink-0 ml-1.5" strokeWidth={2.5} />}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAccountForm({ institution: '', type: '일반' });
-                        setIsAccountTypeDropdownOpen(false);
-                        setIsAccountModalOpen(true);
-                        setIsAccountDropdownOpen(false);
-                      }}
-                      className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                      title="계좌 추가"
-                    >
-                      <Plus size={22} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!formData.account}
-                      onClick={() => {
-                        if (formData.account) {
-                          setAccountDeleteConfirm({ isOpen: true, name: formData.account });
-                        }
-                      }}
-                      className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${
-                        formData.account 
-                          ? 'text-slate-300 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
-                          : 'text-slate-200 cursor-not-allowed'
-                      }`}
-                      title="계좌 삭제"
-                    >
-                      <Trash2 size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. 종목 */}
-              <div>
-                <div className="flex items-center gap-1.5 ml-0.5 mb-1.5">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight">종목</label>
-                  {formData.security_id && (() => {
-                    const stType = getStockType(formData);
-                    return (
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
-                        stType === 'OTHER'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : stType === 'OVERSEAS'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-blue-50 text-blue-600 border-blue-200'
-                      }`}>
-                        {stType === 'OTHER' ? '기타' : stType === 'OVERSEAS' ? '해외' : '국내'}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1" ref={stockDropdownRef}>
-                    {formData.security_id ? (
-                      <div
-                        onClick={() => {
-                          setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock.replace(`[${prev.stockCode}] `, '') }));
-                          setTimeout(() => {
-                            stockRef.current?.focus();
-                            stockRef.current?.select();
-                          }, 50);
-                        }}
-                        ref={stockRef}
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setIsStockDropdownOpen(false);
-                            setFormData(prev => ({ ...prev, security_id: '', stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' }));
-                            setTimeout(() => {
-                              stockRef.current?.focus();
-                              stockRef.current?.select();
-                            }, 50);
-                          } else if (e.key === 'Tab' && !e.shiftKey) {
-                            e.preventDefault();
-                            quantityRef.current?.focus();
-                          }
-                        }}
-                        className="w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer transition-all hover:border-blue-400 shadow-xs"
-                      >
-                        <span className="truncate">
-                          {formData.stock.replace(`[${formData.stockCode}] `, '')}
-                          <span className="text-[11px] text-slate-400 font-medium ml-1">({formData.stockCode})</span>
-                        </span>
-                        <Search size={18} className="text-slate-400 shrink-0 ml-2" />
-                      </div>
-                    ) : (
-                      <div className="relative w-full">
-                        <input
-                          ref={stockRef}
-                          type="text"
-                          placeholder="종목명 입력 (엔터로 검색)"
-                          value={formData.stock}
-                          onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value.toUpperCase(), security_id: '' }))}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              if (isStockDropdownOpen && focusedStockIndex >= 0 && searchedStocks[focusedStockIndex]) {
-                                const stock = searchedStocks[focusedStockIndex];
-                                const isOther = stock.market_type === 'OTHER' || stock.exchange_code === 'OTHER' || (stock.name || '').includes('금현물') || (stock.code || '').toUpperCase() === 'GOLD';
-                                const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
-                                setFormData(prev => ({
-                                  ...prev,
-                                  security_id: stock.security_id,
-                                  stock: `[${stock.code}] ${stock.name}`,
-                                  stockCode: stock.code,
-                                  exchange_code: stock.exchange_code || (isOther ? 'OTHER' : ''),
-                                  market_type: isOther ? 'OTHER' : (stockCur === 'KRW' ? 'DOMESTIC' : 'OVERSEAS'),
-                                  currency: stockCur
-                                }));
-                                setIsStockDropdownOpen(false);
-                                setFocusedStockIndex(-1);
-                                setTimeout(() => quantityRef.current?.focus(), 50);
-                              } else {
-                                setIsSearchingStock(true);
-                                setIsStockDropdownOpen(true);
-                                setFocusedStockIndex(-1);
-                                try {
-                                  let searchTerm = formData.stock.trim();
-                                  const match = searchTerm.match(/\[(.*?)\]/);
-                                  if (match && match[1]) {
-                                    searchTerm = match[1];
-                                  } else {
-                                    const parts = searchTerm.split('] ');
-                                    if (parts.length > 1) searchTerm = parts[1];
-                                  }
-
-                                  const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                                  setSearchedStocks(results);
-                                  if (results.length > 0) setFocusedStockIndex(0);
-                                } catch (err) {
-                                  console.error(err);
-                                  setSearchedStocks([]);
-                                } finally {
-                                  setIsSearchingStock(false);
-                                }
-                              }
-                            } else if (e.key === 'Tab') {
-                              if (isStockDropdownOpen) {
-                                setIsStockDropdownOpen(false);
-                                setFocusedStockIndex(-1);
-                              }
-                              if (!e.shiftKey) {
-                                e.preventDefault();
-                                quantityRef.current?.focus();
-                              }
-                            } else if (e.key === 'ArrowDown') {
-                              e.preventDefault();
-                              if (!isStockDropdownOpen) {
-                                setIsStockDropdownOpen(true);
-                                setFocusedStockIndex(0);
-                              } else {
-                                setFocusedStockIndex(prev => Math.min(prev + 1, searchedStocks.length - 1));
-                              }
-                            } else if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              if (isStockDropdownOpen) {
-                                setFocusedStockIndex(prev => Math.max(prev - 1, 0));
-                              }
-                            } else if (e.key === 'Escape') {
-                              setIsStockDropdownOpen(false);
-                              setFocusedStockIndex(-1);
-                            }
-                          }}
-                          className="w-full h-12 pl-4 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-bold text-slate-800 text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
-                        />
-                        <button
-                          type="button"
-                          className="absolute inset-y-0 right-0 flex items-center pr-3.5 cursor-pointer text-slate-400 hover:text-slate-600"
-                          onClick={async () => {
-                            const next = !isStockDropdownOpen;
-                            if (next) {
-                              setIsSearchingStock(true);
-                              setIsStockDropdownOpen(true);
-                              try {
-                                let searchTerm = formData.stock ? formData.stock.trim() : '';
-                                const match = searchTerm.match(/\[(.*?)\]/);
-                                if (match && match[1]) {
-                                  searchTerm = match[1];
-                                } else {
-                                  const parts = searchTerm.split('] ');
-                                  if (parts.length > 1) searchTerm = parts[1];
-                                }
-
-                                const results = await TransactionManager.searchStocksByName(searchTerm, null);
-                                setSearchedStocks(results);
-                              } catch (err) {
-                                console.error(err);
-                                setSearchedStocks([]);
-                              } finally {
-                                setIsSearchingStock(false);
-                              }
-                            } else {
-                              setIsStockDropdownOpen(false);
-                            }
-                          }}
-                        >
-                          <Search size={18} />
-                        </button>
-                      </div>
-                    )}
-                    {isStockDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden">
-                        <div ref={stockListRef} className="py-2 max-h-[286px] overflow-y-auto block overflow-x-hidden">
-                          {isSearchingStock ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 중...</div>
-                          ) : searchedStocks.length === 0 ? (
-                            <div className="px-4 py-2 text-sm text-slate-400 text-center">검색 결과가 없습니다</div>
-                          ) : (
-                            searchedStocks.map((stock, index) => (
-                              <button
-                                key={stock.security_id || stock.code}
-                                type="button"
-                                className={`w-full px-4 py-3 text-left transition-colors flex items-center justify-between cursor-pointer ${
-                                  focusedStockIndex === index ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'
-                                }`}
-                                onMouseEnter={() => setFocusedStockIndex(index)}
-                                onClick={() => {
-                                  const isOther = stock.market_type === 'OTHER' || stock.exchange_code === 'OTHER' || (stock.name || '').includes('금현물') || (stock.code || '').toUpperCase() === 'GOLD';
-                                  const stockCur = stock.currency || (['KOSPI', 'KOSDAQ', 'KONEX', 'KRX'].includes(stock.market) || stock.exchange_code === 'KRX' ? 'KRW' : 'USD');
-                                  setFormData(prev => ({ 
-                                    ...prev, 
-                                    stock: `[${stock.code}] ${stock.name}`, 
-                                    stockCode: stock.code, 
-                                    security_id: stock.security_id, 
-                                    exchange_code: stock.exchange_code || (isOther ? 'OTHER' : ''),
-                                    market_type: isOther ? 'OTHER' : (stockCur === 'KRW' ? 'DOMESTIC' : 'OVERSEAS'),
-                                    currency: stockCur 
-                                  }));
-                                  setIsStockDropdownOpen(false);
-                                  setTimeout(() => quantityRef.current?.focus(), 50);
-                                }}
-                              >
-                                <span className={`font-semibold text-sm leading-tight break-words truncate mr-2 ${focusedStockIndex === index ? 'text-blue-600' : 'text-slate-700'}`}>
-                                  {stock.name} <span className={`text-[13px] font-medium tracking-tight ${focusedStockIndex === index ? 'text-blue-400' : 'text-slate-400'}`}>({stock.code})</span>
-                                </span>
-                                {(() => {
-                                  const itemType = getStockType(stock);
-                                  return (
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
-                                      itemType === 'OTHER'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : itemType === 'OVERSEAS'
-                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                        : 'bg-blue-50 text-blue-600 border-blue-200'
-                                    }`}>
-                                      {itemType === 'OTHER' ? '기타' : itemType === 'OVERSEAS' ? '해외' : '국내'}
-                                    </span>
-                                  );
-                                })()}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const isOverseasContext = (formData.currency && formData.currency !== 'KRW') || currencyFilter === 'OVERSEAS';
-                        const initialMarket = isOverseasContext ? 'OVERSEAS' : 'DOMESTIC';
-                        setStockMarketType(initialMarket);
-                        setStockForm({ 
-                          name: '', 
-                          code: '', 
-                          sector: '', 
-                          currency: initialMarket === 'DOMESTIC' ? 'KRW' : (formData.currency && formData.currency !== 'KRW' ? formData.currency : 'USD'),
-                          exchange_code: '' 
-                        });
-                        setStockSearchResults([]);
-                        setIsSearchDropdownOpen(false);
-                        setIsSectorDropdownOpen(false);
-                        setIsCurrencyDropdownOpen(false);
-                        setIsStockModalOpen(true);
-                      }}
-                      className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all inline-flex items-center justify-center cursor-pointer"
-                      title="종목 추가"
-                    >
-                      <Plus size={22} />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!formData.security_id}
-                      onClick={() => {
-                        if (formData.security_id) {
-                          setStockDeleteConfirm({ isOpen: true, id: formData.security_id, name: formData.stock.replace(`[${formData.stockCode}] `, '') });
-                        }
-                      }}
-                      className={`p-2 transition-all inline-flex items-center justify-center rounded-xl ${
-                        formData.security_id 
-                          ? 'text-slate-300 hover:text-red-500 hover:bg-red-50 cursor-pointer' 
-                          : 'text-slate-200 cursor-not-allowed'
-                      }`}
-                      title="종목 삭제"
-                    >
-                      <Trash2 size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. 수량 & 단가 (수량 크기 축소 col-span-2, 단가 크기 확대 col-span-3, 우측정렬, 폰트/색상 통일) */}
-              <div className="grid grid-cols-5 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">수량</label>
-                  <div className="flex items-center w-full h-12 px-4 rounded-2xl border border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-all bg-slate-50/70 gap-1.5 shadow-xs">
-                    <input
-                      ref={quantityRef}
-                      type="text"
-                      placeholder="0"
-                      value={formData.quantity}
-                      onChange={(e) => handleNumberInput(e, 'quantity')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          priceRef.current?.focus();
-                          priceRef.current?.select();
-                        } else if (e.key === 'Tab' && e.shiftKey) {
-                          e.preventDefault();
-                          setIsStockDropdownOpen(false);
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            security_id: '', 
-                            stock: prev.stock ? prev.stock.replace(`[${prev.stockCode}] `, '') : '' 
-                          }));
-                          setTimeout(() => {
-                            stockRef.current?.focus();
-                            stockRef.current?.select();
-                          }, 50);
-                        }
-                      }}
-                      className={`flex-1 bg-transparent outline-none text-right text-xs min-w-0 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
-                        !formData.quantity || formData.quantity === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
-                      }`}
-                    />
-                    <span className="text-slate-400 font-medium text-xs shrink-0">
-                      {(formData.stock || '').includes('금현물') || formData.stockCode === 'GOLD' ? 'g' : '주'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="col-span-3">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">단가</label>
-                  <div className="flex items-center w-full h-12 px-4 rounded-2xl border border-slate-200 focus-within:border-blue-500 focus-within:bg-white transition-all bg-slate-50/70 gap-1.5 shadow-xs">
-                    <input
-                      ref={priceRef}
-                      type="text"
-                      placeholder="0"
-                      value={formData.price}
-                      onChange={(e) => handleNumberInput(e, 'price')}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          priceRef.current?.blur();
-                          handleSubmit(e);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (formData.currency && formData.currency !== 'KRW') {
-                          const val = e.target.value.replace(/,/g, '');
-                          if (val && !isNaN(parseFloat(val))) {
-                            const formatted = parseFloat(val).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            setFormData(prev => ({ ...prev, price: formatted }));
-                          }
-                        }
-                      }}
-                      className={`flex-1 bg-transparent outline-none text-right text-xs min-w-0 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs placeholder:text-right ${
-                        !formData.price || formData.price === '0' ? 'text-slate-400 font-medium' : 'text-slate-800 font-bold'
-                      }`}
-                    />
-                    {formData.currency && formData.currency !== 'KRW' ? (
-                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold shrink-0 leading-none">
-                        {getCurrencySymbol(formData.currency)}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 font-medium text-xs shrink-0">원</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 5. 거래금액 (국내: 원 / 해외: 환율 및 통화 기호, 원화 환산) */}
-              {formData.currency && formData.currency !== 'KRW' ? (
-                <div className="px-5 py-3 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-2 shadow-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">적용 환율</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-slate-700 text-sm tabular-nums">
-                        {formData.exchangeRate ? Number(formData.exchangeRate).toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-'}
-                      </span>
-                      <span className="text-xs font-bold text-slate-400">원</span>
-                    </div>
-                  </div>
-                  
-                  <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-black text-slate-600 tracking-tight ml-0.5">거래금액</span>
-                      {formData.totalKRW && (
-                        <span className="text-[11px] font-semibold text-slate-400 ml-0.5">
-                          ≈ {formData.totalKRW}원
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-amber-600 tabular-nums">{formData.amount || '0'}</span>
-                      <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-md font-bold leading-none">
-                        {getCurrencySymbol(formData.currency)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">거래금액</label>
-                  <div className="px-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 shadow-xs flex justify-end items-center h-14">
-                    <div className="text-right flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-blue-600 tabular-nums">
-                        {formData.amount || '0'}
-                      </span>
-                      <span className="text-sm font-bold text-slate-400">원</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 6. Footer 버튼 */}
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={toggleModal}
-                  className="flex-1 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className={`flex-1 h-12 rounded-2xl font-bold text-sm transition-all shadow-md ${
-                    loading 
-                      ? 'bg-slate-300 text-white cursor-not-allowed' 
-                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/25 cursor-pointer'
-                  } focus:outline-none`}
-                >
-                  {loading ? '처리 중...' : (editingId ? '수정 완료' : '등록 완료')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+      <TradingModal
+        isOpen={isModalMounted}
+        isClosing={isModalClosing}
+        onClose={() => setIsModalOpen(false)}
+        editingTransaction={editingTransaction}
+        accounts={accounts}
+        accountNameById={accountNameById}
+        isAccountsLoading={isAccountsLoading}
+        currencyFilter={currencyFilter}
+        onSave={handleSaveTransaction}
+        onOpenAddAccount={() => {
+          setAccountForm({ institution: '', type: '일반' });
+          setIsAccountTypeDropdownOpen(false);
+          setIsAccountModalOpen(true);
+        }}
+        onDeleteAccount={(accName) => setAccountDeleteConfirm({ isOpen: true, name: accName })}
+        onOpenAddStock={(ctx) => {
+          setStockMarketType(ctx.marketType);
+          setStockForm({
+            name: '',
+            code: '',
+            sector: '',
+            currency: ctx.currency,
+            exchange_code: ''
+          });
+          setStockSearchResults([]);
+          setIsSearchDropdownOpen(false);
+          setIsSectorDropdownOpen(false);
+          setIsCurrencyDropdownOpen(false);
+          setIsStockModalOpen(true);
+        }}
+        onDeleteStock={(secId, name) => setStockDeleteConfirm({ isOpen: true, id: secId, name })}
+        showAlert={showAlert}
+      />
 
       {isStockMounted && mounted && createPortal(
         <div 
@@ -4518,368 +3806,16 @@ export default function TransactionsPage() {
         </div>,
         document.body
       )}
-      {/* Filter Modal (1안: 현대적 모던 바텀시트 / 배당금 상세 팝업과 동일한 효과 및 디자인) */}
-      {mounted && isFilterMounted && createPortal(
-        <div 
-          className={`fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex flex-col justify-end md:justify-center md:items-center p-0 md:p-4 transition-opacity ${isFilterClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`}
-          onClick={() => setIsFilterModalOpen(false)}
-        >
-          <div 
-            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden pointer-events-auto ${isFilterClosing ? 'animate-sheet-down md:animate-modal-out' : 'animate-sheet-up md:animate-page-slide'}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            
-            {/* 모바일 상단 드래그 핸들 */}
-            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto my-3 shrink-0" />
-
-            {/* Modal Header */}
-            <div className="flex-shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Filter size={18} strokeWidth={2.5} />
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">조회 조건 설정</h3>
-              </div>
-              <button 
-                onClick={() => setIsFilterModalOpen(false)} 
-                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-              >
-                <X size={20} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            <div ref={filterScrollRef} className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
-              <div className="space-y-4">
-                {/* 1. 조회 기간 선택 */}
-                <div className="relative z-20">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-black text-slate-600 tracking-tight ml-0.5">조회 기간</label>
-                    {tempFilters.dateFrom && tempFilters.dateTo && (
-                      <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md tabular-nums">
-                        {formatToolbarDate(tempFilters.dateFrom)} ~ {formatToolbarDate(tempFilters.dateTo)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="space-y-2.5 w-full">
-                    {/* 상단: 퀵 기간 칩 버튼 (4개 균등 분할) */}
-                    <div className="grid grid-cols-4 gap-2 w-full">
-                      {[
-                        { label: '1개월', months: 1 },
-                        { label: '3개월', months: 3 },
-                        { label: '6개월', months: 6 },
-                        { label: '1년', months: 12 }
-                      ].map((item) => {
-                        const isSelected = selectedQuickPeriod === item.label;
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            data-quick-period="true"
-                            onClick={() => {
-                              const today = new Date();
-                              const fromDate = new Date();
-                              fromDate.setMonth(today.getMonth() - item.months);
-                              setTempFilters(prev => ({
-                                ...prev,
-                                dateFrom: fromDate.toLocaleDateString('en-CA'),
-                                dateTo: today.toLocaleDateString('en-CA')
-                              }));
-                              setSelectedQuickPeriod(item.label);
-                            }}
-                            className={`py-2.5 rounded-xl font-extrabold text-xs transition-all shadow-2xs cursor-pointer active:scale-95 text-center ${
-                              isSelected
-                                ? 'bg-blue-600 text-white shadow-sm border border-blue-600'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-transparent font-bold'
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* 하단: 날짜 선택 버튼 행 (1개월 버튼과 동일한 text-xs font-extrabold 사이즈, 터치 시 달력 오픈) */}
-                    <div className="flex items-center gap-2 w-full">
-                      {/* 시작일 버튼 */}
-                      <div className="relative flex-1">
-                        <button 
-                          ref={filterDateFromRef}
-                          type="button"
-                          onClick={() => {
-                            setIsFilterToCalendarOpen(false);
-                            setIsFilterFromCalendarOpen(prev => !prev);
-                          }}
-                          className={`w-full px-3 py-2.5 rounded-xl border transition-all text-center text-xs font-bold tabular-nums h-11 flex items-center justify-center relative cursor-pointer shadow-2xs ${
-                            isFilterFromCalendarOpen
-                              ? 'border-blue-600 bg-white ring-2 ring-blue-100 text-blue-600'
-                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100/80 text-slate-700'
-                          }`}
-                        >
-                          <span className="truncate pr-4 tabular-nums">{tempFilters.dateFrom ? formatToolbarDate(tempFilters.dateFrom) : '시작일'}</span>
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                            <Calendar size={16} />
-                          </span>
-                        </button>
-                        {isFilterFromCalendarOpen && (
-                          <div
-                            ref={filterFromCalendarRef}
-                            className="absolute left-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 w-[245px]"
-                            style={{ backgroundColor: '#ffffff' }}
-                          >
-                            <CalendarUI 
-                              initialYear={tempFilters.dateFrom && typeof tempFilters.dateFrom === 'string' && tempFilters.dateFrom.includes('-') ? parseInt(tempFilters.dateFrom.substring(0, 4)) : new Date().getFullYear()}
-                              initialMonth={tempFilters.dateFrom && typeof tempFilters.dateFrom === 'string' && tempFilters.dateFrom.includes('-') ? parseInt(tempFilters.dateFrom.substring(5, 7)) : (new Date().getMonth() + 1)}
-                              onSelect={(y, m, d) => {
-                                const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-                                setTempFilters(prev => ({ ...prev, dateFrom: formatted }));
-                                setSelectedQuickPeriod(null);
-                                setIsFilterFromCalendarOpen(false);
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <span className="text-slate-300 font-bold shrink-0 text-xs">~</span>
-
-                      {/* 종료일 버튼 */}
-                      <div className="relative flex-1">
-                        <button 
-                          ref={filterDateToRef}
-                          type="button"
-                          onClick={() => {
-                            setIsFilterFromCalendarOpen(false);
-                            setIsFilterToCalendarOpen(prev => !prev);
-                          }}
-                          className={`w-full px-3 py-2.5 rounded-xl border transition-all text-center text-xs font-bold tabular-nums h-11 flex items-center justify-center relative cursor-pointer shadow-2xs ${
-                            isFilterToCalendarOpen
-                              ? 'border-blue-600 bg-white ring-2 ring-blue-100 text-blue-600'
-                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100/80 text-slate-700'
-                          }`}
-                        >
-                          <span className="truncate pr-4 tabular-nums">{tempFilters.dateTo ? formatToolbarDate(tempFilters.dateTo) : '종료일'}</span>
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                            <Calendar size={16} />
-                          </span>
-                        </button>
-                        {isFilterToCalendarOpen && (
-                          <div
-                            ref={filterToCalendarRef}
-                            className="absolute right-0 top-full mt-1.5 z-[100] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 w-[245px]"
-                            style={{ backgroundColor: '#ffffff' }}
-                          >
-                            <CalendarUI 
-                              initialYear={tempFilters.dateTo && typeof tempFilters.dateTo === 'string' && tempFilters.dateTo.includes('-') ? parseInt(tempFilters.dateTo.substring(0, 4)) : new Date().getFullYear()}
-                              initialMonth={tempFilters.dateTo && typeof tempFilters.dateTo === 'string' && tempFilters.dateTo.includes('-') ? parseInt(tempFilters.dateTo.substring(5, 7)) : (new Date().getMonth() + 1)}
-                              onSelect={(y, m, d) => {
-                                const formatted = `${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-                                setTempFilters(prev => ({ ...prev, dateTo: formatted }));
-                                setSelectedQuickPeriod(null);
-                                setIsFilterToCalendarOpen(false);
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. 거래 구분 선택 (독립 한 줄 세그먼트 알약 버튼 - 등록 버튼 색상 매칭) */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5">거래 구분</label>
-                  <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/70">
-                    {[
-                      { val: '전체', label: '전체' },
-                      { val: '매수', label: '매수', dot: 'text-rose-500' },
-                      { val: '매도', label: '매도', dot: 'text-blue-500' }
-                    ].map(opt => {
-                      const isActive = tempFilters.type === opt.val;
-                      return (
-                        <button
-                          key={opt.val}
-                          type="button"
-                          onClick={() => setTempFilters(prev => ({ ...prev, type: opt.val }))}
-                          className={`py-2.5 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px] ${
-                            isActive
-                              ? 'bg-blue-600 text-white shadow-xs font-black'
-                              : 'text-slate-500 hover:text-slate-700 font-bold'
-                          }`}
-                        >
-                          {opt.dot && <span className={`${isActive ? 'text-white' : opt.dot} text-[9px]`}>●</span>}
-                          <span>{opt.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 3. 종목 검색 (한 줄에 다 차게 w-full, 퀵 칩 제외) */}
-                <div className="space-y-1.5 relative" ref={filterStockDropdownRef}>
-                  <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5">종목 검색</label>
-                  <div className="relative w-full">
-                    {tempFilters.security_id ? (
-                      <div className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/60 font-bold text-slate-800 h-12 flex items-center justify-between shadow-xs">
-                        <div 
-                          onClick={() => {
-                            const nameToEdit = tempFilters.stockName.split('(')[0];
-                            setTempFilters(prev => ({ ...prev, security_id: '', stockName: nameToEdit }));
-                            setTimeout(() => {
-                              const input = filterStockDropdownRef.current?.querySelector('input');
-                              if (input) {
-                                input.focus();
-                                input.select();
-                              }
-                            }, 50);
-                          }}
-                          className="flex items-center gap-2 truncate cursor-pointer flex-1"
-                          title="클릭하여 수정"
-                        >
-                          <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></div>
-                          <span className="text-sm font-extrabold text-slate-800 truncate">
-                            {tempFilters.stockName.split('(')[0]}
-                          </span>
-                          <span className="text-xs text-indigo-600 font-semibold shrink-0">
-                            ({tempFilters.stockCode})
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTempFilters(prev => ({ ...prev, security_id: '', stockName: '', stockCode: '' }));
-                            setStockSearchResults([]);
-                            setIsFilterStockDropdownOpen(false);
-                          }}
-                          className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer shrink-0 ml-2"
-                          title="종목 선택 해제"
-                        >
-                          <X size={16} strokeWidth={2.5} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="relative w-full">
-                        <input 
-                          type="text" 
-                          placeholder="종목명 입력 (엔터로 검색)"
-                          value={tempFilters.stockName || ''}
-                          onChange={(e) => {
-                            const val = e.target.value.toUpperCase();
-                            setTempFilters(prev => ({ ...prev, stockName: val, security_id: '', stockCode: '' }));
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              if (!isFilterStockDropdownOpen) {
-                                handleStockSearch(tempFilters.stockName);
-                              } else {
-                                setFocusedStockIndex(prev => Math.min(prev + 1, stockSearchResults.length - 1));
-                              }
-                            } else if (e.key === 'ArrowDown') {
-                              e.preventDefault();
-                              if (!isFilterStockDropdownOpen) {
-                                handleStockSearch(tempFilters.stockName);
-                              } else {
-                                setFocusedStockIndex(prev => Math.max(prev - 1, 0));
-                              }
-                            } else if (e.key === 'Enter') {
-                              e.preventDefault();
-                              if (e.nativeEvent?.isComposing) return;
-                              handleFilterStockEnter(tempFilters.stockName);
-                            } else if (e.key === 'Tab') {
-                              if (isFilterStockDropdownOpen) {
-                                setIsFilterStockDropdownOpen(false);
-                              }
-                            } else if (e.key === 'Escape') {
-                              setIsFilterStockDropdownOpen(false);
-                            }
-                          }}
-                          className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-sm text-slate-700 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
-                        />
-                        <button 
-                          type="button"
-                          onClick={() => handleStockSearch(tempFilters.stockName)}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
-                          title="종목 검색"
-                        >
-                          <Search size={18} />
-                        </button>
-                      </div>
-                    )}
-                    
-                    {isFilterModalOpen && isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
-                      <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
-                        <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
-                          <div 
-                            ref={filterStockListRef}
-                            className="overflow-y-auto overflow-x-hidden py-1 block max-h-[220px]"
-                          >
-                            {[...stockSearchResults].reverse().map((stock, i) => {
-                              const originalIndex = stockSearchResults.length - 1 - i;
-                              return (
-                                <button
-                                  key={stock.security_id || originalIndex}
-                                  type="button"
-                                  onClick={() => {
-                                    setTempFilters(prev => ({ 
-                                      ...prev, 
-                                      stockName: `${stock.name}(${stock.code})`,
-                                      stockCode: stock.code,
-                                      security_id: stock.security_id 
-                                    }));
-                                    setIsFilterStockDropdownOpen(false);
-                                    if (typeof document !== 'undefined') {
-                                      document.activeElement?.blur();
-                                    }
-                                  }}
-                                  onMouseEnter={() => setFocusedStockIndex(originalIndex)}
-                                  className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer ${
-                                    originalIndex === focusedStockIndex ? 'bg-indigo-50/70 text-indigo-700' : ''
-                                  }`}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className={`text-[13px] font-bold leading-tight ${originalIndex === focusedStockIndex ? 'text-indigo-700' : 'text-slate-700'}`}>
-                                      {stock.name}
-                                      <span className={`text-[12px] font-medium ml-1.5 ${originalIndex === focusedStockIndex ? 'text-indigo-600 opacity-60' : 'text-slate-400'}`}>
-                                        ({stock.code})
-                                      </span>
-                                    </span>
-                                  </div>
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-lg ${originalIndex === focusedStockIndex ? 'bg-indigo-100 text-indigo-700 font-bold' : 'bg-slate-50 text-slate-400'}`}>
-                                    {stock.exchange_nm || (getStockType(stock) === 'OTHER' ? '기타' : (stock.currency === 'KRW' ? '국내' : '해외'))}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* 4. 하단 액션 버튼 바 (모바일 하단 항상 고정 노출) */}
-            <div className="flex-shrink-0 p-4 bg-white border-t border-slate-100 flex items-center z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveFilters({ ...tempFilters });
-                  setIsFilterModalOpen(false);
-                  setCurrentPage(1);
-                  showAlert("필터 적용", "설정한 필터가 적용되었습니다.", "success");
-                }}
-                className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-black text-sm flex items-center justify-center gap-1 shadow-md shadow-amber-200/50 active:scale-95 transition-all cursor-pointer"
-              >
-                <span>적용하기</span>
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Filter Modal */}
+      <TradingFilterModal
+        isOpen={isFilterMounted}
+        isClosing={isFilterClosing}
+        onClose={() => setIsFilterModalOpen(false)}
+        activeFilters={activeFilters}
+        currencyFilter={currencyFilter}
+        tradeTypeFilter={tradeTypeFilter}
+        onApply={handleApplyFilter}
+      />
     </div>
   );
 }

@@ -90,9 +90,10 @@ export async function GET(request) {
       ];
     } else {
       candidateCodes = [
-        `${baseTicker}.O`,
-        `${baseTicker}.N`,
-        `${baseTicker}.A`,
+        `${baseTicker}.P`, // 💡 PCX (NYSE Arca / 미국 ETF 대다수)
+        `${baseTicker}.O`, // 나스닥
+        `${baseTicker}.N`, // 뉴욕증권거래소
+        `${baseTicker}.A`, // 아멕스
         `${baseTicker}.AMS`,
         baseTicker
       ];

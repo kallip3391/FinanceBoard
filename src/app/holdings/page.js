@@ -58,10 +58,14 @@ function GoldBarIcon({ className = "w-5 h-5" }) {
   );
 }
 
+// ── 로고 로드 실패 캐시 ──
+const failedImageUrls = new Set();
+
 // ── 종목 로고 컴포넌트 ──
-function StockLogo({ code, name, isKRW }) {
+const StockLogo = memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
+  const isGold = (name || '').includes('금현물') || cleanCode === 'GOLD';
 
   if (isGold) {
     return (
@@ -74,13 +78,13 @@ function StockLogo({ code, name, isKRW }) {
     );
   }
 
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -103,13 +107,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-lg"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 const formatStockCode = (code) => {
   if (!code) return "";
@@ -1222,15 +1229,17 @@ export default function HoldingsPage() {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100/50 shadow-sm">
-              <LayoutDashboard size={20} strokeWidth={2.5} />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+              <LayoutDashboard size={22} className="stroke-[2.5]" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">대시보드</h1>
+            <div>
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">대시보드</h1>
+              {user && (
+                <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">보유 중인 모든 종목의 상세 수익 현황과 계좌별 분배를 확인할 수 있는 대시보드입니다.</p>
+              )}
+            </div>
           </div>
-          {user && (
-            <p className="text-slate-500 text-sm pl-12">보유 중인 모든 종목의 상세 수익 현황과 계좌별 분배를 확인할 수 있는 대시보드입니다.</p>
-          )}
         </div>
 
         {!user && (

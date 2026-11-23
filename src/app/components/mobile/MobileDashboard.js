@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useSyncExternalStore } from "react";
+import React, { useState, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import {
@@ -77,16 +77,20 @@ const formatStockCode = (code) => {
   return str;
 };
 
+// ── 로고 로드 실패 캐시 ──
+const failedImageUrls = new Set();
+
 /* ───────── 토스 로고 컴포넌트 (테두리 없는 모던 라운드 룩) ───────── */
-function StockLogo({ code, name, isKRW }) {
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -109,13 +113,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-lg"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 /* ───────── 파이 툴팁 ───────── */
 function PieTooltip({ active, payload, total }) {
@@ -253,7 +260,7 @@ export default function MobileDashboard() {
         {user && (
           <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/60 shadow-xs">
+              <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl shadow-xs shrink-0">
                 <LayoutDashboard size={18} strokeWidth={2.5} />
               </div>
               <div>

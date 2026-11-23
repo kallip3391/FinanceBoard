@@ -1,4 +1,11 @@
 import { supabase } from './supabase';
+import {
+  GUEST_HOLDINGS,
+  GUEST_DOMESTIC_TRANSACTIONS,
+  GUEST_OVERSEAS_TRANSACTIONS,
+  GUEST_DIVIDEND_TRANSACTIONS,
+  GUEST_OTHER_TRANSACTIONS
+} from './guestMockData';
 
 // 통화 관련 상수
 export const CURRENCIES = {
@@ -28,13 +35,20 @@ export const TRADE_TYPES = {
 
 // 통합 데이터 관리 클래스
 export class TransactionManager {
+  static _cachedUserId = null;
+  static _guestStocksCache = null;
+
   // 현재 로그인한 사용자 ID 가져오기
   static async getCurrentUserId() {
+    if (this._cachedUserId) {
+      return this._cachedUserId;
+    }
     try {
       if (supabase) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user && session.user.id) {
-          return session.user.id;
+          this._cachedUserId = session.user.id;
+          return this._cachedUserId;
         }
       }
     } catch (err) {
@@ -42,8 +56,9 @@ export class TransactionManager {
     }
 
     // 로컬 개발용 인증 우회 (로그인 세션이 없는 localhost 환경)
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return '00000000-0000-0000-0000-000000000000';
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      this._cachedUserId = '00000000-0000-0000-0000-000000000000';
+      return this._cachedUserId;
     }
     
     return null;
@@ -382,6 +397,7 @@ export class TransactionManager {
           const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
           custom.push(newSec);
           localStorage.setItem('guest_custom_securities', JSON.stringify(custom));
+          this._guestStocksCache = null;
         } catch (e) {
           console.error('[TransactionManager] 로컬 저장 오류:', e);
         }
@@ -430,6 +446,7 @@ export class TransactionManager {
           const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
           const filtered = custom.filter(s => s.security_id !== securityId);
           localStorage.setItem('guest_custom_securities', JSON.stringify(filtered));
+          this._guestStocksCache = null;
         } catch (e) {
           // ignore
         }
@@ -448,6 +465,50 @@ export class TransactionManager {
     return true;
   }
 
+  // 게스트 종목 목록 (인메모리 캐시)
+  static getGuestSecurities() {
+    if (this._guestStocksCache) return this._guestStocksCache;
+    const map = new Map();
+    const addSec = (s) => {
+      if (!s || !s.name) return;
+      const key = `${s.name}_${s.code || ''}`;
+      if (!map.has(key)) {
+        const isOther = s.market_type === 'OTHER' || 
+                        s.exchange_code === 'OTHER' || 
+                        (s.name || '').includes('금현물') || 
+                        (s.code || '').toUpperCase() === 'GOLD';
+        map.set(key, {
+          security_id: s.security_id || `guest-sec-${map.size + 1}`,
+          name: s.name,
+          code: s.code || '',
+          sector: s.sector || '기타',
+          currency: s.currency || 'KRW',
+          exchange_code: s.exchange_code || (isOther ? 'OTHER' : (s.currency === 'KRW' ? 'KRX' : 'NASDAQ')),
+          market_type: isOther ? 'OTHER' : (s.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS')
+        });
+      }
+    };
+
+    // 게스트 모드에서 사용자가 직접 추가한 종목도 검색 결과에 포함
+    if (typeof window !== 'undefined') {
+      try {
+        const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
+        custom.forEach(addSec);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    GUEST_HOLDINGS.forEach(h => addSec({ name: h.stock, code: h.stockCode, currency: h.currency, sector: h.sector, security_id: h.security_id }));
+    GUEST_DOMESTIC_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id }));
+    GUEST_OVERSEAS_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'USD', security_id: t.security_id }));
+    GUEST_DIVIDEND_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: t.currency, security_id: t.security_id }));
+    GUEST_OTHER_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id, exchange_code: 'OTHER', market_type: 'OTHER' }));
+
+    this._guestStocksCache = Array.from(map.values());
+    return this._guestStocksCache;
+  }
+
   // 이름으로 종목 검색
   static async searchStocksByName(name, currency = 'KRW') {
     const userId = await this.getCurrentUserId();
@@ -455,52 +516,7 @@ export class TransactionManager {
 
     // 게스트 모드 (로컬 개발 및 샘플 데이터 환경) 지원
     if (userId === '00000000-0000-0000-0000-000000000000') {
-      const {
-        GUEST_HOLDINGS = [],
-        GUEST_DOMESTIC_TRANSACTIONS = [],
-        GUEST_OVERSEAS_TRANSACTIONS = [],
-        GUEST_DIVIDEND_TRANSACTIONS = [],
-        GUEST_OTHER_TRANSACTIONS = []
-      } = await import('./guestMockData');
-
-      const map = new Map();
-      const addSec = (s) => {
-        if (!s || !s.name) return;
-        const key = `${s.name}_${s.code || ''}`;
-        if (!map.has(key)) {
-          const isOther = s.market_type === 'OTHER' || 
-                          s.exchange_code === 'OTHER' || 
-                          (s.name || '').includes('금현물') || 
-                          (s.code || '').toUpperCase() === 'GOLD';
-          map.set(key, {
-            security_id: s.security_id || `guest-sec-${map.size + 1}`,
-            name: s.name,
-            code: s.code || '',
-            sector: s.sector || '기타',
-            currency: s.currency || 'KRW',
-            exchange_code: s.exchange_code || (isOther ? 'OTHER' : (s.currency === 'KRW' ? 'KRX' : 'NASDAQ')),
-            market_type: isOther ? 'OTHER' : (s.currency === 'KRW' ? 'DOMESTIC' : 'OVERSEAS')
-          });
-        }
-      };
-
-      // 게스트 모드에서 사용자가 직접 추가한 종목도 검색 결과에 포함
-      if (typeof window !== 'undefined') {
-        try {
-          const custom = JSON.parse(localStorage.getItem('guest_custom_securities') || '[]');
-          custom.forEach(addSec);
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      GUEST_HOLDINGS.forEach(h => addSec({ name: h.stock, code: h.stockCode, currency: h.currency, sector: h.sector, security_id: h.security_id }));
-      GUEST_DOMESTIC_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id }));
-      GUEST_OVERSEAS_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'USD', security_id: t.security_id }));
-      GUEST_DIVIDEND_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: t.currency, security_id: t.security_id }));
-      GUEST_OTHER_TRANSACTIONS.forEach(t => addSec(t.security || { name: t.stock_name, code: t.stock_code, currency: 'KRW', security_id: t.security_id, exchange_code: 'OTHER', market_type: 'OTHER' }));
-
-      let list = Array.from(map.values());
+      let list = this.getGuestSecurities();
 
       if (name && name.trim()) {
         const queryTerm = name.trim().toUpperCase();

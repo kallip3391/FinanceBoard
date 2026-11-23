@@ -12,16 +12,20 @@ import { useAnimatedModal, useAnimatedDataModal } from "@/hooks/useAnimatedModal
 
 const formatCurrency = (value) => new Intl.NumberFormat('ko-KR').format(value || 0);
 
-function StockLogo({ code, name, isKRW }) {
+// ── 로고 로드 실패 캐시 ──
+const failedImageUrls = new Set();
+
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   // ETF 여부 판별
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -44,13 +48,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-lg"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 const getCurrencySymbol = (currency) => {
   switch (currency) {
@@ -637,13 +644,13 @@ export default function DividendsPage() {
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/50 shadow-sm">
-              <Sprout size={20} strokeWidth={2.5} />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+              <Sprout size={22} className="stroke-[2.5]" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">배당금 현황</h1>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">월별 배당금 추이 및 종목별 배당 상세 내역을 확인합니다.</p>
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">배당금 현황</h1>
+              <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">월별 배당금 추이 및 종목별 배당 상세 내역을 확인합니다.</p>
             </div>
           </div>
 

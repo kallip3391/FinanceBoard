@@ -9,16 +9,20 @@ import { TransactionManager } from "@/lib/transactionManager";
 import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
 import { useAssets } from "@/contexts/AssetContext";
 
-function StockLogo({ code, name, isKRW }) {
+// ── 로고 로드 실패 캐시 ──
+const failedImageUrls = new Set();
+
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   // ETF 여부 판별 (종목명에 ETF 또는 주요 ETF 브랜드가 포함된 경우)
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -41,13 +45,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-lg"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 // ── 외화 포맷 헬퍼 함수 ──
 const getCurrencySymbol = (currency) => {
@@ -807,10 +814,10 @@ export default function MobileDividendDashboard({
             {/* ── 상단 헤더 & 배당/매매 전환 바 (거래내역 상단과 동일한 animate-fade-in 효과 적용) ── */}
             <div key={`settlement-header-${settlementTab}`} className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
               <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 flex items-center justify-center rounded-xl border shadow-xs transition-colors ${
+                <div className={`w-9 h-9 flex items-center justify-center rounded-xl text-white shadow-xs shrink-0 transition-colors ${
                   settlementTab === 'dividends'
-                    ? "bg-emerald-50 text-emerald-600 border-emerald-100/60"
-                    : "bg-blue-50 text-blue-600 border-blue-100/60"
+                    ? "bg-gradient-to-br from-emerald-500 to-green-600"
+                    : "bg-gradient-to-br from-violet-500 to-purple-600"
                 }`}>
                   {settlementTab === 'dividends' ? (
                     <Sprout size={18} strokeWidth={2.5} />

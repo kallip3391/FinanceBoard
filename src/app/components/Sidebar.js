@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, ArrowLeftRight, Coins, Briefcase } from "lucide-react";
+import { LayoutDashboard, List, TrendingUp, X, ChevronDown, ChevronRight, Sprout, ArrowLeftRight, Coins, Briefcase, Activity, LineChart, Layers } from "lucide-react";
 
 export default function Sidebar({ isOpen, onClose }) {
   const pathname = usePathname();
   const [isTransactionsOpen, setIsTransactionsOpen] = useState(false);
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
 
   useEffect(() => {
     if (pathname.startsWith('/transactions')) {
@@ -17,12 +18,15 @@ export default function Sidebar({ isOpen, onClose }) {
     if (pathname === '/dividends' || pathname.startsWith('/trades') || pathname.startsWith('/settlement')) {
       setTimeout(() => setIsSettlementOpen(true), 0);
     }
+    if (pathname.startsWith('/volatility') || pathname.startsWith('/analysis') || pathname.startsWith('/backtest')) {
+      setTimeout(() => setIsAnalysisOpen(true), 0);
+    }
   }, [pathname]);
 
   const links = [
     { name: "대시보드", href: "/holdings", icon: <LayoutDashboard size={20} /> },
     { 
-      name: "거래 내역", 
+      name: "거래내역", 
       icon: <List size={20} />,
       key: "transactions",
       isOpen: isTransactionsOpen,
@@ -33,7 +37,7 @@ export default function Sidebar({ isOpen, onClose }) {
       ]
     },
     { 
-      name: "수익 결산", 
+      name: "수익결산", 
       icon: <TrendingUp size={20} />,
       key: "settlement",
       isOpen: isSettlementOpen,
@@ -41,6 +45,17 @@ export default function Sidebar({ isOpen, onClose }) {
       sublinks: [
         { name: "배당금 현황", href: "/dividends", icon: <Sprout size={14} /> },
         { name: "매매손익 현황", href: "/trades", icon: <Briefcase size={14} /> }
+      ]
+    },
+    { 
+      name: "투자분석", 
+      icon: <LineChart size={20} />,
+      key: "analysis",
+      isOpen: isAnalysisOpen,
+      toggle: () => setIsAnalysisOpen(!isAnalysisOpen),
+      sublinks: [
+        { name: "변동성 분석", href: "/volatility", icon: <Activity size={14} /> },
+        { name: "백테스트", href: "/backtest", icon: <Layers size={14} /> }
       ]
     },
   ];
@@ -57,11 +72,11 @@ export default function Sidebar({ isOpen, onClose }) {
 
       {/* Sidebar Panel */}
       <div
-        className={`fixed top-0 left-0 h-full w-64 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-full w-60 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div className="flex items-center gap-2 text-emerald-600 font-bold text-lg tracking-tight whitespace-nowrap">
             <TrendingUp size={20} />
             FINANCE BOARD

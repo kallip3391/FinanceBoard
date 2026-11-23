@@ -36,10 +36,14 @@ function GoldBarIcon({ className = "w-5 h-5" }) {
   );
 }
 
+// ── 로고 로드 실패 캐시 ──
+const failedImageUrls = new Set();
+
 // ── 종목 로고 컴포넌트 ──
-function StockLogo({ code, name, isKRW }) {
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
+  const isGold = (name || '').includes('금현물') || cleanCode === 'GOLD';
 
   if (isGold) {
     return (
@@ -49,13 +53,13 @@ function StockLogo({ code, name, isKRW }) {
     );
   }
 
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
   const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -78,13 +82,16 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-xl"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 // ── 통화 기호 헬퍼 ──
 const getCurrencySymbol = (currency) => {
@@ -698,13 +705,13 @@ export default function TradesPnLPage() {
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100/50 shadow-sm">
-              <Briefcase size={20} strokeWidth={2.5} />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-violet-500/20 shrink-0">
+              <Briefcase size={22} className="stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-slate-800">매매손익 현황</h1>
+                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">매매손익 현황</h1>
                 {user && (
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-200/80 shadow-2xs">
                     <CheckCircle2 size={13} className="text-blue-500" />
@@ -712,7 +719,7 @@ export default function TradesPnLPage() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium mt-0.5">체결 완료된 매매 내역의 실현손익 및 누적 배당금을 종합 분석합니다.</p>
+              <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">체결 완료된 매매 내역의 실현손익 및 누적 배당금을 종합 분석합니다.</p>
             </div>
           </div>
 

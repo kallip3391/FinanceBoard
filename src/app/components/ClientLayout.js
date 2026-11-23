@@ -25,6 +25,8 @@ export default function ClientLayout({ children }) {
           "/transactions/dividends",
           "/dividends",
           "/trades",
+          "/volatility",
+          "/backtest",
         ];
         if (!authorizedPaths.includes(pathname)) return;
         const fixedElements = document.querySelectorAll(".fixed.inset-0");
@@ -98,7 +100,7 @@ export default function ClientLayout({ children }) {
                 - 모바일 (<768px): 배경 없음, pb-16 (하단탭 공간)
                 - 데스크톱 (≥768px): glass-panel 스타일, p-8, min-h-[970px]
             */}
-            <main className="w-full md:max-w-[1400px] md:p-6 md:mt-4">
+            <main className="w-full md:max-w-[1536px] md:p-6 md:mt-4">
               <div className="md-panel">
                 {children}
               </div>

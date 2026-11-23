@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   Filter,
@@ -13,6 +13,15 @@ import {
   Coins,
   Calendar,
 } from "lucide-react";
+
+// ── 종목 한글 매핑 ──
+const STOCK_KR_NAMES = {
+  'AAPL': '애플',
+  'MSFT': '마이크로소프트',
+  'NVDA': '엔비디아',
+  'GOOGL': '알파벳 A',
+  'TSLA': '테슬라',
+};
 
 // ── 금괴(Gold Bar) 전용 아이콘 ──
 function GoldBarIcon({ className = "w-5 h-5" }) {
@@ -29,9 +38,13 @@ function GoldBarIcon({ className = "w-5 h-5" }) {
   );
 }
 
-function StockLogo({ code, name, isKRW }) {
+// ── 로고 로드 실패 캐시 (실패한 URL은 다시 시도하지 않아 성능 저하 방지) ──
+const failedImageUrls = new Set();
+
+const StockLogo = React.memo(function StockLogo({ code, name, isKRW }) {
   const [hasError, setHasError] = useState(false);
-  const isGold = (name || '').includes('금현물') || (isKRW && (code || '').toUpperCase() === 'GOLD');
+  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim().toUpperCase();
+  const isGold = (name || '').includes('금현물') || cleanCode === 'GOLD';
 
   if (isGold) {
     return (
@@ -44,14 +57,16 @@ function StockLogo({ code, name, isKRW }) {
     );
   }
 
-  const cleanCode = (code || '').replace(/\.(KS|KQ|US|kospi|kosdaq)$/i, '').trim();
-  const logoUrl = cleanCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${cleanCode}.png` : null;
+  // 국내(KRW)는 6자리 숫자 코드(005930 등), 해외(USD 등)는 티커 심볼(AAPL 등) 기준으로 처리
+  const formattedCode = isKRW && /^\d+$/.test(cleanCode) ? cleanCode.padStart(6, '0') : cleanCode;
+  const logoUrl = formattedCode ? `https://static.toss.im/png-icons/securities/icn-sec-fill-${formattedCode}.png` : null;
+  const isFailed = !logoUrl || failedImageUrls.has(logoUrl);
 
   // ETF 여부 판별 (종목명에 ETF 또는 주요 ETF 브랜드가 포함된 경우)
   const isETF = (name || '').toUpperCase().includes('ETF') ||
                 /^(KODEX|TIGER|ACE|RISE|SOL|PLUS|KOSEF|ARIRANG|WOORI|TIMEFOLIO)/i.test(name || '');
 
-  if (!logoUrl || hasError) {
+  if (isFailed || hasError) {
     const displayText = isETF ? 'ETF' : (name ? name.slice(0, 1) : (isKRW ? '국' : '해'));
 
     return (
@@ -74,22 +89,24 @@ function StockLogo({ code, name, isKRW }) {
       <img
         src={logoUrl}
         alt={name || cleanCode}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (logoUrl) failedImageUrls.add(logoUrl);
+          setHasError(true);
+        }}
         className="w-full h-full object-cover rounded-lg"
         loading="lazy"
       />
     </div>
   );
-}
+});
 
 const TABS = [
-  { key: "trading", label: "국내", href: "/transactions/trading" },
-  { key: "overseas", label: "해외", href: "/transactions/overseas" },
+  { key: "trading", label: "매매", href: "/transactions/trading" },
   { key: "dividends", label: "배당", href: "/transactions/dividends" },
 ];
 
-export default function MobileTransactionList({
-  type = "trading", // "trading" | "overseas" | "dividends"
+function MobileTransactionList({
+  type = "trading", // "trading" | "dividends"
   transactions = [],
   loading = false,
   user = null,
@@ -100,15 +117,19 @@ export default function MobileTransactionList({
   isFilterActive = false,
   onResetFilter,
   onEdit,
+  currencyFilter = "ALL",
+  onSelectCurrencyFilter = null,
 }) {
   const ITEMS_PER_PAGE = 6;
 
   const displayTotalCount = transactions ? transactions.length : 0;
   const displayTotalPages = Math.ceil(displayTotalCount / ITEMS_PER_PAGE) || 1;
-  const displayList = (transactions || []).slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  const displayList = useMemo(() => {
+    return (transactions || []).slice(
+      (currentPage - 1) * ITEMS_PER_PAGE,
+      currentPage * ITEMS_PER_PAGE
+    );
+  }, [transactions, currentPage]);
 
   // 상단 탭 네비게이션 제어 (< 국내 >)
   const currentIndex = Math.max(0, TABS.findIndex((t) => t.key === type));
@@ -243,12 +264,12 @@ export default function MobileTransactionList({
             <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
               <div className="flex items-center gap-2">
                 <div
-                  className={`w-8 h-8 flex items-center justify-center rounded-xl border shadow-xs ${
+                  className={`w-9 h-9 flex items-center justify-center rounded-xl text-white shadow-xs shrink-0 ${
                     type === "trading"
-                      ? "bg-blue-50 text-blue-600 border-blue-100/70"
-                      : type === "overseas"
-                      ? "bg-emerald-50 text-emerald-600 border-emerald-100/70"
-                      : "bg-indigo-50 text-indigo-600 border-indigo-100/70"
+                      ? "bg-gradient-to-br from-blue-500 to-indigo-600"
+                      : type === "dividends"
+                      ? "bg-gradient-to-br from-amber-500 to-orange-500"
+                      : "bg-gradient-to-br from-indigo-500 to-purple-600"
                   }`}
                 >
                   {type === "trading" && <ArrowLeftRight size={18} strokeWidth={2.5} />}
@@ -257,19 +278,17 @@ export default function MobileTransactionList({
                 </div>
                 <div>
                   <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight">
-                    거래 내역
+                    거래내역
                   </h1>
                   <span className="text-[11px] font-semibold text-slate-400">
                     {type === "trading"
-                      ? "국내 주식 매매 내역"
-                      : type === "overseas"
-                      ? "해외 주식 매매 내역"
+                      ? "국내/해외/기타 주식 매매 내역"
                       : "배당금 입금 내역"}
                   </span>
                 </div>
               </div>
 
-              {/* 우측: < 국내 > 화살표로 국내 <-> 해외 <-> 배당 이동 */}
+              {/* 우측: < 매매 > 화살표로 매매 <-> 배당 이동 */}
               <div className="flex items-center gap-1">
                 {canGoPrev ? (
                   <Link
@@ -314,11 +333,7 @@ export default function MobileTransactionList({
             </div>
 
             {/* ── 2. 거래내역 메인 카드 (서브 바 + 개별 카드 리스트 - 스와이프 지원) ── */}
-            <div
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-3 touch-pan-y"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-3">
               {/* 서브 바: 건수 표시 및 [초기화] [필터] [등록] 버튼 */}
               <div className="flex items-center justify-between">
                 <div className="h-8 flex items-center gap-2">
@@ -344,19 +359,19 @@ export default function MobileTransactionList({
                     <button
                       type="button"
                       onClick={onResetFilter}
-                      className="h-8 w-8 inline-flex items-center justify-center bg-white text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      className="h-8 w-8 inline-flex items-center justify-center bg-white hover:bg-amber-50 text-slate-500 hover:text-amber-600 border border-slate-200 hover:border-amber-200 rounded-xl shadow-2xs active:scale-95 transition-transform duration-75 cursor-pointer"
                       title="필터 초기화"
                     >
-                      <RotateCcw size={14} />
+                      <RotateCcw size={14} strokeWidth={2.2} />
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={onOpenFilter}
-                    className={`h-8 px-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer ${
+                    className={`h-8 px-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs transition-transform duration-75 shadow-2xs active:scale-95 cursor-pointer ${
                       isFilterActive
-                        ? "bg-amber-400 hover:bg-amber-500 text-white border border-amber-300 shadow-sm"
-                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
+                        ? "bg-amber-500 hover:bg-amber-600 text-white font-black border border-amber-400 shadow-sm shadow-amber-500/20"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold shadow-2xs"
                     }`}
                   >
                     <Filter size={13} strokeWidth={2.2} />
@@ -365,11 +380,9 @@ export default function MobileTransactionList({
                   <button
                     type="button"
                     onClick={onOpenRegister}
-                    className={`h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-xl text-xs font-black text-white shadow-sm active:scale-95 transition-all cursor-pointer ${
+                    className={`h-8 px-2.5 inline-flex items-center justify-center gap-1 rounded-xl text-xs font-black text-white shadow-sm active:scale-95 transition-transform duration-75 cursor-pointer ${
                       type === "trading"
                         ? "bg-blue-600 hover:bg-blue-700"
-                        : type === "overseas"
-                        ? "bg-emerald-600 hover:bg-emerald-700"
                         : "bg-indigo-600 hover:bg-indigo-700"
                     }`}
                   >
@@ -379,7 +392,7 @@ export default function MobileTransactionList({
                 </div>
               </div>
 
-              {/* 거래내역 개별 카드 목록 (월별 배당 종목 조회와 동일한 레이아웃) */}
+              {/* 거래내역 개별 카드 목록 (월별 배당 종목 조회와 동일한 레이아웃 - 스와이프 제스처 지원) */}
               {loading ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-2.5 text-slate-400 text-sm">
                   <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -391,7 +404,12 @@ export default function MobileTransactionList({
                   {user ? "등록된 거래내역이 없습니다." : "로그인 후 거래내역을 확인할 수 있습니다."}
                 </div>
               ) : (
-                <div key={`tx-page-${currentPage}`} className="flex flex-col gap-2.5">
+                <div 
+                  key={`tx-list-${type}-${currentPage}`}
+                  className="flex flex-col gap-2.5 touch-pan-y"
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                >
                   {(() => {
                     const dateThemeColor =
                       type === "trading"
@@ -402,11 +420,21 @@ export default function MobileTransactionList({
 
                     return displayList.map((tx, idx) => {
                       const isBuy = tx.trade_type === "BUY" || tx.type === "매수";
-                      const stockName = tx.security?.name || tx.stock_name || tx.stock || "-";
+                      
+                      // 1. transactions 테이블 transaction_type 기준 (domestic, overseas, other)
+                      const txType = (tx.transaction_type || '').toLowerCase();
+                      const isDomestic = txType === 'domestic' || (!txType && (tx.currency === 'KRW' || !tx.currency));
+                      const isOverseas = txType === 'overseas' || (!txType && tx.currency && tx.currency !== 'KRW');
+                      const isOther = txType === 'other';
+
+                      // 2. security 테이블의 code & name 기준
                       const rawCode = tx.security?.code || tx.stock_code || tx.stockCode || "";
-                      const stockCode = formatStockCode(rawCode);
-                      const currency = tx.currency || (type === "overseas" ? "USD" : "KRW");
-                      const isKRW = currency === "KRW";
+                      const stockCode = isDomestic ? formatStockCode(rawCode) : rawCode.toUpperCase();
+                      const rawName = tx.security?.name || tx.stock_name || tx.stock || "-";
+                      const stockName = STOCK_KR_NAMES[rawCode.toUpperCase()] || rawName;
+
+                      const currency = tx.currency || tx.security?.currency || (isOverseas ? "USD" : "KRW");
+                      const isKRW = currency === "KRW" || isDomestic;
 
                       // 수량 포맷
                       const qtyNum = typeof tx.quantity === "number" ? tx.quantity : parseFloat(tx.quantity);
@@ -435,7 +463,7 @@ export default function MobileTransactionList({
 
                         return (
                           <div
-                            key={tx.id || idx}
+                            key={tx.id || `div-${idx}`}
                             onClick={() => onEdit && onEdit(tx)}
                             className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                           >
@@ -497,7 +525,7 @@ export default function MobileTransactionList({
                       // 국내 및 해외 거래내역:
                       return (
                         <div
-                          key={tx.id || idx}
+                          key={tx.id || `trade-${idx}`}
                           onClick={() => onEdit && onEdit(tx)}
                           className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                         >
@@ -519,13 +547,29 @@ export default function MobileTransactionList({
 
                             {/* 2행: 종목코드(8자리 고정폭) + 매수/매도 배지 + 수량(우측라인) + 매수가(우측라인) + 총금액 */}
                             <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
-                              {/* 좌: 종목코드(8자리 고정폭) + 매수/매도 구분 */}
-                              <div className="flex items-center gap-0 shrink-0">
-                                <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                              {/* 좌: 종목코드(8자리 고정폭) + 시장 구분(국내/해외/기타) + 매수/매도 구분 */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="font-mono text-slate-400 w-[50px] shrink-0 truncate">
                                   {stockCode}
                                 </span>
+                                {(() => {
+                                  const rowType = isOther ? 'OTHER' : (isOverseas ? 'OVERSEAS' : 'DOMESTIC');
+                                  return (
+                                    <span
+                                      className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
+                                        rowType === 'OTHER'
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          : rowType === 'OVERSEAS'
+                                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                                          : "bg-blue-50 text-blue-600 border-blue-200"
+                                      }`}
+                                    >
+                                      {rowType === 'OTHER' ? "기타" : rowType === 'OVERSEAS' ? "해외" : "국내"}
+                                    </span>
+                                  );
+                                })()}
                                 <span
-                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 text-center leading-none ${
                                     isBuy
                                       ? "bg-rose-50 text-rose-600 border-rose-200"
                                       : "bg-blue-50 text-blue-600 border-blue-200"
@@ -586,3 +630,5 @@ export default function MobileTransactionList({
     </div>
   );
 }
+
+export default React.memo(MobileTransactionList);
