@@ -250,10 +250,18 @@ function MobileTransactionList({
 
     const isKRW = !currency || currency === "KRW";
     if (isKRW) {
-      return `${Math.round(num).toLocaleString("ko-KR")}원`;
+      return (
+        <span style={{whiteSpace:'nowrap',wordBreak:'keep-all',display:'inline-block'}}>
+          {Math.round(num).toLocaleString("ko-KR")}원
+        </span>
+      );
     }
     const sym = getCurrencySymbol(currency);
-    return `${sym}${num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return (
+      <span style={{whiteSpace:'nowrap',wordBreak:'keep-all',display:'inline-block'}}>
+        {sym}{num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </span>
+    );
   };
 
   return (
@@ -599,8 +607,8 @@ function MobileTransactionList({
                               </div>
 
                               {/* 우: 총금액 */}
-                              <div className="shrink-0 text-right whitespace-nowrap ml-auto pl-1">
-                                <span className="text-xs font-black text-slate-900 tabular-nums whitespace-nowrap inline-block">
+                              <div className="shrink-0 text-right ml-auto pl-1" style={{whiteSpace:'nowrap',wordBreak:'keep-all',overflowWrap:'normal'}}>
+                                <span className="text-xs font-black text-slate-900 tabular-nums" style={{whiteSpace:'nowrap',wordBreak:'keep-all',display:'inline-block'}}>
                                   {formattedTotalAmount}
                                 </span>
                               </div>

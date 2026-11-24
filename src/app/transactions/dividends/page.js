@@ -2974,7 +2974,12 @@ export default function TransactionsPage() {
       {mounted && isFilterMounted && createPortal(
         <div 
           className={`fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex flex-col justify-end md:justify-center md:items-center p-0 md:p-4 transition-opacity ${isFilterClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in'}`}
-          onClick={() => setIsFilterModalOpen(false)}
+          onClick={() => {
+            setIsFilterModalOpen(false);
+            setIsFilterStockDropdownOpen(false);
+            setStockSearchResults([]);
+            setTempFilters(prev => prev.security_id ? prev : { ...prev, stockName: '', stockCode: '' });
+          }}
         >
           <div 
             className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden ${isFilterClosing ? 'max-md:animate-sheet-down md:animate-modal-out pointer-events-none' : 'max-md:animate-sheet-up md:animate-page-slide pointer-events-auto'}`}
@@ -2993,7 +2998,12 @@ export default function TransactionsPage() {
                 <h3 className="text-lg font-extrabold text-slate-800 tracking-tight">조회 조건 설정</h3>
               </div>
               <button 
-                onClick={() => setIsFilterModalOpen(false)} 
+                onClick={() => {
+                  setIsFilterModalOpen(false);
+                  setIsFilterStockDropdownOpen(false);
+                  setStockSearchResults([]);
+                  setTempFilters(prev => prev.security_id ? prev : { ...prev, stockName: '', stockCode: '' });
+                }} 
                 className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
               >
                 <X size={20} strokeWidth={2.5} />
@@ -3238,7 +3248,7 @@ export default function TransactionsPage() {
                               setIsFilterStockDropdownOpen(false);
                             }
                           }}
-                          className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-sm text-slate-700 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                          className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-extrabold text-sm text-slate-800 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
                         />
                         <button 
                           type="button"

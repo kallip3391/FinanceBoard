@@ -849,7 +849,7 @@ function TradingModal({
                           setFocusedStockIndex(-1);
                         }
                       }}
-                      className="w-full h-12 pl-4 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-bold text-slate-800 text-xs bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                      className="w-full h-12 pl-4 pr-10 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 font-extrabold text-slate-800 text-sm bg-slate-50/70 focus:bg-white shadow-xs transition-all placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
                     />
                     <button
                       type="button"

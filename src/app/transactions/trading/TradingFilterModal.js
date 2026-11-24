@@ -83,6 +83,7 @@ function TradingFilterModal({
       setIsFilterFromCalendarOpen(false);
       setIsFilterToCalendarOpen(false);
       setIsFilterStockDropdownOpen(false);
+      setStockSearchResults([]);
     }
   }, [isOpen, activeFilters, currencyFilter, tradeTypeFilter]);
 
@@ -110,6 +111,8 @@ function TradingFilterModal({
         !filterStockDropdownRef.current.contains(e.target)
       ) {
         setIsFilterStockDropdownOpen(false);
+        setStockSearchResults([]);
+        setTempFilters(prev => prev.security_id ? prev : { ...prev, stockName: '', stockCode: '' });
       }
     };
 
@@ -524,7 +527,7 @@ function TradingFilterModal({
                           setIsFilterStockDropdownOpen(false);
                         }
                       }}
-                      className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-sm text-slate-700 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
+                      className="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-extrabold text-sm text-slate-800 bg-slate-50 shadow-2xs text-center h-12 placeholder:text-slate-400 placeholder:font-medium placeholder:text-xs"
                     />
                     <button
                       type="button"
