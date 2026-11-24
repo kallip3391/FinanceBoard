@@ -509,12 +509,12 @@ export default function BacktestPage() {
       {/* ────────────────────────────────────────────────────────── */}
       {/* 2. 메인 화면 레이아웃 (좌측 26% 빌더 + 우측 74% 대시보드)   */}
       {/* ────────────────────────────────────────────────────────── */}
-      <div className={`grid grid-cols-1 lg:grid-cols-12 gap-6 ${resultData || loading ? "items-start" : "items-stretch"}`}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* ══════════════════════════════════════════════════════════ */}
         {/* [좌측] 포트폴리오 비중 및 백테스트 설정 패널              */}
         {/* ══════════════════════════════════════════════════════════ */}
-        <div className={`lg:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4.5 space-y-4.5 ${resultData || loading ? "self-start" : ""}`}>
+        <div className="lg:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4.5 space-y-3.5 lg:h-[935px] lg:min-h-[935px] lg:max-h-[935px] flex flex-col self-start">
           
           {/* 패널 타이틀 & 종목 수 뱃지 */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -629,9 +629,9 @@ export default function BacktestPage() {
             )}
           </div>
 
-          {/* 종목별 비중 슬라이더 카드 리스트 (종목 4개 기준 높이 고정: h-[340px], 5개 이상 시 스크롤) */}
+          {/* 종목별 비중 슬라이더 카드 리스트 (좌측 935px 고정 높이에 맞춰 flex-1 유동 확장 및 5개 이상 시 스크롤) */}
           <div 
-            className="h-[340px] overflow-y-auto pr-1 space-y-2.5"
+            className="flex-1 min-h-[220px] overflow-y-auto pr-1 space-y-2.5"
             onScroll={() => setHoveredStockTooltip(null)}
           >
             {portfolio.length === 0 ? (
@@ -705,6 +705,8 @@ export default function BacktestPage() {
                           inputMode="numeric"
                           maxLength={3}
                           value={item.weight}
+                          onFocus={(e) => e.target.select?.()}
+                          onClick={(e) => e.target.select?.()}
                           onChange={(e) => {
                             const clean = e.target.value.replace(/[^0-9]/g, "");
                             updateWeight(idx, clean);
@@ -784,6 +786,8 @@ export default function BacktestPage() {
                   type="text"
                   inputMode="numeric"
                   value={initialAmount !== "" && initialAmount !== undefined ? Number(initialAmount).toLocaleString("ko-KR") : ""}
+                  onFocus={(e) => e.target.select?.()}
+                  onClick={(e) => e.target.select?.()}
                   onChange={(e) => {
                     const clean = e.target.value.replace(/[^0-9]/g, "");
                     setInitialAmount(clean === "" ? "" : Number(clean));
@@ -804,6 +808,8 @@ export default function BacktestPage() {
                   type="text"
                   inputMode="numeric"
                   value={monthlyContribution !== "" && monthlyContribution !== undefined ? Number(monthlyContribution).toLocaleString("ko-KR") : ""}
+                  onFocus={(e) => e.target.select?.()}
+                  onClick={(e) => e.target.select?.()}
                   onChange={(e) => {
                     const clean = e.target.value.replace(/[^0-9]/g, "");
                     setMonthlyContribution(clean === "" ? "" : Number(clean));

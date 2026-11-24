@@ -151,8 +151,9 @@ function AnimatedTradeCounter({
       ? 0
       : (Number(prevValueRef.current) || 0);
 
-    // 아직 데이터 로딩 전이라 endVal이 0이고 startVal도 0이면 대기
+    // 아직 데이터 로딩 전이거나 값이 0이면 즉시 0으로 설정
     if (endVal === 0 && startVal === 0) {
+      setDisplayValue(0);
       prevValueRef.current = 0;
       prevIsForeignRef.current = isForeign;
       return;
@@ -758,6 +759,7 @@ export default function TradesPnLPage() {
             <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
               <span className="text-2xl font-black tabular-nums tracking-tight text-slate-800 cursor-default select-none">
                 <AnimatedTradeCounter
+                  key={`card1-${currencyFilter}`}
                   value={currencyFilter === "OVERSEAS" ? summary.sumForeignBuyCost : summary.sumBuyCost}
                   isForeign={currencyFilter === "OVERSEAS"}
                   showSign={false}
@@ -804,6 +806,7 @@ export default function TradesPnLPage() {
                     : 'text-slate-800'
               }`}>
                 <AnimatedTradeCounter
+                  key={`card2-${currencyFilter}`}
                   value={currencyFilter === "OVERSEAS" ? summary.sumForeignProfit : summary.sumProfit}
                   isForeign={currencyFilter === "OVERSEAS"}
                   showSign={true}
@@ -843,6 +846,7 @@ export default function TradesPnLPage() {
             <div className="flex items-baseline justify-end gap-1 mt-1 cursor-default select-none">
               <span className="text-2xl font-black tabular-nums tracking-tight text-emerald-600 cursor-default select-none">
                 <AnimatedTradeCounter
+                  key={`card3-${currencyFilter}`}
                   value={currencyFilter === "OVERSEAS" ? summary.sumForeignDividend : summary.sumDividend}
                   isForeign={currencyFilter === "OVERSEAS"}
                   showSign={true}
@@ -889,6 +893,7 @@ export default function TradesPnLPage() {
                     : 'text-slate-800'
               }`}>
                 <AnimatedTradeCounter
+                  key={`card4-${currencyFilter}`}
                   value={currencyFilter === "OVERSEAS" ? summary.sumForeignTotalProfit : summary.sumTotalProfit}
                   isForeign={currencyFilter === "OVERSEAS"}
                   showSign={true}

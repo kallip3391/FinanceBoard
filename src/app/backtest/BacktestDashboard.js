@@ -1,11 +1,10 @@
 "use client";
 
-import { memo, useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef, useMemo } from "react";
 import { 
   TrendingUp, 
   TrendingDown, 
   Layers, 
-  Sparkles, 
   BarChart2, 
   RefreshCw 
 } from "lucide-react";
@@ -144,12 +143,39 @@ const BacktestDashboard = memo(function BacktestDashboard({
   const summary = resultData?.summary;
   const chartSeries = resultData?.chartSeries || [];
   const annualReturns = resultData?.annualReturns || [];
-  const correlationMatrix = resultData?.correlationMatrix;
+
+  // X축 연도 첫 등장 데이터에만 YYYY 표시 (첫 번째 연도는 겹침 방지를 위해 제외)
+  const yearTickSet = useMemo(() => {
+    const seen = new Set();
+    let firstYear = null;
+    return chartSeries.reduce((acc, item) => {
+      const fullYear = "20" + item.date.slice(0, 2); // YY → YYYY
+      if (!seen.has(fullYear)) {
+        seen.add(fullYear);
+        if (firstYear === null) {
+          firstYear = fullYear; // 첫 번째 연도는 기록만 하고 표시 안 함
+        } else {
+          acc[item.date] = fullYear;
+        }
+      }
+      return acc;
+    }, {});
+  }, [chartSeries]);
+
+  const YearOnlyTick = ({ x, y, payload }) => {
+    const label = yearTickSet[payload.value];
+    if (!label) return null;
+    return (
+      <text x={x} y={y + 12} textAnchor="middle" fill="#94a3b8" fontSize={11} fontWeight={600}>
+        {label}
+      </text>
+    );
+  };
 
   return (
-    <div className={`lg:col-span-8 xl:col-span-9 ${!resultData ? "h-full flex flex-col" : "space-y-6 animate-fade-in"}`}>
+    <div className={`lg:col-span-8 xl:col-span-9 ${!resultData ? "flex flex-col" : "space-y-3 animate-fade-in"}`}>
       {!resultData ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 md:p-12 shadow-xs text-center flex flex-col items-center justify-center flex-1 w-full h-full min-h-[580px]">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 md:p-12 shadow-xs text-center flex flex-col items-center justify-center flex-1 w-full min-h-[580px] lg:min-h-[935px] lg:h-[935px]">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
               <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 shadow-sm animate-pulse">
@@ -208,7 +234,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             {/* ① 최종 자산 (누적수익률) */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] overflow-hidden shrink-0 animate-card-entrance">
+            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] shrink-0 animate-card-entrance relative hover:z-30">
               <div>
                 <div className="flex items-center justify-between text-slate-500 mb-1.5">
                   <span className="text-xs font-bold text-slate-600 tracking-tight">① 최종 자산 (누적수익률)</span>
@@ -302,7 +328,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
             </div>
 
             {/* ② 최대 낙폭 (MDD) */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] overflow-hidden shrink-0 animate-card-entrance stagger-1">
+            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] shrink-0 animate-card-entrance stagger-1 relative hover:z-30">
               <div>
                 <div className="flex items-center justify-between text-slate-500 mb-1.5">
                   <span className="text-xs font-bold text-slate-600 tracking-tight">② 최대 낙폭 (MDD)</span>
@@ -364,7 +390,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
             </div>
 
             {/* ③ 샤프 지수 (Sharpe Ratio) */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] overflow-hidden shrink-0 animate-card-entrance stagger-2">
+            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] shrink-0 animate-card-entrance stagger-2 relative hover:z-30">
               <div>
                 <div className="flex items-center justify-between text-slate-500 mb-1.5">
                   <span className="text-xs font-bold text-slate-600 tracking-tight">③ 샤프 지수 (Sharpe)</span>
@@ -423,7 +449,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
             </div>
 
             {/* ④ 벤치마크 상관계수 (r) */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-3.5 sm:px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] overflow-hidden shrink-0 animate-card-entrance stagger-3">
+            <div className="bg-white rounded-2xl border border-slate-200/80 py-3.5 px-3.5 sm:px-4 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors h-[162px] min-h-[162px] max-h-[162px] shrink-0 animate-card-entrance stagger-3 relative hover:z-30">
               <div>
                 <div className="flex items-center justify-between text-slate-500 mb-1.5">
                   <span className="text-xs font-bold text-slate-600 tracking-tight">④ 벤치마크 상관계수 (r)</span>
@@ -516,19 +542,16 @@ const BacktestDashboard = memo(function BacktestDashboard({
           {/* ──────────────────────────────────────────────────────── */}
           {/* 중앙 메인 자산 성장 추이 & MDD 수중 차트                */}
           {/* ──────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs space-y-4 lg:h-[485px] flex flex-col justify-between">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
                   <TrendingUp size={18} className="text-emerald-600" />
-                  포트폴리오 자산 성장 추이
+                  자산 성장 추이
                   <span className="text-xs font-normal text-slate-400">
-                    (초기 {formatWon(executedConfig?.initialAmount ?? 10000000)} + 월 {formatWon(executedConfig?.monthlyContribution ?? 500000)} 적립)
+                    (초기 {(executedConfig?.initialAmount ?? 10000000).toLocaleString()}원 + 월 {(executedConfig?.monthlyContribution ?? 500000).toLocaleString()}원 적립)
                   </span>
                 </h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  실제 환율 변동 및 적립금 매수가 반영된 원화(KRW) 기준 자산 성장 궤적
-                </p>
               </div>
 
               {/* 범례 표시 */}
@@ -553,7 +576,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
             </div>
 
             {/* 자산 성장 라인/영역 차트 */}
-            <div className="h-[300px] w-full relative">
+            <div className="h-[270px] lg:h-[285px] w-full relative">
               {loading && (
                 <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
                   <RefreshCw size={24} className="text-indigo-600 animate-spin" />
@@ -569,7 +592,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} />
+                    <XAxis dataKey="date" tick={<YearOnlyTick />} interval={0} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} height={24} />
                     <YAxis
                       tick={{ fontSize: 11, fill: "#94a3b8" }}
                       axisLine={{ stroke: "#e2e8f0" }}
@@ -582,16 +605,22 @@ const BacktestDashboard = memo(function BacktestDashboard({
                           const p = payload[0].payload;
                           return (
                             <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
-                              <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate} (환율 ₩{p.fxRate})</p>
-                              <p className="text-emerald-600 font-black text-sm">내 포트폴리오: {formatWon(p.portfolio)}</p>
+                              <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate} (환율 {Number(p.fxRate).toFixed(1)}원)</p>
+                              <p className="text-emerald-600 font-black text-sm">내 포트폴리오: {Math.round(p.portfolio).toLocaleString()}원</p>
                               {benchmarks.includes("SPY") && (
-                                <p className="text-slate-500 font-medium">S&P 500: {formatWon(p.spy)}</p>
+                                <div className="flex text-slate-500 font-bold">
+                                  <span className="w-[62px] shrink-0">S&P 500</span>
+                                  <span>: {Math.round(p.spy).toLocaleString()}원</span>
+                                </div>
                               )}
                               {benchmarks.includes("QQQ") && (
-                                <p className="text-purple-600 font-medium">나스닥 100: {formatWon(p.qqq)}</p>
+                                <div className="flex text-purple-600 font-bold">
+                                  <span className="w-[62px] shrink-0">나스닥 100</span>
+                                  <span>: {Math.round(p.qqq).toLocaleString()}원</span>
+                                </div>
                               )}
                               <p className="text-slate-400 font-semibold border-t border-slate-100 pt-1">
-                                총 투입원금: {formatWon(p.invested)} (낙폭: {p.drawdown}%)
+                                총 투입원금: {Math.round(p.invested).toLocaleString()}원 (낙폭: {p.drawdown}%)
                               </p>
                             </div>
                           );
@@ -638,15 +667,15 @@ const BacktestDashboard = memo(function BacktestDashboard({
             </div>
 
             {/* 하단 수중 낙폭 (MDD Underwater) 차트 */}
-            <div className="pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-1.5">
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <TrendingDown size={14} className="text-rose-500" />
-                  수중 낙폭 차트 (Drawdown MDD %)
+                  낙폭 차트 (Drawdown MDD %)
                 </span>
                 <span className="text-[10px] text-slate-400">역사적 고점 대비 하락 깊이 및 회복 궤적</span>
               </div>
-              <div className="h-[90px] w-full relative">
+              <div className="h-[55px] w-full relative">
                 {loading && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-lg">
                     <RefreshCw size={18} className="text-rose-500 animate-spin" />
@@ -672,146 +701,79 @@ const BacktestDashboard = memo(function BacktestDashboard({
           </div>
 
           {/* ──────────────────────────────────────────────────────── */}
-          {/* 하단 2분할 섹션: [종목 상관관계 매트릭스] + [연도별 수익률 막대] */}
+          {/* 연도별 수익률 비교 바 차트 (메인 차트 너비와 동일하게 확장)*/}
           {/* ──────────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
-            
-            {/* [좌측 6열] 종목 & 벤치마크 상관관계 매트릭스 테이블 */}
-            <div className="xl:col-span-6 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                    <Sparkles size={16} className="text-purple-600" />
-                    종목 & 벤치마크 상관관계 매트릭스
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-semibold">
-                    -1.0 (역상관) ~ +1.0 (동조화)
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs w-full lg:h-[264px] flex flex-col justify-between">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <h4 className="text-sm md:text-base font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                  <BarChart2 size={18} className="text-indigo-600" />
+                  연도별 수익률 비교 (Annual Returns)
+                </h4>
+                <div className="flex items-center gap-3 text-xs font-bold">
+                  <span className="flex items-center gap-1.5 text-emerald-600">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500" /> 포트폴리오
                   </span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-center text-xs">
-                    <thead>
-                      <tr className="text-slate-400 border-b border-slate-100 text-[10px]">
-                        <th className="py-2 text-left font-bold pl-2">종목</th>
-                        {correlationMatrix?.symbols?.map((sym, sIdx) => (
-                          <th key={`${sym}-${sIdx}`} className="py-2 px-1 text-[11px] font-mono">
-                            {sym.replace(/\.(KS|KQ)$/, '')}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {correlationMatrix?.matrix?.map((row, rIdx) => (
-                        <tr key={`${row.symbol}-${rIdx}`} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2 text-left font-bold text-slate-800 text-[11px] pl-2 truncate max-w-[100px]" title={row.name}>
-                            {row.symbol.replace(/\.(KS|KQ)$/, '')}
-                          </td>
-                          {row.values?.map((val, cIdx) => {
-                            const isSelf = rIdx === cIdx;
-                            // 색상 매핑: 양의 상관관계(빨강/주황), 음의 상관관계(파랑/초록)
-                            let bgClass = "bg-slate-50 text-slate-600";
-                            if (isSelf) {
-                              bgClass = "bg-slate-100 text-slate-400 font-bold";
-                            } else if (val >= 0.7) {
-                              bgClass = "bg-rose-50 text-rose-700 font-bold";
-                            } else if (val >= 0.4) {
-                              bgClass = "bg-amber-50 text-amber-700 font-semibold";
-                            } else if (val <= 0.1) {
-                              bgClass = "bg-emerald-50 text-emerald-700 font-bold";
-                            }
-
-                            return (
-                              <td key={cIdx} className="py-1 px-1">
-                                <span className={`inline-block w-full py-1 rounded-md text-[11px] ${bgClass}`}>
-                                  {val > 0 && !isSelf ? `+${val}` : val}
-                                </span>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-                <span>💡 상관계수가 낮을수록(0.5 이하) 하락장 방어 분산 효과가 극대화됩니다.</span>
-              </div>
-            </div>
-
-            {/* [우측 6열] 연도별 수익률 비교 바 차트 (내 포트폴리오 vs SPY vs QQQ 3개 막대) */}
-            <div className="xl:col-span-6 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                    <BarChart2 size={16} className="text-indigo-600" />
-                    연도별 수익률 비교 (Annual Returns)
-                  </h4>
-                  <div className="flex items-center gap-2 text-[10px] font-bold">
-                    <span className="flex items-center gap-1 text-emerald-600">
-                      <span className="w-2 h-2 rounded-xs bg-emerald-500" /> 포트폴리오
+                  {benchmarks.includes("SPY") && (
+                    <span className="flex items-center gap-1.5 text-slate-600">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-slate-500" /> S&P 500
                     </span>
-                    {benchmarks.includes("SPY") && (
-                      <span className="flex items-center gap-1 text-slate-600">
-                        <span className="w-2 h-2 rounded-xs bg-slate-500" /> S&P 500
-                      </span>
-                    )}
-                    {benchmarks.includes("QQQ") && (
-                      <span className="flex items-center gap-1 text-purple-600">
-                        <span className="w-2 h-2 rounded-xs bg-purple-500" /> 나스닥 100
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="h-[210px] w-full mt-2">
-                  {isMounted && annualReturns.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={annualReturns} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                        <XAxis dataKey="year" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} />
-                        <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={(v) => `${v}%`} />
-                        <Tooltip
-                          content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const d = payload[0].payload;
-                              return (
-                                <div className="bg-white/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
-                                  <p className="font-bold text-slate-700">{d.year}년 연간 수익률</p>
-                                  <p className="text-emerald-600 font-bold">내 포트폴리오: {d.portfolio > 0 ? `+${d.portfolio}%` : `${d.portfolio}%`}</p>
-                                  {benchmarks.includes("SPY") && (
-                                    <p className="text-slate-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
-                                  )}
-                                  {benchmarks.includes("QQQ") && (
-                                    <p className="text-purple-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="portfolio" fill="#10b981" radius={[3, 3, 0, 0]} animationDuration={800} />
-                        {benchmarks.includes("SPY") && (
-                          <Bar dataKey="spy" fill="#64748b" radius={[3, 3, 0, 0]} animationDuration={800} />
-                        )}
-                        {benchmarks.includes("QQQ") && (
-                          <Bar dataKey="qqq" fill="#a855f7" radius={[3, 3, 0, 0]} animationDuration={800} />
-                        )}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-slate-400 text-xs">
-                      연도별 데이터가 없습니다.
-                    </div>
+                  )}
+                  {benchmarks.includes("QQQ") && (
+                    <span className="flex items-center gap-1.5 text-purple-600">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-purple-500" /> 나스닥 100
+                    </span>
                   )}
                 </div>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-                <span>하락장(2022년 등)에서의 방어율과 상승장 초과 달성도를 연도별로 비교합니다.</span>
+              <div className="h-[155px] lg:h-[165px] w-full mt-1">
+                {isMounted && annualReturns.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%" minHeight={140}>
+                    <BarChart
+                      key={annualReturns.map(r => r.year).join("-")}
+                      data={annualReturns}
+                      margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+                      maxBarSize={48}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="year" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const d = payload[0].payload;
+                            return (
+                              <div className="bg-white/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
+                                <p className="font-bold text-slate-700">{d.year}년 연간 수익률</p>
+                                <p className="text-emerald-600 font-bold">내 포트폴리오: {d.portfolio > 0 ? `+${d.portfolio}%` : `${d.portfolio}%`}</p>
+                                {benchmarks.includes("SPY") && (
+                                  <p className="text-slate-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
+                                )}
+                                {benchmarks.includes("QQQ") && (
+                                  <p className="text-purple-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                        cursor={{ fill: "#f1f5f9", radius: 4 }}
+                      />
+                      <Bar dataKey="portfolio" fill="#10b981" radius={[4, 4, 0, 0]} animationBegin={0} animationDuration={600} animationEasing="ease-out" />
+                      {benchmarks.includes("SPY") && (
+                        <Bar dataKey="spy" fill="#64748b" radius={[4, 4, 0, 0]} animationBegin={100} animationDuration={600} animationEasing="ease-out" />
+                      )}
+                      {benchmarks.includes("QQQ") && (
+                        <Bar dataKey="qqq" fill="#a855f7" radius={[4, 4, 0, 0]} animationBegin={200} animationDuration={600} animationEasing="ease-out" />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-slate-400 text-xs">
+                    연도별 데이터가 없습니다.
+                  </div>
+                )}
               </div>
             </div>
 
