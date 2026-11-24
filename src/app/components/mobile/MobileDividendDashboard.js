@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -367,7 +368,7 @@ const MobileDividendChart = React.memo(function MobileDividendChart({
   }, []);
 
   return (
-    <div key={`m-chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1">
+    <div key={`m-chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1 touch-pan-y">
       <style>{`
         @keyframes chartRiseUp {
           0% {
@@ -532,13 +533,20 @@ export default function MobileDividendDashboard({
   availableYears = [],
   selectedYear,
   setSelectedYear,
-  formatCurrency
+  formatCurrency,
+  initialTab = 'dividends'
 }) {
   const [selectedMonthModal, setSelectedMonthModal] = useState(null);
   const { data: monthModalData, isOpen: isMonthModalOpen, isClosing: isMonthClosing } = useAnimatedDataModal(selectedMonthModal);
   const { dividendTransactions } = useAssets();
-  // 'dividends' (배당) | 'trades' (매매) 탭 상태 (기본값: 'dividends')
-  const [settlementTab, setSettlementTab] = useState('dividends');
+  // 'dividends' (배당) | 'trades' (매매) 탭 상태 (initialTab 적용)
+  const [settlementTab, setSettlementTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setSettlementTab(initialTab);
+    }
+  }, [initialTab]);
 
   // ── 매매손익 DB 조회 상태 및 정규화 데이터 ──
   const [closedTrades, setClosedTrades] = useState([]);
@@ -835,37 +843,51 @@ export default function MobileDividendDashboard({
                 </div>
               </div>
 
-              {/* 우측 상단: < 배당 > / < 매매 > 화면 전환 버튼 (배경 없이 깔끔한 텍스트 & 화살표) */}
+              {/* 우측 상단: < 배당 > / < 매매 > 화면 전환 버튼 (거래내역과 동일하게 Link로 실제 페이지 이동 지원) */}
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setSettlementTab('dividends')}
-                  disabled={settlementTab === 'dividends'}
-                  className={`p-1 transition-all ${
-                    settlementTab === 'trades'
-                      ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
-                      : "text-slate-200 cursor-not-allowed"
-                  }`}
-                  aria-label="배당금 현황으로 이동"
-                  title={settlementTab === 'trades' ? "배당금 현황으로 이동" : "현재 배당금 현황입니다"}
-                >
-                  <ChevronLeft size={18} strokeWidth={2.5} />
-                </button>
+                {settlementTab === 'trades' ? (
+                  <Link
+                    href="/dividends"
+                    className="p-1 text-slate-600 hover:text-slate-900 active:scale-90 transition-all cursor-pointer"
+                    aria-label="배당금 현황으로 이동"
+                    title="배당금 현황으로 이동"
+                  >
+                    <ChevronLeft size={18} strokeWidth={2.5} />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="p-1 text-slate-200 cursor-not-allowed"
+                    aria-label="현재 배당금 현황입니다"
+                    title="현재 배당금 현황입니다"
+                  >
+                    <ChevronLeft size={18} strokeWidth={2.5} />
+                  </button>
+                )}
+
                 <span className="text-[15px] font-black text-slate-800 tracking-tight min-w-[42px] text-center select-none">
                   {settlementTab === 'dividends' ? '배당' : '매매'}
                 </span>
-                <button
-                  onClick={() => setSettlementTab('trades')}
-                  disabled={settlementTab === 'trades'}
-                  className={`p-1 transition-all ${
-                    settlementTab === 'dividends'
-                      ? "text-slate-600 hover:text-slate-900 active:scale-90 cursor-pointer"
-                      : "text-slate-200 cursor-not-allowed"
-                  }`}
-                  aria-label="매매손익 현황으로 이동"
-                  title={settlementTab === 'dividends' ? "매매손익 현황으로 이동" : "현재 매매손익 현황입니다"}
-                >
-                  <ChevronRight size={18} strokeWidth={2.5} />
-                </button>
+
+                {settlementTab === 'dividends' ? (
+                  <Link
+                    href="/trades"
+                    className="p-1 text-slate-600 hover:text-slate-900 active:scale-90 transition-all cursor-pointer"
+                    aria-label="매매손익 현황으로 이동"
+                    title="매매손익 현황으로 이동"
+                  >
+                    <ChevronRight size={18} strokeWidth={2.5} />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="p-1 text-slate-200 cursor-not-allowed"
+                    aria-label="현재 매매손익 현황입니다"
+                    title="현재 매매손익 현황입니다"
+                  >
+                    <ChevronRight size={18} strokeWidth={2.5} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -944,7 +966,7 @@ export default function MobileDividendDashboard({
                   animationDelay: `${idx * 35}ms`,
                   animationFillMode: 'forwards',
                 }}
-                className={`relative overflow-hidden rounded-2xl p-3.5 transition-all duration-200 border opacity-0 animate-page-slide ${
+                className={`relative overflow-hidden rounded-2xl p-3.5 transition-colors duration-200 border opacity-0 animate-page-slide ${
                   hasData
                     ? isMaxMonth
                       ? 'bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/30 border-emerald-300 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.12)] cursor-pointer active:scale-95'
@@ -1144,11 +1166,11 @@ export default function MobileDividendDashboard({
 
                             {/* 2행: 종목코드+배지 (좌), 외화 손익+수익률 (중), 원화 수익률 (우) 동일 라인 - 대시보드 폰트 스타일 일치 */}
                             <div className="flex justify-between items-center mt-1 text-[11px] leading-tight">
-                              {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
+                              {/* 좌: 종목코드(7자리 고정폭) + 국내/해외 구분 */}
                               <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
-                                <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{item.code}</span>
+                                <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">{item.code}</span>
                                 <span
-                                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                  className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                     isKRW
                                       ? "bg-blue-50 text-blue-600 border-blue-200"
                                       : "bg-amber-50 text-amber-700 border-amber-200"
@@ -1284,15 +1306,15 @@ export default function MobileDividendDashboard({
                         </p>
                       </div>
 
-                      {/* 2행: 종목코드(8자리 고정폭) + 국내/해외 배지 + 외화(우측정렬) + 총배당금(원화) */}
+                      {/* 2행: 종목코드(7자리 고정폭) + 국내/해외 배지 + 외화(우측정렬) + 총배당금(원화) */}
                       <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
-                        {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
+                        {/* 좌: 종목코드(7자리 고정폭) + 국내/해외 구분 */}
                         <div className="flex items-center gap-0 shrink-0">
-                          <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                          <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">
                             {stockCode}
                           </span>
                           <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                            className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                               isKRW
                                 ? "bg-blue-50 text-blue-600 border-blue-200"
                                 : "bg-amber-50 text-amber-700 border-amber-200"
@@ -1411,11 +1433,11 @@ export default function MobileDividendDashboard({
 
                           {/* 2행: 종목코드+배지 (좌), 외화 손익+수익률 (중), 원화 수익률 (우) 동일 라인 - 대시보드 폰트 스타일 일치 */}
                           <div className="flex justify-between items-center mt-1 text-[11px] leading-tight">
-                            {/* 좌: 코드(8자리 고정폭) + 국내/해외 구분 */}
+                            {/* 좌: 코드(7자리 고정폭) + 국내/해외 구분 */}
                             <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
-                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">{tradeModalData.code}</span>
+                              <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">{tradeModalData.code}</span>
                               <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                   isModalKRW
                                     ? "bg-blue-50 text-blue-600 border-blue-200"
                                     : "bg-amber-50 text-amber-700 border-amber-200"

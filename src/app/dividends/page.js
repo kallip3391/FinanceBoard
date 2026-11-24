@@ -637,6 +637,7 @@ export default function DividendsPage() {
           selectedYear={selectedYear}
           setSelectedYear={setSelectedYear}
           formatCurrency={formatCurrency}
+          initialTab="dividends"
         />
       </div>
 

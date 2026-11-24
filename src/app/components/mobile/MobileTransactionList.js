@@ -487,11 +487,11 @@ function MobileTransactionList({
                               <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
                                 {/* 좌: 종목코드(8자리 고정폭) + 국내/해외 구분 */}
                                 <div className="flex items-center gap-0 shrink-0">
-                                  <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                                  <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">
                                     {stockCode}
                                   </span>
                                   <span
-                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                    className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                       isKRW
                                         ? "bg-blue-50 text-blue-600 border-blue-200"
                                         : "bg-amber-50 text-amber-700 border-amber-200"
@@ -547,16 +547,16 @@ function MobileTransactionList({
 
                             {/* 2행: 종목코드(8자리 고정폭) + 매수/매도 배지 + 수량(우측라인) + 매수가(우측라인) + 총금액 */}
                             <div className="flex items-center justify-between mt-1 text-[11px] leading-tight">
-                              {/* 좌: 종목코드(8자리 고정폭) + 시장 구분(국내/해외/기타) + 매수/매도 구분 */}
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="font-mono text-slate-400 w-[50px] shrink-0 truncate">
+                              {/* 좌: 종목코드(7자리 고정폭) + 시장 구분(국내/해외/기타) + 매수/매도 구분 */}
+                              <div className="flex items-center gap-0 shrink-0">
+                                <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">
                                   {stockCode}
                                 </span>
                                 {(() => {
                                   const rowType = isOther ? 'OTHER' : (isOverseas ? 'OVERSEAS' : 'DOMESTIC');
                                   return (
                                     <span
-                                      className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
+                                      className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none mr-1 ${
                                         rowType === 'OTHER'
                                           ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                           : rowType === 'OVERSEAS'
@@ -569,7 +569,7 @@ function MobileTransactionList({
                                   );
                                 })()}
                                 <span
-                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 text-center leading-none ${
+                                  className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                     isBuy
                                       ? "bg-rose-50 text-rose-600 border-rose-200"
                                       : "bg-blue-50 text-blue-600 border-blue-200"

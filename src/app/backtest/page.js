@@ -665,7 +665,7 @@ export default function BacktestPage() {
                   >
                     <div className="flex items-center justify-between mb-1.5 gap-2">
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
+                        <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                           isDomestic 
                             ? "bg-blue-50 text-blue-600 border border-blue-200/60" 
                             : "bg-amber-50 text-amber-700 border border-amber-200/60"

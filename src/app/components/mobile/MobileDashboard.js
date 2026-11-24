@@ -641,14 +641,14 @@ export default function MobileDashboard() {
                           {/* 2행: 종목코드+구분+수량 (좌) & 손익 (우) */}
                           <div className="flex justify-between items-center mt-1 text-[11px] leading-tight gap-1.5">
                             <div className="flex items-center gap-0 shrink-0 text-slate-400 font-medium">
-                              {/* 1. 종목코드 (8자리 고정폭) */}
-                              <span className="font-mono text-slate-400 w-[54px] shrink-0 truncate">
+                              {/* 1. 종목코드 (7자리 고정폭) */}
+                              <span className="font-mono text-slate-400 w-[7ch] shrink-0 truncate">
                                 {formatStockCode(h.code)}
                               </span>
 
                               {/* 2. 구분 (국내/해외 배지) */}
                               <span
-                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0 text-center ${
+                                className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                   isKRW
                                     ? 'bg-blue-50 text-blue-600 border-blue-200'
                                     : 'bg-amber-50 text-amber-700 border-amber-200'

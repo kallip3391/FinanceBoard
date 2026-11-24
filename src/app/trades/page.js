@@ -698,6 +698,7 @@ export default function TradesPnLPage() {
           user={user}
           loading={isLoading}
           formatCurrency={formatCurrency}
+          initialTab="trades"
         />
       </div>
 

@@ -14,7 +14,6 @@ import {
   PlusCircle,
 } from "lucide-react";
 import { TransactionManager, TRADE_TYPES } from "@/lib/transactionManager";
-import useMobileKeyboardModal from "@/hooks/useMobileKeyboardModal";
 
 // ── 통화 기호 헬퍼 ──
 export const getCurrencySymbol = (currency) => {
@@ -219,9 +218,6 @@ function TradingModal({
   const [isSearchingStock, setIsSearchingStock] = useState(false);
   const [focusedStockIndex, setFocusedStockIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
-
-  // 모바일 가상 키보드 스크롤 대응 훅
-  const formRef = useMobileKeyboardModal(isOpen);
 
   // Refs
   const calendarButtonRef = useRef(null);
@@ -573,8 +569,9 @@ function TradingModal({
         </div>
 
         {/* 폼 바디 */}
-        <form ref={formRef} onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          {/* 1. 거래일 & 구분 */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-5 md:p-6 overflow-y-auto overscroll-contain flex-1 min-h-0 space-y-4">
+            {/* 1. 거래일 & 구분 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="relative">
               <label className="block text-xs font-black text-slate-600 tracking-tight ml-0.5 mb-1.5">거래일</label>
@@ -751,7 +748,7 @@ function TradingModal({
               {formData.security_id && (() => {
                 const stType = getStockType(formData);
                 return (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 leading-none ${
+                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                     stType === 'OTHER'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : stType === 'OVERSEAS'
@@ -894,7 +891,7 @@ function TradingModal({
                             {(() => {
                               const itemType = getStockType(stock);
                               return (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
+                                <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
                                   itemType === 'OTHER'
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                     : itemType === 'OVERSEAS'
@@ -1057,19 +1054,21 @@ function TradingModal({
             </div>
           )}
 
-          {/* 6. Footer 버튼 */}
-          <div className="pt-2 flex gap-3">
+          </div>
+
+          {/* 6. Footer 버튼 (필터와 동일하게 모바일 하단 항상 고정 노출) */}
+          <div className="flex-shrink-0 p-4 bg-white border-t border-slate-100 flex items-center gap-3 z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer"
+              className="flex-1 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={loading}
-              className={`flex-1 h-12 rounded-2xl font-bold text-sm transition-all shadow-md ${
+              className={`flex-1 h-12 rounded-xl font-bold text-sm transition-all shadow-md ${
                 loading 
                   ? 'bg-slate-300 text-white cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25 active:scale-[0.98] cursor-pointer'

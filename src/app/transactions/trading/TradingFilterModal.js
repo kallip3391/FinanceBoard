@@ -121,6 +121,22 @@ function TradingFilterModal({
     };
   }, [isOpen]);
 
+  // 종목 선택 핸들러
+  const handleSelectFilterStock = useCallback((stock) => {
+    if (!stock) return;
+    setTempFilters(prev => ({
+      ...prev,
+      stockName: `${stock.name}(${stock.code})`,
+      stockCode: stock.code,
+      security_id: stock.security_id,
+    }));
+    setIsFilterStockDropdownOpen(false);
+    setFocusedStockIndex(-1);
+    if (typeof document !== 'undefined') {
+      document.activeElement?.blur();
+    }
+  }, []);
+
   // 종목 검색 실행
   const handleStockSearch = useCallback(async (term) => {
     let cleanTerm = (term || '').trim();
@@ -140,7 +156,7 @@ function TradingFilterModal({
 
     setIsSearchingStock(true);
     setIsFilterStockDropdownOpen(true);
-    setFocusedStockIndex(-1);
+    setFocusedStockIndex(0);
 
     try {
       const results = await TransactionManager.searchStocksByName(cleanTerm, null);
@@ -153,6 +169,42 @@ function TradingFilterModal({
       setIsSearchingStock(false);
     }
   }, []);
+
+  // 검색 인풋 엔터키 처리 (드롭다운 열려있을 시 첫 번째/선택 항목 즉시 선택 및 입력)
+  const handleFilterStockEnter = useCallback(async (val) => {
+    const query = val ? val.trim() : '';
+    if (!query) {
+      setIsFilterStockDropdownOpen(false);
+      return;
+    }
+
+    if (isFilterStockDropdownOpen && stockSearchResults.length > 0) {
+      const selectedIndex = focusedStockIndex >= 0 ? focusedStockIndex : 0;
+      const selected = stockSearchResults[selectedIndex];
+      if (selected) {
+        handleSelectFilterStock(selected);
+        return;
+      }
+    }
+
+    try {
+      setIsSearchingStock(true);
+      const results = await TransactionManager.searchStocksByName(query, null);
+      if (results && results.length > 0) {
+        setStockSearchResults(results);
+        setFocusedStockIndex(0);
+        setIsFilterStockDropdownOpen(true);
+      } else {
+        setStockSearchResults([]);
+        setIsFilterStockDropdownOpen(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setStockSearchResults([]);
+    } finally {
+      setIsSearchingStock(false);
+    }
+  }, [isFilterStockDropdownOpen, focusedStockIndex, stockSearchResults, handleSelectFilterStock]);
 
   const handleApply = () => {
     onApply(tempFilters);
@@ -191,9 +243,7 @@ function TradingFilterModal({
         </div>
 
         {/* 바디 */}
-        <div className={`px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain ${
-          isFilterStockDropdownOpen && stockSearchResults.length > 0 ? 'pb-56' : ''
-        }`}>
+        <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <div className="space-y-4">
             {/* 1. 조회 기간 선택 */}
             <div className="relative z-20">
@@ -459,7 +509,17 @@ function TradingFilterModal({
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           if (e.nativeEvent?.isComposing) return;
-                          handleStockSearch(tempFilters.stockName);
+                          handleFilterStockEnter(tempFilters.stockName);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          if (isFilterStockDropdownOpen) {
+                            setFocusedStockIndex(prev => Math.min(prev + 1, stockSearchResults.length - 1));
+                          }
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          if (isFilterStockDropdownOpen) {
+                            setFocusedStockIndex(prev => Math.max(prev - 1, 0));
+                          }
                         } else if (e.key === 'Escape') {
                           setIsFilterStockDropdownOpen(false);
                         }
@@ -468,7 +528,7 @@ function TradingFilterModal({
                     />
                     <button
                       type="button"
-                      onClick={() => handleStockSearch(tempFilters.stockName)}
+                      onClick={() => handleFilterStockEnter(tempFilters.stockName)}
                       className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
                       title="종목 검색"
                     >
@@ -478,40 +538,40 @@ function TradingFilterModal({
                 )}
 
                 {isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-[100] w-full mt-1.5">
+                  <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
                     <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
                       <div
                         ref={filterStockListRef}
-                        className="overflow-y-auto overflow-x-hidden py-1 block max-h-[220px]"
+                        className="overflow-y-auto overflow-x-hidden py-1 block max-h-[148px] flex flex-col-reverse"
                       >
-                        {stockSearchResults.map((stock, i) => (
-                          <button
-                            key={stock.security_id || i}
-                            type="button"
-                            onClick={() => {
-                              setTempFilters(prev => ({
-                                ...prev,
-                                stockName: `${stock.name}(${stock.code})`,
-                                stockCode: stock.code,
-                                security_id: stock.security_id,
-                              }));
-                              setIsFilterStockDropdownOpen(false);
-                            }}
-                            className="w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer"
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-[13px] font-bold leading-tight text-slate-700">
-                                {stock.name}
-                                <span className="text-[12px] font-medium ml-1.5 text-slate-400">
-                                  ({stock.code})
+                        {stockSearchResults.map((stock, i) => {
+                          const isFocused = i === focusedStockIndex;
+                          return (
+                            <button
+                              key={stock.security_id || i}
+                              type="button"
+                              onClick={() => handleSelectFilterStock(stock)}
+                              onMouseEnter={() => setFocusedStockIndex(i)}
+                              className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between transition-colors pointer-events-auto cursor-pointer ${
+                                isFocused ? 'bg-indigo-50/80 text-indigo-700 font-bold border-l-3 border-indigo-600 pl-3.5' : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex flex-col">
+                                <span className={`text-[13px] font-bold leading-tight ${isFocused ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                  {stock.name}
+                                  <span className={`text-[12px] font-medium ml-1.5 ${isFocused ? 'text-indigo-600 opacity-60' : 'text-slate-400'}`}>
+                                    ({stock.code})
+                                  </span>
                                 </span>
+                              </div>
+                              <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
+                                isFocused ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-400 border-slate-200'
+                              }`}>
+                                {stock.exchange_nm || (getStockType(stock) === 'OTHER' ? '기타' : (stock.currency === 'KRW' ? '국내' : '해외'))}
                               </span>
-                            </div>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-lg bg-slate-50 text-slate-400">
-                              {stock.exchange_nm || (getStockType(stock) === 'OTHER' ? '기타' : (stock.currency === 'KRW' ? '국내' : '해외'))}
-                            </span>
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

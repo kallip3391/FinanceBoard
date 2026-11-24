@@ -3000,9 +3000,7 @@ export default function TransactionsPage() {
               </button>
             </div>
 
-            <div className={`px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain ${
-              isFilterStockDropdownOpen && stockSearchResults.length > 0 ? 'pb-56' : ''
-            }`}>
+            <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
               <div className="space-y-4">
                 {/* 1. 조회 기간 선택 */}
                 <div className="relative z-20">
@@ -3254,14 +3252,15 @@ export default function TransactionsPage() {
                     )}
                     
                     {isFilterModalOpen && isFilterStockDropdownOpen && stockSearchResults.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 z-[100] w-full mt-1.5">
+                      <div className="absolute bottom-full left-0 right-0 z-[100] w-full mb-1.5">
                         <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden animate-slide-up flex flex-col pointer-events-auto">
                           <div 
                             ref={filterStockListRef}
-                            className="overflow-y-auto overflow-x-hidden py-1 block max-h-[220px]"
+                            className="overflow-y-auto overflow-x-hidden py-1 block max-h-[148px] flex flex-col-reverse"
                           >
                             {stockSearchResults.map((stock, i) => {
                               const originalIndex = i;
+                              const isFocused = originalIndex === focusedStockIndex;
                               return (
                                 <button
                                   key={stock.security_id || originalIndex}
@@ -3279,19 +3278,21 @@ export default function TransactionsPage() {
                                     }
                                   }}
                                   onMouseEnter={() => setFocusedStockIndex(originalIndex)}
-                                  className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors pointer-events-auto cursor-pointer ${
-                                    originalIndex === focusedStockIndex ? 'bg-indigo-50/70 text-indigo-700' : ''
+                                  className={`w-full min-h-[48px] h-[48px] flex-shrink-0 px-4 text-left flex items-center justify-between transition-colors pointer-events-auto cursor-pointer ${
+                                    isFocused ? 'bg-indigo-50/80 text-indigo-700 font-bold border-l-3 border-indigo-600 pl-3.5' : 'hover:bg-slate-50'
                                   }`}
                                 >
                                   <div className="flex flex-col">
-                                    <span className={`text-[13px] font-bold leading-tight ${originalIndex === focusedStockIndex ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                    <span className={`text-[13px] font-bold leading-tight ${isFocused ? 'text-indigo-700' : 'text-slate-700'}`}>
                                       {stock.name}
-                                      <span className={`text-[12px] font-medium ml-1.5 ${originalIndex === focusedStockIndex ? 'text-indigo-600 opacity-60' : 'text-slate-400'}`}>
+                                      <span className={`text-[12px] font-medium ml-1.5 ${isFocused ? 'text-indigo-600 opacity-60' : 'text-slate-400'}`}>
                                         ({stock.code})
                                       </span>
                                     </span>
                                   </div>
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-lg ${originalIndex === focusedStockIndex ? 'bg-indigo-100 text-indigo-700 font-bold' : 'bg-slate-50 text-slate-400'}`}>
+                                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 text-center leading-none ${
+                                    isFocused ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-400 border-slate-200'
+                                  }`}>
                                     {stock.currency || 'KRW'}
                                   </span>
                                 </button>

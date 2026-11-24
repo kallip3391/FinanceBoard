@@ -31,6 +31,8 @@
     scrollbar-gutter: stable;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   body {
@@ -41,6 +43,7 @@
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
     touch-action: manipulation;
+    overscroll-behavior-y: none;
   }
 
   button, a, input, select, textarea, [role="button"] {
