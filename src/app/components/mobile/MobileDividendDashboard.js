@@ -810,8 +810,10 @@ export default function MobileDividendDashboard({
         {/* 로그인 후 로딩 상태 */}
         {user && loading && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 flex flex-col items-center justify-center gap-3">
-            <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            <span className="font-bold text-slate-700 text-sm">배당 내역을 불러오는 중...</span>
+            <div className={`w-8 h-8 border-3 ${settlementTab === 'trades' ? 'border-violet-500' : 'border-emerald-500'} border-t-transparent rounded-full animate-spin`} />
+            <span className="font-bold text-slate-700 text-sm">
+              {settlementTab === 'trades' ? '매매내역을 불러오는 중...' : '배당 내역을 불러오는 중...'}
+            </span>
             <span className="text-xs text-slate-400">잠시만 기다려주세요</span>
           </div>
         )}
