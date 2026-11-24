@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { ChevronLeft, ChevronRight, ChevronUp, Sprout, Calendar, X, TrendingUp, Briefcase } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, Sprout, Calendar, X, TrendingUp, Briefcase } from "lucide-react";
 import { TransactionManager } from "@/lib/transactionManager";
 import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
 import { useAssets } from "@/contexts/AssetContext";
@@ -1138,7 +1138,7 @@ export default function MobileDividendDashboard({
                 </div>
               ) : (
                 <>
-                  <div key={`trade-page-${tradePage}`} className="space-y-1.5">
+                  <div key={`trade-page-${tradePage}`} className="flex flex-col gap-1.5 min-h-[250px]">
                     {currentTradeItems.map((item, idx) => {
                       const isKRW = item.isKRW;
                       const isProfit = item.totalRealizedProfit > 0;
@@ -1148,7 +1148,7 @@ export default function MobileDividendDashboard({
                         <div
                           key={`trade-item-${tradePage}-${item.code}-${idx}`}
                           onClick={() => setSelectedTradeModal(item)}
-                          className={`py-2.5 px-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors flex items-center gap-2.5 cursor-pointer active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
+                          className={`h-[58px] py-2.5 px-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors flex items-center gap-2.5 cursor-pointer active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                         >
                           {/* 좌측: 로고 */}
                           <StockLogo code={item.code} name={item.name} isKRW={isKRW} />
@@ -1193,11 +1193,49 @@ export default function MobileDividendDashboard({
                     })}
                   </div>
 
-                  {/* 하단 페이지네이션 인디케이터 (1 / 3) - 카드 박스 내부 하단에 배치 */}
-                  <div className="flex justify-center items-center pt-1 pb-0.5 text-xs font-bold gap-1 select-none">
-                    <span className="text-blue-600 font-black">{tradePage}</span>
-                    <span className="text-slate-300">/</span>
-                    <span className="text-slate-400 font-medium">{totalTradePages}</span>
+                  {/* 하단 페이지네이션 인디케이터 (1 / 3) - 카드 박스 내부 하단에 배치 및 10페이지 이동 버튼 */}
+                  <div className="flex items-center justify-center gap-3 font-bold text-xs pt-1 pb-0.5 select-none">
+                    <button
+                      type="button"
+                      disabled={tradePage <= 1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTradePage((p) => Math.max(1, p - 10));
+                      }}
+                      className={`p-1 rounded-lg transition-all flex items-center justify-center ${
+                        tradePage <= 1
+                          ? "text-slate-200 cursor-not-allowed"
+                          : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 active:scale-90 cursor-pointer"
+                      }`}
+                      aria-label="10페이지 이전으로 이동"
+                      title="10페이지 이전"
+                    >
+                      <ChevronsLeft size={16} strokeWidth={2.5} />
+                    </button>
+
+                    <div className="flex items-center gap-1.5 min-w-[45px] justify-center">
+                      <span className="text-blue-600 font-black">{tradePage}</span>
+                      <span className="text-slate-300">/</span>
+                      <span className="text-slate-400 font-medium">{totalTradePages}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={tradePage >= totalTradePages}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTradePage((p) => Math.min(totalTradePages, p + 10));
+                      }}
+                      className={`p-1 rounded-lg transition-all flex items-center justify-center ${
+                        tradePage >= totalTradePages
+                          ? "text-slate-200 cursor-not-allowed"
+                          : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 active:scale-90 cursor-pointer"
+                      }`}
+                      aria-label="10페이지 다음으로 이동"
+                      title="10페이지 다음"
+                    >
+                      <ChevronsRight size={16} strokeWidth={2.5} />
+                    </button>
                   </div>
                 </>
               )}

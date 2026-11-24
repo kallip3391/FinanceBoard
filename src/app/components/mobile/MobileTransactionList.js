@@ -7,6 +7,8 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Plus,
   ArrowLeftRight,
   Globe,
@@ -423,7 +425,7 @@ function MobileTransactionList({
               ) : (
                 <div 
                   key={`tx-list-${type}-${currentPage}`}
-                  className="flex flex-col gap-2.5 touch-pan-y"
+                  className="flex flex-col gap-2.5 touch-pan-y min-h-[422px]"
                   onTouchStart={handleTouchStart}
                   onTouchEnd={handleTouchEnd}
                 >
@@ -482,7 +484,7 @@ function MobileTransactionList({
                           <div
                             key={tx.id || `div-${idx}`}
                             onClick={() => onEdit && onEdit(tx)}
-                            className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
+                            className={`h-[62px] p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                           >
                             {/* 1열: 종목 로고 */}
                             <StockLogo code={stockCode} name={stockName} isKRW={isKRW} />
@@ -544,7 +546,7 @@ function MobileTransactionList({
                         <div
                           key={tx.id || `trade-${idx}`}
                           onClick={() => onEdit && onEdit(tx)}
-                          className={`p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
+                          className={`h-[62px] p-3 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-100 transition-colors cursor-pointer flex items-center gap-2.5 active:scale-[0.99] opacity-0 animate-feed-lift stagger-${(idx % 12) + 1}`}
                         >
                           {/* 1열: 종목 로고 */}
                           <StockLogo code={stockCode} name={stockName} isKRW={isKRW} />
@@ -622,22 +624,54 @@ function MobileTransactionList({
               )}
             </div>
 
-            {/* ── 3. 페이지 인디케이터 (각 거래내역 테마 색상 동기화) ── */}
+            {/* ── 3. 페이지 인디케이터 (각 거래내역 테마 색상 동기화 및 10페이지 이동 버튼) ── */}
             {displayTotalPages > 1 && (
-              <div className="flex items-center justify-center gap-1.5 font-bold text-xs pt-2 pb-0.5">
-                <span
-                  className={`font-black ${
-                    type === "trading"
-                      ? "text-blue-600"
-                      : type === "overseas"
-                      ? "text-emerald-600"
-                      : "text-indigo-600"
+              <div className="flex items-center justify-center gap-3 font-bold text-xs pt-2 pb-0.5 select-none">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage && setCurrentPage((p) => Math.max(1, p - 10))}
+                  className={`p-1 rounded-lg transition-all flex items-center justify-center ${
+                    currentPage <= 1
+                      ? "text-slate-200 cursor-not-allowed"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 active:scale-90 cursor-pointer"
                   }`}
+                  aria-label="10페이지 이전으로 이동"
+                  title="10페이지 이전"
                 >
-                  {currentPage}
-                </span>
-                <span className="text-slate-300">/</span>
-                <span className="text-slate-400 font-bold">{displayTotalPages}</span>
+                  <ChevronsLeft size={16} strokeWidth={2.5} />
+                </button>
+
+                <div className="flex items-center gap-1.5 min-w-[50px] justify-center">
+                  <span
+                    className={`font-black ${
+                      type === "trading"
+                        ? "text-blue-600"
+                        : type === "overseas"
+                        ? "text-emerald-600"
+                        : "text-indigo-600"
+                    }`}
+                  >
+                    {currentPage}
+                  </span>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-slate-400 font-bold">{displayTotalPages}</span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= displayTotalPages}
+                  onClick={() => setCurrentPage && setCurrentPage((p) => Math.min(displayTotalPages, p + 10))}
+                  className={`p-1 rounded-lg transition-all flex items-center justify-center ${
+                    currentPage >= displayTotalPages
+                      ? "text-slate-200 cursor-not-allowed"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 active:scale-90 cursor-pointer"
+                  }`}
+                  aria-label="10페이지 다음으로 이동"
+                  title="10페이지 다음"
+                >
+                  <ChevronsRight size={16} strokeWidth={2.5} />
+                </button>
               </div>
             )}
           </>
