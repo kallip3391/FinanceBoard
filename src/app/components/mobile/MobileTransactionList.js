@@ -206,12 +206,12 @@ function MobileTransactionList({
       GBP: "£",
       HKD: "HK$",
     };
-    return symbolMap[currency] || (currency ? `${currency} ` : "$ ");
+    return symbolMap[currency] || (currency ? `${currency}` : "$");
   };
 
   // 단가(금액) 포맷
   // 국내: 원단위 소수점 없음 (예: 74,200원)
-  // 해외: 해당 통화 기호 + 소수점 2자리 (예: $ 150.25)
+  // 해외: 해당 통화 기호(색상 강조) + 소수점 2자리 (예: $150.25)
   const formatPrice = (price, currency) => {
     if (price === null || price === undefined || price === "") return "-";
     const num = typeof price === "number" ? price : parseFloat(price);
@@ -219,15 +219,24 @@ function MobileTransactionList({
 
     const isKRW = !currency || currency === "KRW";
     if (isKRW) {
-      return `${Math.round(num).toLocaleString("ko-KR")}원`;
+      return (
+        <span className="whitespace-nowrap text-blue-600 font-medium">
+          {Math.round(num).toLocaleString("ko-KR")}원
+        </span>
+      );
     }
     const sym = getCurrencySymbol(currency);
-    return `${sym} ${num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return (
+      <span className="inline-flex items-baseline justify-end whitespace-nowrap text-amber-600 font-medium">
+        <span className="font-bold mr-0.5">{sym}</span>
+        <span>{num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      </span>
+    );
   };
 
-  // 총금액 포맷
+  // 총금액 포맷 (수량 x 금액, 원래대로 단색 선명한 볼드 표기)
   // 국내: 원단위 소수점 없음 (예: 742,000원)
-  // 해외: 해당 통화 기호 + 소수점 2자리 (예: $ 1,502.50)
+  // 해외: 해당 통화 기호 + 소수점 2자리 (예: $1,502.50)
   const formatTotalAmount = (amount, quantity, price, currency) => {
     let num = typeof amount === "number" ? amount : parseFloat(amount);
     if (isNaN(num)) {
@@ -244,7 +253,7 @@ function MobileTransactionList({
       return `${Math.round(num).toLocaleString("ko-KR")}원`;
     }
     const sym = getCurrencySymbol(currency);
-    return `${sym} ${num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${sym}${num.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -511,8 +520,8 @@ function MobileTransactionList({
                                 </div>
 
                                 {/* 우: 총 배당금 (국내/해외 총금액과 동일한 폰트 및 색상) */}
-                                <div className="flex-1 text-right shrink-0">
-                                  <span className="text-xs font-black text-slate-900 tabular-nums">
+                                <div className="shrink-0 text-right whitespace-nowrap ml-auto pl-1">
+                                  <span className="text-xs font-black text-slate-900 tabular-nums whitespace-nowrap inline-block">
                                     {totalDivKRW}
                                   </span>
                                 </div>
@@ -584,14 +593,14 @@ function MobileTransactionList({
                                 <span className="w-[44px] text-right text-slate-700 font-semibold tabular-nums truncate">
                                   {formattedQuantity}{(stockName || '').includes('금현물') || stockCode === 'GOLD' ? 'g' : '주'}
                                 </span>
-                                <span className="w-[64px] text-right text-slate-500 font-medium tabular-nums truncate hide-under-420 max-[420px]:hidden">
+                                <span className="w-[64px] text-right font-medium tabular-nums truncate hide-under-420 max-[420px]:hidden whitespace-nowrap">
                                   {formattedPrice}
                                 </span>
                               </div>
 
                               {/* 우: 총금액 */}
-                              <div className="flex-1 text-right shrink-0">
-                                <span className="text-xs font-black text-slate-900 tabular-nums">
+                              <div className="shrink-0 text-right whitespace-nowrap ml-auto pl-1">
+                                <span className="text-xs font-black text-slate-900 tabular-nums whitespace-nowrap inline-block">
                                   {formattedTotalAmount}
                                 </span>
                               </div>

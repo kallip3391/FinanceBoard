@@ -115,11 +115,11 @@ const formatForeignAmount = (val, currency = 'USD', showSign = false) => {
   const isNeg = num < 0;
   const absNum = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (showSign) {
-    if (isPos) return `+${sym} ${absNum}`;
-    if (isNeg) return `-${sym} ${absNum}`;
-    return `${sym} 0.00`;
+    if (isPos) return `+${sym}${absNum}`;
+    if (isNeg) return `-${sym}${absNum}`;
+    return `${sym}0.00`;
   }
-  return `${sym} ${absNum}`;
+  return `${sym}${absNum}`;
 };
 
 const formatStockCode = (code) => {
