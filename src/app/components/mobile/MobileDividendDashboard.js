@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -1248,15 +1249,15 @@ export default function MobileDividendDashboard({
       </div>
 
       {/* ── 종목별 상세 바텀시트 모달 ── */}
-      {isMonthModalOpen && monthModalData && (
+      {isMonthModalOpen && monthModalData && typeof document !== 'undefined' && createPortal(
         <div
-          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
-            isMonthClosing ? 'animate-fade-out' : 'animate-fade-in'
+          className={`fixed inset-0 z-[9999] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isMonthClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in pointer-events-auto'
           }`}
           onClick={() => setSelectedMonthModal(null)}
         >
           <div
-            className={`bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-100 max-h-[75vh] flex flex-col ${
+            className={`bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-100 max-h-[75vh] flex flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))] ${
               isMonthClosing ? 'animate-sheet-down' : 'animate-sheet-up'
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -1386,19 +1387,20 @@ export default function MobileDividendDashboard({
               })}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── 매매손익 종목별 상세 바텀시트 모달 (Image 2 시안 100% 구현) ── */}
-      {isTradeModalOpen && tradeModalData && (
+      {isTradeModalOpen && tradeModalData && typeof document !== 'undefined' && createPortal(
         <div
-          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
-            isTradeClosing ? 'animate-fade-out' : 'animate-fade-in'
+          className={`fixed inset-0 z-[9999] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isTradeClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in pointer-events-auto'
           }`}
           onClick={() => setSelectedTradeModal(null)}
         >
           <div
-            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col ${
+            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))] ${
               isTradeClosing ? 'animate-sheet-down' : 'animate-sheet-up'
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -1614,7 +1616,8 @@ export default function MobileDividendDashboard({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

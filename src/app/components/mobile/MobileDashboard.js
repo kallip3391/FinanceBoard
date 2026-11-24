@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssets } from "@/contexts/AssetContext";
 import {
@@ -484,15 +485,15 @@ export default function MobileDashboard() {
       </div>
 
       {/* ── 4. 보유종목 바텀시트 모달 (아코디언 11개 항목 + 상단바 탭/드래그 닫기) ── */}
-      {isHoldingsMounted && (
+      {isHoldingsMounted && typeof document !== 'undefined' && createPortal(
         <div
-          className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
-            isHoldingsClosing ? 'animate-fade-out' : 'animate-fade-in'
+          className={`fixed inset-0 z-[9999] bg-black/50 backdrop-blur-xs flex flex-col justify-end transition-opacity ${
+            isHoldingsClosing ? 'animate-fade-out pointer-events-none' : 'animate-fade-in pointer-events-auto'
           }`}
           onClick={handleCloseHoldingsModal}
         >
           <div
-            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col ${
+            className={`bg-white rounded-t-3xl p-4 sm:p-5 shadow-2xl border-t border-slate-100 max-h-[85vh] flex flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))] ${
               isHoldingsClosing ? 'animate-sheet-down' : 'animate-sheet-up'
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -578,7 +579,7 @@ export default function MobileDashboard() {
             </div>
 
             {/* 종목별 아코디언 카드 리스트 (스크롤 가능 - 하단 여백 추가로 마지막 종목 잘림 방지) */}
-            <div className="overflow-y-auto space-y-2.5 pr-1 pb-10 flex-1">
+            <div className="overflow-y-auto space-y-2.5 pr-1 pb-16 flex-1">
               {holdings.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs font-medium">
                   보유 중인 종목이 없습니다.
@@ -751,7 +752,8 @@ export default function MobileDashboard() {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
