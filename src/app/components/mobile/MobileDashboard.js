@@ -141,8 +141,9 @@ function PieTooltip({ active, payload, total }) {
 
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { holdings = [], summary = {}, dividendTransactions = [] } = useAssets();
+  const isDataLoading = authLoading || summary?.isLoading;
   const isClient = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   // 해외 종목별 외화 배당금 합산 매핑 (종목코드 및 security_id 기준)
@@ -258,7 +259,7 @@ export default function MobileDashboard() {
 
         {/* ── 1. 최상단 헤더 카드 (로그인 시에만 표시) ── */}
         {user && (
-          <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
+          <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm opacity-0 animate-feed-lift stagger-1">
             <div className="flex items-center gap-2">
               <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl shadow-xs shrink-0">
                 <LayoutDashboard size={18} strokeWidth={2.5} />
@@ -276,8 +277,8 @@ export default function MobileDashboard() {
         )}
 
         {/* 로그인 후 자산 로딩 상태 */}
-        {user && summary?.isLoading && (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 flex flex-col items-center justify-center gap-3 animate-fade-in">
+        {user && isDataLoading && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 flex flex-col items-center justify-center gap-3 opacity-0 animate-feed-lift stagger-2">
             <div className="relative flex items-center justify-center">
               <div className="w-10 h-10 border-3 border-emerald-500/20 rounded-full" />
               <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin absolute" />
@@ -289,9 +290,9 @@ export default function MobileDashboard() {
           </div>
         )}
 
-        {/* ── 2. 포트폴리오 비중 차트 카드 (거래내역 상단과 동일한 animate-fade-in 효과) ── */}
-        {user && !summary?.isLoading && (holdings?.length || 0) > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2 animate-fade-in">
+        {/* ── 2. 포트폴리오 비중 차트 카드 (거래내역 상세내역과 동일한 animate-feed-lift 적용) ── */}
+        {user && !isDataLoading && (holdings?.length || 0) > 0 && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-3.5 sm:p-4 flex flex-col gap-2 opacity-0 animate-feed-lift stagger-2">
             {/* 섹션 서브헤더 */}
             <div className="flex items-center gap-2 pb-1">
               <div className="w-1.5 h-4.5 rounded-full bg-emerald-600" />
@@ -303,41 +304,47 @@ export default function MobileDashboard() {
             {/* 차트 + 범례 */}
             <div className="flex items-center px-1 py-1 gap-2">
               {/* 좌: 파이 차트 */}
-              <div style={{ width: 130, height: 130, flexShrink: 0 }}>
+              <div style={{ width: 130, height: 130, flexShrink: 0 }} className="flex items-center justify-center">
                 {isClient && (
-                  <ResponsiveContainer width={130} height={130} minWidth={0}>
-                    <PieChart>
-                      <Pie
-                        data={stockData}
-                        cx="50%" cy="50%"
-                        innerRadius={36}
-                        outerRadius={60}
-                        paddingAngle={2}
-                        dataKey="value"
-                        stroke="none"
-                        startAngle={90}
-                        endAngle={-270}
-                        isAnimationActive={true}
-                        animationDuration={900}
-                        animationEasing="ease-out"
-                      >
-                        {stockData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<PieTooltip total={total} />} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <PieChart width={130} height={130}>
+                    <Pie
+                      data={stockData}
+                      cx={65} cy={65}
+                      innerRadius={36}
+                      outerRadius={60}
+                      paddingAngle={2}
+                      dataKey="value"
+                      stroke="none"
+                      startAngle={90}
+                      endAngle={-270}
+                      isAnimationActive={true}
+                      animationDuration={900}
+                      animationEasing="ease-out"
+                    >
+                      {stockData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<PieTooltip total={total} />} />
+                  </PieChart>
                 )}
               </div>
 
-              {/* 우: 범례 2열 (좌측: 종목명, 우측: 비중) */}
-              <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-1 content-start min-w-0" style={{ maxHeight: 130, overflowY: "auto" }}>
+              {/* 우: 범례 2열 (좌측: 종목명, 우측: 비중) - 위에서부터 순서대로 노출되는 animate-feed-lift 적용 */}
+              <div 
+                key={`stock-legend-list-${holdings?.length || 0}`}
+                className="flex-1 grid grid-cols-2 gap-x-2 gap-y-1 content-start min-w-0" 
+                style={{ maxHeight: 130, overflowY: "auto" }}
+              >
                 {stockData.map((item, i) => {
                   const pct = total > 0 ? ((item.value / total) * 100).toFixed(1) : "0.0";
                   const title = item.name.includes(" (") ? item.name.split(" (")[0] : item.name;
+                  const rowIdx = Math.floor(i / 2);
                   return (
-                    <div key={i} className="flex items-center justify-between gap-1 min-w-0 py-0.5">
+                    <div 
+                      key={`legend-item-${item.code || item.name || i}`}
+                      className={`flex items-center justify-between gap-1 min-w-0 py-0.5 opacity-0 animate-feed-lift stagger-${Math.min(rowIdx + 3, 20)}`}
+                    >
                       <div className="flex items-center gap-1 min-w-0 flex-1">
                         <span
                           className="rounded-full shrink-0"
@@ -361,17 +368,13 @@ export default function MobileDashboard() {
           </div>
         )}
 
-        {/* ── 3. 하단 2x2 그리드 영역 (배당금현황 월별 카드와 동일한 animate-page-slide & 35ms 딜레이 효과 적용) ── */}
-        {user && !summary?.isLoading && (
+        {/* ── 3. 하단 2x2 그리드 영역 (자산구성비중 이후 1열 좌우 동시 -> 2열 좌우 동시 순차 노출) ── */}
+        {user && !isDataLoading && (
           <div className="grid grid-cols-2 gap-2.5 pt-1">
-            {/* [1번째 칸] 보유종목 (활성화 카드 -> 탭 시 바텀시트 모달) */}
+            {/* [1번째 칸] 보유종목 (1열 좌측: stagger-5) */}
             <div
               onClick={handleOpenHoldingsModal}
-              style={{
-                animationDelay: '0ms',
-                animationFillMode: 'forwards',
-              }}
-              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all duration-200 cursor-pointer flex flex-col justify-between opacity-0 animate-page-slide"
+              className="bg-white rounded-2xl p-3.5 border border-emerald-200/90 hover:border-emerald-400 bg-gradient-to-br from-white via-white to-emerald-50/25 shadow-xs active:scale-[0.98] transition-all duration-200 cursor-pointer flex flex-col justify-between opacity-0 animate-feed-lift stagger-5"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -410,13 +413,9 @@ export default function MobileDashboard() {
               </div>
             </div>
 
-            {/* [2번째 칸] 계좌별 현황 (향후 추가 영역) */}
+            {/* [2번째 칸] 계좌별 현황 (1열 우측: 1열 좌측과 동일한 stagger-5로 동시 노출) */}
             <div
-              style={{
-                animationDelay: '35ms',
-                animationFillMode: 'forwards',
-              }}
-              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-0 animate-feed-lift stagger-5 transition-all duration-200"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -436,13 +435,9 @@ export default function MobileDashboard() {
               </div>
             </div>
 
-            {/* [3번째 칸] 섹터 분석 (향후 추가 영역) */}
+            {/* [3번째 칸] 섹터 분석 (2열 좌측: stagger-7) */}
             <div
-              style={{
-                animationDelay: '70ms',
-                animationFillMode: 'forwards',
-              }}
-              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-0 animate-feed-lift stagger-7 transition-all duration-200"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -462,13 +457,9 @@ export default function MobileDashboard() {
               </div>
             </div>
 
-            {/* [4번째 칸] 배당 요약 (향후 추가 영역) */}
+            {/* [4번째 칸] 배당 요약 (2열 우측: 2열 좌측과 동일한 stagger-7로 동시 노출) */}
             <div
-              style={{
-                animationDelay: '105ms',
-                animationFillMode: 'forwards',
-              }}
-              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-80 opacity-0 animate-page-slide transition-all duration-200"
+              className="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-2xs flex flex-col justify-between opacity-0 animate-feed-lift stagger-7 transition-all duration-200"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">

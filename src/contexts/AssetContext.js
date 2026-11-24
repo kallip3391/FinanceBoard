@@ -52,6 +52,7 @@ export function AssetProvider({ children }) {
   }, [trendData]);
 
   const calculateAssets = useCallback(async () => {
+    if (authLoading) return;
     if (!user) {
       setHoldings([]);
       setHoldingsByAccount({});
@@ -237,7 +238,7 @@ export function AssetProvider({ children }) {
       if (user) console.error("실제 자산 데이터 조회 실패:", err);
       setSummary(prev => ({ ...prev, isLoading: false }));
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const refreshTrendData = useCallback(async (days = 365) => {
     if (!user) {
@@ -292,7 +293,7 @@ export function AssetProvider({ children }) {
       if (user) console.error("트렌드 데이터 로드 오류:", e);
       setIsTrendLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const refreshTransactions = useCallback(async () => {
     if (!user) {
@@ -348,7 +349,7 @@ export function AssetProvider({ children }) {
     } finally {
       setIsTransactionsLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const refreshAccounts = useCallback(async () => {
     if (!user) {
@@ -387,7 +388,7 @@ export function AssetProvider({ children }) {
     } finally {
       setIsAccountsLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const refreshMonthlyDividends = useCallback(async () => {
     if (!user) {
@@ -412,7 +413,7 @@ export function AssetProvider({ children }) {
     } finally {
       setIsDividendsLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const refreshAssets = useCallback(async () => {
     await Promise.all([

@@ -170,7 +170,7 @@ function TradingFilterModal({
     >
       <div
         className={`relative bg-white w-full max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 overflow-hidden max-h-[90vh] md:max-h-[85vh] flex flex-col ${
-          isClosing ? 'animate-sheet-down md:animate-modal-out pointer-events-none' : 'animate-sheet-up md:animate-page-slide pointer-events-auto'
+          isClosing ? 'max-md:animate-sheet-down md:animate-modal-out pointer-events-none' : 'max-md:animate-sheet-up md:animate-page-slide pointer-events-auto'
         }`}
         onClick={(e) => e.stopPropagation()}
       >

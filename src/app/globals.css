@@ -113,6 +113,24 @@
   .animate-page-slide {
     animation: pageSlide 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
+
+  @media (min-width: 768px) {
+    .md\:animate-page-slide {
+      animation: pageSlide 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+    .md\:animate-modal-out {
+      animation: modalPopOut 0.1s cubic-bezier(0.4, 0, 0.8, 1) forwards !important;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .max-md\:animate-sheet-up {
+      animation: sheetSlideUp 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+    .max-md\:animate-sheet-down {
+      animation: sheetSlideDown 0.1s cubic-bezier(0.4, 0, 0.8, 1) forwards !important;
+    }
+  }
   
   .animate-summary-pop {
     animation: summaryPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;

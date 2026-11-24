@@ -488,19 +488,36 @@ export default function TransactionsPage() {
   const { mounted: accountDeleteMounted, isClosing: accountDeleteClosing } = useAnimatedModal(accountDeleteConfirm.isOpen);
 
   useEffect(() => {
-    // 모바일에서는 body 스타일 변경으로 인한 브라우저 reflow/지연을 방지 (MobileDashboard와 동일)
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
-      const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
-      if (isAnyModalOpen) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
+    if (typeof window === 'undefined') return;
+
+    const isAnyModalOpen = isFilterMounted || isModalMounted || isStockMounted || isAccountMounted || alertMounted || deleteMounted || stockDeleteMounted || accountDeleteMounted;
+
+    if (isAnyModalOpen) {
+      // 팝업 열림 시: 모바일 바닥 화면 스크롤 잠금 및 상단(top: 0) 고정하여 키보드 호출 시 바닥 밀림 원천 차단
+      document.body.style.overflow = 'hidden';
+      if (window.innerWidth < 768) {
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+        document.body.style.top = '0px';
+      }
+    } else {
+      // 팝업 닫힘 시: 바닥 화면 고정 해제 후 최상단(0,0)으로 확실하게 복원
+      const wasFixed = document.body.style.position === 'fixed';
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
+      if (wasFixed || window.innerWidth < 768) {
+        window.scrollTo(0, 0);
+        setTimeout(() => window.scrollTo(0, 0), 30);
       }
     }
+
     return () => {
-      if (typeof window !== 'undefined') {
-        document.body.style.overflow = '';
-      }
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
     };
   }, [isFilterMounted, isModalMounted, isStockMounted, isAccountMounted, alertMounted, deleteMounted, stockDeleteMounted, accountDeleteMounted]);
 
@@ -2960,7 +2977,7 @@ export default function TransactionsPage() {
           onClick={() => setIsFilterModalOpen(false)}
         >
           <div 
-            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden ${isFilterClosing ? 'animate-sheet-down md:animate-modal-out pointer-events-none' : 'animate-sheet-up md:animate-page-slide pointer-events-auto'}`}
+            className={`bg-white rounded-t-3xl md:rounded-3xl shadow-2xl border-t md:border border-slate-100 max-h-[85dvh] md:max-h-[85vh] flex flex-col w-full max-w-lg mx-auto overflow-hidden ${isFilterClosing ? 'max-md:animate-sheet-down md:animate-modal-out pointer-events-none' : 'max-md:animate-sheet-up md:animate-page-slide pointer-events-auto'}`}
             onClick={(e) => e.stopPropagation()}
           >
             

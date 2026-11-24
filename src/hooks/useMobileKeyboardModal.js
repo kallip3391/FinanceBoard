@@ -43,18 +43,17 @@ export function useMobileKeyboardModal(isOpen) {
         formEl.style.paddingBottom = '340px';
 
         if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
-        // 가상 키보드가 올라오는 시점(약 120ms)에 맞춰 대상 필드를 중앙으로 스크롤
+        // 가상 키보드가 올라오는 시점(약 120ms)에 맞춰 모달 폼 내부 스크롤을 부드럽게 이동 (window 스크롤 방지)
         focusTimeoutRef.current = setTimeout(() => {
           if (document.activeElement === target && formEl) {
-            try {
-              target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } catch {
-              const formRect = formEl.getBoundingClientRect();
-              const targetRect = target.getBoundingClientRect();
-              const currentScroll = formEl.scrollTop;
-              const targetTopRelativeToForm = (targetRect.top - formRect.top) + currentScroll;
-              formEl.scrollTop = Math.max(0, targetTopRelativeToForm - 80);
-            }
+            const formRect = formEl.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const currentScroll = formEl.scrollTop;
+            const targetTopRelativeToForm = (targetRect.top - formRect.top) + currentScroll;
+            formEl.scrollTo({
+              top: Math.max(0, targetTopRelativeToForm - 60),
+              behavior: 'smooth'
+            });
           }
         }, 120);
       }
