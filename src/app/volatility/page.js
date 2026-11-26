@@ -14,6 +14,7 @@ import {
   X
 } from "lucide-react";
 import { useAssets } from "@/contexts/AssetContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AreaChart,
   Area,
@@ -215,6 +216,7 @@ function VolatilityYAxisTick({ x, y, payload, index, isKr, loadedPeriod }) {
 }
 
 export default function VolatilityPage() {
+  const { user } = useAuth();
   const { holdings } = useAssets();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -805,7 +807,7 @@ export default function VolatilityPage() {
   }, [holdings]);
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 py-6 md:py-8 space-y-6 animate-fade-in text-slate-800">
+    <div className="w-full max-w-[1600px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
       
       {/* ────────────────────────────────────────────────────────── */}
       {/* 1. 최상단 헤더 섹션 (다른 화면들과 동일하게 박스 밖 좌측 상단)  */}
@@ -824,11 +826,18 @@ export default function VolatilityPage() {
             </p>
           </div>
         </div>
+
+        {!user && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
+            로그인 후 확인할 수 있습니다.
+          </div>
+        )}
       </div>
 
       {/* ────────────────────────────────────────────────────────── */}
       {/* 2. 상단 통합 바 + 조회 전/후 영역 (조회 전 935px 높이 통일) */}
       {/* ────────────────────────────────────────────────────────── */}
+      {user && (
       <div className={!selectedStock || isLoading ? "lg:h-[935px] lg:min-h-[935px] lg:max-h-[935px] flex flex-col gap-6" : "space-y-6"}>
       <div className="relative z-30 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 md:p-6 animate-card-entrance stagger-1 shrink-0">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
@@ -1804,6 +1813,7 @@ export default function VolatilityPage() {
         </div>
       )}
       </div>
+      )}
 
       {/* 잘린 종목명 뱃지 마우스 오버 툴팁 */}
       {hoveredBadgeTooltip && (

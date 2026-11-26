@@ -1614,7 +1614,7 @@ export default function TransactionsPage() {
       {/* Desktop Transaction View */}
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
-        <div className="flex justify-between items-center mb-6">
+        <div className={`flex justify-between items-center ${user ? "mb-6" : ""}`}>
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
               <Coins size={22} className="stroke-[2.5]" />

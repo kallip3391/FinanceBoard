@@ -15,10 +15,12 @@ import {
   ChevronDown
 } from "lucide-react";
 import { useAssets } from "@/contexts/AssetContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 import BacktestDashboard from "./BacktestDashboard";
 
 export default function BacktestPage() {
+  const { user } = useAuth();
   const { holdings } = useAssets();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -474,7 +476,7 @@ export default function BacktestPage() {
   const summary = resultData?.summary;
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto px-4 py-6 md:py-8 space-y-6 animate-fade-in text-slate-800">
+    <div className="w-full max-w-[1680px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
       
       {/* ────────────────────────────────────────────────────────── */}
       {/* 1. 최상단 헤더 섹션 (다른 화면들과 동일한 박스 밖 좌측 상단)  */}
@@ -493,11 +495,18 @@ export default function BacktestPage() {
             </p>
           </div>
         </div>
+
+        {!user && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm">
+            로그인 후 확인할 수 있습니다.
+          </div>
+        )}
       </div>
 
       {/* ────────────────────────────────────────────────────────── */}
       {/* 2. 메인 화면 레이아웃 (좌측 26% 빌더 + 우측 74% 대시보드)   */}
       {/* ────────────────────────────────────────────────────────── */}
+      {user && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* ══════════════════════════════════════════════════════════ */}
@@ -984,6 +993,7 @@ export default function BacktestPage() {
         />
 
       </div>
+      )}
 
       {/* ── 종목명 호버 커스텀 툴팁 (모던 다크 글래스모피즘 + createPortal로 문서 레이아웃 간섭 0%) ── */}
       {isMounted && hoveredStockTooltip && createPortal(

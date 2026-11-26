@@ -141,32 +141,30 @@ const DividendChartSection = React.memo(function DividendChartSection({
   }, []);
 
   return (
-    <div className="glass-card p-6 min-h-[400px] mb-8 overflow-hidden">
-      <div className="flex justify-end items-center mb-6">
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex gap-2">
-            {['1년', '3년', '5년', '10년'].map((p) => (
-              <button
-                key={p}
-                onClick={() => onPeriodChange(p)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                  selectedPeriod === p
-                    ? 'bg-brand text-white shadow-md shadow-brand/20'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-sm'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
+    <div className="glass-card p-6 min-h-[370px] mb-[21px] overflow-hidden animate-card-entrance">
+      <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+        <div className="flex items-center gap-2 pl-1">
+          <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">TOTAL</span>
+          <span className="text-2xl font-black text-emerald-600 tabular-nums tracking-tighter inline-flex items-baseline animate-total-pop">
+            <AnimatedCounter value={filteredChartTotal} duration={850} />
+            <span className="text-base font-bold ml-1 text-emerald-600">원</span>
+          </span>
+        </div>
 
-          <div className="flex items-center gap-2 pr-1">
-            <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">TOTAL</span>
-            <span className="text-2xl font-black text-emerald-600 tabular-nums tracking-tighter inline-flex items-baseline animate-total-pop">
-              <AnimatedCounter value={filteredChartTotal} duration={850} />
-              <span className="text-base font-bold ml-1 text-emerald-600">원</span>
-            </span>
-          </div>
+        <div className="flex gap-2">
+          {['1년', '3년', '5년', '10년'].map((p) => (
+            <button
+              key={p}
+              onClick={() => onPeriodChange(p)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                selectedPeriod === p
+                  ? 'bg-brand text-white shadow-md shadow-brand/20'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-sm'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -183,12 +181,17 @@ const DividendChartSection = React.memo(function DividendChartSection({
           from { opacity: 0; }
           to { opacity: 1; }
         }
+        @keyframes chartAxisUp {
+          0% { opacity: 0; transform: translateY(6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
         @keyframes chartRiseUp {
           0% { clip-path: inset(100% 0 0 0); }
           100% { clip-path: inset(0 0 0 0); }
         }
-        .anim-xaxis { animation: chartFadeIn 0.5s ease-out forwards; }
-        .anim-yaxis { animation: chartFadeIn 0.5s ease-out forwards; }
+        .anim-xaxis { animation: chartFadeIn 0.65s ease-out 0.1s both; }
+        .anim-xaxis-tick { animation: chartAxisUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both; }
+        .anim-yaxis { animation: chartFadeIn 0.7s ease-out 0.12s both; }
         .chart-bar-krw { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both; }
         .chart-bar-overseas { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both; }
         .chart-bar-overseas-instant { animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both; }
@@ -196,10 +199,10 @@ const DividendChartSection = React.memo(function DividendChartSection({
 
       <div 
         key={`chart-view-${selectedPeriod}-${selectedYear}`}
-        className="h-[300px] min-w-0"
+        className="h-[314px] min-w-0 animate-fade-in"
       >
         {chartReady ? (
-          <ResponsiveContainer width="100%" height={300} minWidth={0}>
+          <ResponsiveContainer width="100%" height={314} minWidth={0}>
             <BarChart 
               data={filteredChartData} 
               barCategoryGap={filteredChartData.length > 80 ? "6%" : filteredChartData.length > 48 ? "10%" : filteredChartData.length > 24 ? "18%" : "25%"}
@@ -242,21 +245,23 @@ const DividendChartSection = React.memo(function DividendChartSection({
                     : isVeryDense
                       ? (mNum === 3 || mNum === 6 || mNum === 9 || mNum === 12)
                       : isDense
-                        ? (mNum % 2 === 1 || mNum === 12)
+                        ? (mNum % 2 === 1)
                         : true;
 
                   return (
                     <g transform={`translate(${x},${y})`}>
-                      {showMonthLabel && (
-                        <text x={0} y={15} textAnchor="middle" fill="#64748b" fontSize={isDense ? 10 : 12} fontWeight={500}>
-                          {`${mNum}월`}
-                        </text>
-                      )}
-                      {showYear && (
-                        <text x={0} y={42} textAnchor="middle" fill="#334155" fontSize={13} fontWeight="bold">
-                          {`20${year}년`}
-                        </text>
-                      )}
+                      <g className="anim-xaxis-tick">
+                        {showMonthLabel && (
+                          <text x={0} y={15} textAnchor="middle" fill="#64748b" fontSize={isDense ? 10 : 12} fontWeight={500}>
+                            {`${mNum}월`}
+                          </text>
+                        )}
+                        {showYear && (
+                          <text x={0} y={42} textAnchor="middle" fill="#334155" fontSize={13} fontWeight="bold">
+                            {`20${year}년`}
+                          </text>
+                        )}
+                      </g>
                     </g>
                   );
                 }}
@@ -644,7 +649,7 @@ export default function DividendsPage() {
       {/* 데스크톱 화면 (768px 이상) 전용 */}
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
-        <div className="flex justify-between items-center mb-6">
+        <div className={`flex justify-between items-center ${user ? "mb-6" : ""}`}>
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
               <Sprout size={22} className="stroke-[2.5]" />
@@ -687,9 +692,18 @@ export default function DividendsPage() {
 
             {/* 카드형 헤더 및 연도 선택 섹션 */}
             <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-slate-800 border-l-4 border-brand pl-4">월별 배당 요약</h2>
-                <span className="text-xs text-slate-400 font-medium">카드를 클릭하면 해당 월의 종목별 상세 배당 내역을 확인할 수 있습니다.</span>
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-2xs mt-0.5 bg-emerald-50 text-emerald-600 border-emerald-100/70">
+                  <Calendar size={20} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight">
+                    월별 배당 요약
+                  </h2>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    카드를 클릭하면 해당 월의 종목별 상세 배당 내역을 확인할 수 있습니다.
+                  </p>
+                </div>
               </div>
 
               {/* 커스텀 연도 선택기 (프리미엄 드롭다운) */}

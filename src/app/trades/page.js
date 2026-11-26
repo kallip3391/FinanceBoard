@@ -706,7 +706,7 @@ export default function TradesPnLPage() {
       {/* 데스크톱 화면 (768px 이상) 전용 */}
       <div className="desktop-only h-full flex-col pb-0 animate-fade-in">
         {/* Header Section */}
-        <div className="flex justify-between items-center mb-6">
+        <div className={`flex justify-between items-center ${user ? "mb-6" : ""}`}>
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-violet-500/20 shrink-0">
               <Briefcase size={22} className="stroke-[2.5]" />
@@ -924,7 +924,7 @@ export default function TradesPnLPage() {
         </div>
 
         {/* 필터 및 검색 바 */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-3 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="bg-white border border-slate-100 rounded-2xl p-3.5 mb-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
           {/* 좌측 그룹: 검색창 열기/닫기 토글 버튼 + 검색 입력창 */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <button
