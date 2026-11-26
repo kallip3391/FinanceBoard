@@ -28,12 +28,14 @@ async function fetchYahooHistory(symbol, range = '5y') {
       if (!result) continue;
 
       const timestamps = result.timestamp || [];
-      const closes = result.indicators?.quote?.[0]?.close || [];
+      // 배당 재투자 및 액면분할이 반영된 수정종가(adjclose) 우선 사용, 미제공 시 일반 종가(close) 폴백
+      const adjCloses = result.indicators?.adjclose?.[0]?.adjclose || [];
+      const rawCloses = result.indicators?.quote?.[0]?.close || [];
       const historyMap = new Map();
 
       for (let i = 0; i < timestamps.length; i++) {
         const ts = timestamps[i];
-        const close = closes[i];
+        const close = adjCloses[i] ?? rawCloses[i];
         if (!ts || close == null || isNaN(close) || close <= 0) continue;
         const d = new Date(ts * 1000);
         const dateStr = d.toISOString().split('T')[0];
@@ -168,7 +170,11 @@ export async function POST(request) {
     const range = period === '1y' ? '2y' : period === '3y' ? '4y' : period === '10y' ? '10y' : period === 'max' ? 'max' : '6y';
 
     // 2. 환율(KRW=X), 벤치마크(SPY, QQQ), 포트폴리오 종목들 일별 시세 병렬 수집
-    const allSymbols = [...portfolio.map(p => p.symbol), 'SPY', 'QQQ', 'KRW=X'];
+    const symbolMarketMap = new Map();
+    portfolio.forEach(p => {
+      if (p.symbol) symbolMarketMap.set(p.symbol, p.market);
+    });
+    const allSymbols = Array.from(new Set([...portfolio.map(p => p.symbol), 'SPY', 'QQQ', 'KRW=X']));
     const historyMaps = new Map();
 
     await Promise.all(
@@ -177,16 +183,26 @@ export async function POST(request) {
         let hist = null;
 
         if (isDomestic) {
-          // 국내 종목: 네이버 우선 -> 야후 보완 (10년 조회 시 2800일치 확보)
-          const naverCount = period === '10y' || period === 'max' ? 2800 : 1500;
-          hist = await fetchNaverDomesticHistory(sym, naverCount);
+          // 국내 종목: 배당 재투자(adjclose) 반영을 위해 Yahoo(.KS/.KQ) 우선 조회 -> 미제공/부족 시 네이버 폴백
+          const clean = sym.replace(/\.(KS|KQ)$/i, '');
+          const market = (symbolMarketMap.get(sym) || '').toUpperCase();
+          const primarySuffix = sym.endsWith('.KQ') || market === 'KOSDAQ' ? 'KQ' : 'KS';
+          const fallbackSuffix = primarySuffix === 'KS' ? 'KQ' : 'KS';
+
+          hist = await fetchYahooHistory(`${clean}.${primarySuffix}`, range);
           if (!hist || hist.size < 50) {
-            const clean = sym.replace(/\.(KS|KQ)$/i, '');
-            hist = await fetchYahooHistory(`${clean}.KS`, range);
-            if (!hist) hist = await fetchYahooHistory(`${clean}.KQ`, range);
+            const altHist = await fetchYahooHistory(`${clean}.${fallbackSuffix}`, range);
+            if (altHist && altHist.size >= 50) hist = altHist;
+          }
+          if (!hist || hist.size < 50) {
+            const naverCount = period === '10y' || period === 'max' ? 2800 : 1500;
+            const naverHist = await fetchNaverDomesticHistory(sym, naverCount);
+            if (naverHist && naverHist.size > (hist?.size || 0)) {
+              hist = naverHist;
+            }
           }
         } else {
-          // 해외 종목 / 환율 / 지수: 야후 파이낸스
+          // 해외 종목 / 환율 / 지수: 야후 파이낸스 (adjclose 수정종가 기준)
           hist = await fetchYahooHistory(sym, range);
         }
 
@@ -225,6 +241,7 @@ export async function POST(request) {
     const getCommonDatesInfo = (portList) => {
       let lDate = '2000-01-01';
       let lSym = '';
+      let lItem = null;
       portList.forEach(p => {
         const hist = historyMaps.get(p.symbol);
         if (hist) {
@@ -232,6 +249,7 @@ export async function POST(request) {
           if (fDate > lDate) {
             lDate = fDate;
             lSym = p.name || p.symbol;
+            lItem = p;
           }
         }
       });
@@ -258,14 +276,20 @@ export async function POST(request) {
           if (d >= lDate) dSet.add(d);
         }
       }
+      const limitingCode = lItem ? (lItem.code || lItem.symbol || '') : '';
+      const limitingIsDomestic = lItem
+        ? (lItem.currency === 'KRW' || /^\d{6}/.test(limitingCode) || lItem.market === 'KOSPI' || lItem.market === 'KOSDAQ')
+        : false;
       return {
         candidateDates: Array.from(dSet).sort(),
         latestInceptionDate: lDate,
-        limitingSymbol: lSym
+        limitingSymbol: lSym,
+        limitingCode,
+        limitingIsDomestic
       };
     };
 
-    let { candidateDates, latestInceptionDate, limitingSymbol } = getCommonDatesInfo(portfolio);
+    let { candidateDates, latestInceptionDate, limitingSymbol, limitingCode, limitingIsDomestic } = getCommonDatesInfo(portfolio);
     let excludedStocks = [];
 
     // 상장 기간이 20영업일 미만인 종목 확인
@@ -301,6 +325,8 @@ export async function POST(request) {
       candidateDates = recomputed.candidateDates;
       latestInceptionDate = recomputed.latestInceptionDate;
       limitingSymbol = recomputed.limitingSymbol;
+      limitingCode = recomputed.limitingCode;
+      limitingIsDomestic = recomputed.limitingIsDomestic;
 
       if (candidateDates.length < 20) {
         return NextResponse.json({
@@ -699,6 +725,8 @@ export async function POST(request) {
         qqqTotalReturn: Number(qqqTotalReturn.toFixed(1)),
         commonStartDate: latestInceptionDate,
         limitingSymbol,
+        limitingCode,
+        limitingIsDomestic,
         daysCount: candidateDates.length
       },
       chartSeries: optimizedChartSeries,

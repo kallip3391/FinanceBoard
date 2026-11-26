@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useRef, useMemo } from "react";
+import { memo, useEffect, useRef, useMemo } from "react";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -132,6 +132,16 @@ function AnimatedRollingNumber({
 // [우측] 백테스트 분석 결과 대시보드 컴포넌트 (React.memo 메모이제이션)
 // 좌측의 검색어 타이핑, 비중 슬라이더 조절 시 불필요한 Recharts 대용량 SVG 재계산을 차단
 // ═════════════════════════════════════════════════════════════════════
+const YearOnlyTick = ({ x, y, payload, yearTickSet }) => {
+  const label = yearTickSet[payload.value];
+  if (!label) return null;
+  return (
+    <text x={x} y={y + 12} textAnchor="middle" fill="#94a3b8" fontSize={11} fontWeight={600}>
+      {label}
+    </text>
+  );
+};
+
 const BacktestDashboard = memo(function BacktestDashboard({
   resultData,
   loading,
@@ -141,20 +151,17 @@ const BacktestDashboard = memo(function BacktestDashboard({
   formatWon
 }) {
   const summary = resultData?.summary;
-  const chartSeries = resultData?.chartSeries || [];
+  const chartSeries = useMemo(() => resultData?.chartSeries || [], [resultData?.chartSeries]);
   const annualReturns = resultData?.annualReturns || [];
 
   // X축 연도 첫 등장 데이터에만 YYYY 표시 (첫 번째 연도는 겹침 방지를 위해 제외)
   const yearTickSet = useMemo(() => {
     const seen = new Set();
-    let firstYear = null;
     return chartSeries.reduce((acc, item) => {
       const fullYear = "20" + item.date.slice(0, 2); // YY → YYYY
       if (!seen.has(fullYear)) {
         seen.add(fullYear);
-        if (firstYear === null) {
-          firstYear = fullYear; // 첫 번째 연도는 기록만 하고 표시 안 함
-        } else {
+        if (seen.size > 1) {
           acc[item.date] = fullYear;
         }
       }
@@ -162,20 +169,10 @@ const BacktestDashboard = memo(function BacktestDashboard({
     }, {});
   }, [chartSeries]);
 
-  const YearOnlyTick = ({ x, y, payload }) => {
-    const label = yearTickSet[payload.value];
-    if (!label) return null;
-    return (
-      <text x={x} y={y + 12} textAnchor="middle" fill="#94a3b8" fontSize={11} fontWeight={600}>
-        {label}
-      </text>
-    );
-  };
-
   return (
     <div className={`lg:col-span-8 xl:col-span-9 ${!resultData ? "flex flex-col" : "space-y-3 animate-fade-in"}`}>
       {!resultData ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 md:p-12 shadow-xs text-center flex flex-col items-center justify-center flex-1 w-full min-h-[580px] lg:min-h-[935px] lg:h-[935px]">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-8 md:p-12 shadow-xs text-center flex flex-col items-center justify-center flex-1 w-full min-h-[580px] lg:min-h-[935px] lg:h-[935px] animate-card-entrance stagger-1">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
               <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 shadow-sm animate-pulse">
@@ -201,21 +198,21 @@ const BacktestDashboard = memo(function BacktestDashboard({
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl text-left">
-                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5">
+                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5 opacity-0 animate-feed-lift stagger-1 hover:-translate-y-0.5 hover:border-indigo-200/80 transition-all">
                   <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black flex items-center justify-center">1</div>
                   <h4 className="text-xs font-bold text-slate-800">종목 추가</h4>
                   <p className="text-[11px] text-slate-500 leading-normal">
                     좌측 검색창에서 종목을 검색하거나 &apos;내 보유자산 불러오기&apos;를 클릭하세요.
                   </p>
                 </div>
-                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5">
+                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5 opacity-0 animate-feed-lift stagger-2 hover:-translate-y-0.5 hover:border-indigo-200/80 transition-all">
                   <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black flex items-center justify-center">2</div>
                   <h4 className="text-xs font-bold text-slate-800">비중 설정</h4>
                   <p className="text-[11px] text-slate-500 leading-normal">
                     슬라이더나 숫자로 비중을 조절하여 총합 100%를 맞추세요. (균등 배분 지원)
                   </p>
                 </div>
-                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5">
+                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1.5 opacity-0 animate-feed-lift stagger-3 hover:-translate-y-0.5 hover:border-indigo-200/80 transition-all">
                   <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black flex items-center justify-center">3</div>
                   <h4 className="text-xs font-bold text-slate-800">백테스트 실행</h4>
                   <p className="text-[11px] text-slate-500 leading-normal">
@@ -542,7 +539,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
           {/* ──────────────────────────────────────────────────────── */}
           {/* 중앙 메인 자산 성장 추이 & MDD 수중 차트                */}
           {/* ──────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs space-y-4 lg:h-[485px] flex flex-col justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs space-y-4 lg:h-[485px] flex flex-col justify-between animate-card-entrance stagger-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -561,12 +558,12 @@ const BacktestDashboard = memo(function BacktestDashboard({
                 </span>
                 {benchmarks.includes("SPY") && (
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-1.5 bg-slate-400 rounded-sm border-t border-dashed border-slate-600" /> S&P 500
+                    <span className="w-3 h-1.5 bg-red-500 rounded-sm" /> S&P 500
                   </span>
                 )}
                 {benchmarks.includes("QQQ") && (
                   <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-1.5 bg-purple-500 rounded-sm" /> 나스닥 100
+                    <span className="w-3 h-1.5 bg-yellow-500 rounded-sm" /> 나스닥 100
                   </span>
                 )}
                 <span className="flex items-center gap-1.5">
@@ -592,7 +589,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="date" tick={<YearOnlyTick />} interval={0} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} height={24} />
+                    <XAxis dataKey="date" tick={<YearOnlyTick yearTickSet={yearTickSet} />} interval={0} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} height={24} />
                     <YAxis
                       tick={{ fontSize: 11, fill: "#94a3b8" }}
                       axisLine={{ stroke: "#e2e8f0" }}
@@ -608,13 +605,13 @@ const BacktestDashboard = memo(function BacktestDashboard({
                               <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate} (환율 {Number(p.fxRate).toFixed(1)}원)</p>
                               <p className="text-emerald-600 font-black text-sm">내 포트폴리오: {Math.round(p.portfolio).toLocaleString()}원</p>
                               {benchmarks.includes("SPY") && (
-                                <div className="flex text-slate-500 font-bold">
+                                <div className="flex text-red-600 font-bold">
                                   <span className="w-[62px] shrink-0">S&P 500</span>
                                   <span>: {Math.round(p.spy).toLocaleString()}원</span>
                                 </div>
                               )}
                               {benchmarks.includes("QQQ") && (
-                                <div className="flex text-purple-600 font-bold">
+                                <div className="flex text-yellow-600 font-bold">
                                   <span className="w-[62px] shrink-0">나스닥 100</span>
                                   <span>: {Math.round(p.qqq).toLocaleString()}원</span>
                                 </div>
@@ -629,18 +626,18 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       }}
                     />
                     {/* 총 투입원금 선 */}
-                    <Line type="stepAfter" dataKey="invested" stroke="#cbd5e1" strokeWidth={1.5} dot={false} animationDuration={900} />
+                    <Line key={`inv-${executedConfig?.executedAt || 'init'}`} type="stepAfter" dataKey="invested" stroke="#cbd5e1" strokeWidth={1.5} dot={false} animationDuration={900} animationEasing="ease-out" />
                     {/* S&P 500 (원화 환산) */}
                     {benchmarks.includes("SPY") && (
                       <Line
                         key={`spy-${executedConfig?.executedAt || 'init'}`}
                         type="monotone"
                         dataKey="spy"
-                        stroke="#64748b"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 4"
+                        stroke="#ef4444"
+                        strokeWidth={2}
                         dot={false}
                         animationDuration={1000}
+                        animationEasing="ease-out"
                       />
                     )}
                     {/* 나스닥 100 */}
@@ -649,14 +646,15 @@ const BacktestDashboard = memo(function BacktestDashboard({
                         key={`qqq-${executedConfig?.executedAt || 'init'}`}
                         type="monotone"
                         dataKey="qqq"
-                        stroke="#a855f7"
-                        strokeWidth={1.5}
+                        stroke="#eab308"
+                        strokeWidth={2}
                         dot={false}
                         animationDuration={1000}
+                        animationEasing="ease-out"
                       />
                     )}
                     {/* 내 포트폴리오 */}
-                    <Area type="monotone" dataKey="portfolio" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorPort)" animationDuration={1000} />
+                    <Area key={`port-${executedConfig?.executedAt || 'init'}`} type="monotone" dataKey="portfolio" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorPort)" animationDuration={1000} animationEasing="ease-out" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -692,7 +690,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                         labelFormatter={(lbl) => `일자: ${lbl}`}
                         contentStyle={{ fontSize: 11, borderRadius: 8 }}
                       />
-                      <Area type="monotone" dataKey="drawdown" stroke="#f43f5e" strokeWidth={1.2} fill="#ffe4e6" fillOpacity={0.6} dot={false} animationDuration={900} />
+                      <Area key={`dd-${executedConfig?.executedAt || 'init'}`} type="monotone" dataKey="drawdown" stroke="#f43f5e" strokeWidth={1.2} fill="#ffe4e6" fillOpacity={0.6} dot={false} animationDuration={900} animationEasing="ease-out" />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : null}
@@ -703,7 +701,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
           {/* ──────────────────────────────────────────────────────── */}
           {/* 연도별 수익률 비교 바 차트 (메인 차트 너비와 동일하게 확장)*/}
           {/* ──────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs w-full lg:h-[264px] flex flex-col justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-xs w-full lg:h-[264px] flex flex-col justify-between animate-card-entrance stagger-5">
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                 <h4 className="text-sm md:text-base font-black text-slate-900 tracking-tight flex items-center gap-1.5">
@@ -715,13 +713,13 @@ const BacktestDashboard = memo(function BacktestDashboard({
                     <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500" /> 포트폴리오
                   </span>
                   {benchmarks.includes("SPY") && (
-                    <span className="flex items-center gap-1.5 text-slate-600">
-                      <span className="w-2.5 h-2.5 rounded-xs bg-slate-500" /> S&P 500
+                    <span className="flex items-center gap-1.5 text-red-600">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-red-500" /> S&P 500
                     </span>
                   )}
                   {benchmarks.includes("QQQ") && (
-                    <span className="flex items-center gap-1.5 text-purple-600">
-                      <span className="w-2.5 h-2.5 rounded-xs bg-purple-500" /> 나스닥 100
+                    <span className="flex items-center gap-1.5 text-yellow-600">
+                      <span className="w-2.5 h-2.5 rounded-xs bg-yellow-500" /> 나스닥 100
                     </span>
                   )}
                 </div>
@@ -748,10 +746,10 @@ const BacktestDashboard = memo(function BacktestDashboard({
                                 <p className="font-bold text-slate-700">{d.year}년 연간 수익률</p>
                                 <p className="text-emerald-600 font-bold">내 포트폴리오: {d.portfolio > 0 ? `+${d.portfolio}%` : `${d.portfolio}%`}</p>
                                 {benchmarks.includes("SPY") && (
-                                  <p className="text-slate-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
+                                  <p className="text-red-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
                                 )}
                                 {benchmarks.includes("QQQ") && (
-                                  <p className="text-purple-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
+                                  <p className="text-yellow-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
                                 )}
                               </div>
                             );
@@ -762,10 +760,10 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       />
                       <Bar dataKey="portfolio" fill="#10b981" radius={[4, 4, 0, 0]} animationBegin={0} animationDuration={600} animationEasing="ease-out" />
                       {benchmarks.includes("SPY") && (
-                        <Bar dataKey="spy" fill="#64748b" radius={[4, 4, 0, 0]} animationBegin={100} animationDuration={600} animationEasing="ease-out" />
+                        <Bar dataKey="spy" fill="#ef4444" radius={[4, 4, 0, 0]} animationBegin={100} animationDuration={600} animationEasing="ease-out" />
                       )}
                       {benchmarks.includes("QQQ") && (
-                        <Bar dataKey="qqq" fill="#a855f7" radius={[4, 4, 0, 0]} animationBegin={200} animationDuration={600} animationEasing="ease-out" />
+                        <Bar dataKey="qqq" fill="#eab308" radius={[4, 4, 0, 0]} animationBegin={200} animationDuration={600} animationEasing="ease-out" />
                       )}
                     </BarChart>
                   </ResponsiveContainer>

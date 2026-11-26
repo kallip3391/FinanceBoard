@@ -1,28 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { 
   Search, 
-  TrendingUp, 
-  TrendingDown, 
   Layers, 
-  Sparkles, 
-  BarChart2, 
   RefreshCw, 
   Plus, 
   Trash2, 
   Check, 
   X,
   AlertCircle, 
-  HelpCircle,
   Sliders,
-  Wallet,
-  ShieldCheck,
-  Calendar,
-  ExternalLink,
-  ChevronDown,
-  Info
+  ChevronDown
 } from "lucide-react";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
@@ -363,7 +353,6 @@ export default function BacktestPage() {
     const totalVal = holdings.reduce((sum, h) => sum + (h.evaluation_amount || 0), 0);
     if (totalVal <= 0) return;
 
-    const colors = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899", "#06b6d4", "#6366f1"];
     const topHoldings = holdings.slice(0, 8); // 최대 상위 8개
     let allocated = 0;
 
@@ -490,7 +479,7 @@ export default function BacktestPage() {
       {/* ────────────────────────────────────────────────────────── */}
       {/* 1. 최상단 헤더 섹션 (다른 화면들과 동일한 박스 밖 좌측 상단)  */}
       {/* ────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-page-slide">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0">
             <Layers size={22} className="stroke-[2.5]" />
@@ -514,7 +503,7 @@ export default function BacktestPage() {
         {/* ══════════════════════════════════════════════════════════ */}
         {/* [좌측] 포트폴리오 비중 및 백테스트 설정 패널              */}
         {/* ══════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4.5 space-y-3.5 lg:h-[935px] lg:min-h-[935px] lg:max-h-[935px] flex flex-col self-start">
+        <div className="lg:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4.5 space-y-3.5 lg:h-[935px] lg:min-h-[935px] lg:max-h-[935px] flex flex-col self-start animate-card-entrance">
           
           {/* 패널 타이틀 & 종목 수 뱃지 */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -657,7 +646,7 @@ export default function BacktestPage() {
                 return (
                   <div 
                     key={item.symbol} 
-                    className={`p-3 rounded-xl border transition-all ${
+                    className={`p-3 rounded-xl border transition-all animate-summary-pop ${
                       isInsufficient
                         ? "border-rose-300 bg-rose-50/80 hover:bg-rose-50 ring-1 ring-rose-200/60 shadow-xs"
                         : "border-slate-100 bg-slate-50/60 hover:bg-slate-50"
@@ -827,7 +816,7 @@ export default function BacktestPage() {
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 mb-1.5">
               <span>분석 기간</span>
               {summary?.commonStartDate && (
-                <span className="text-[10px] text-emerald-600 font-semibold truncate max-w-[140px]" title={`상장일: ${summary.commonStartDate}`}>
+                <span className="text-xs text-emerald-600 font-bold truncate max-w-[160px]" title={`상장일: ${summary.commonStartDate}`}>
                   시작: {summary.commonStartDate}
                 </span>
               )}
@@ -847,11 +836,32 @@ export default function BacktestPage() {
                 </button>
               ))}
             </div>
-            {summary?.limitingSymbol && (
-              <p className="text-[10px] text-slate-400 mt-1 leading-tight">
-                *최초 상장일({summary.limitingSymbol}) 기준 공통 시작일 자동 적용
-              </p>
-            )}
+            <div className="mt-2 mb-0.5 h-[30px] text-[11px] font-medium text-slate-600 leading-[15px]">
+              {summary?.limitingSymbol && (() => {
+                const matched = portfolio.find(
+                  p => (p.name || p.symbol) === summary.limitingSymbol || p.symbol === summary.limitingSymbol
+                );
+                const code = summary.limitingCode || matched?.code || matched?.symbol || "";
+                const isDomestic = summary.limitingIsDomestic ?? Boolean(
+                  matched && (matched.currency === "KRW" || /^\d{6}/.test(code) || matched.market === "KOSPI" || matched.market === "KOSDAQ")
+                );
+                const stockText = isDomestic || !code || code === summary.limitingSymbol
+                  ? summary.limitingSymbol
+                  : `${code} [${summary.limitingSymbol}]`;
+                const stockLabel = `· 종목명 : ${stockText}`;
+                return (
+                  <>
+                    <p className="truncate text-indigo-600 font-semibold">· 최초 상장일 기준 공통 시작일 자동 적용</p>
+                    <p
+                      className={`truncate font-semibold ${isDomestic ? "text-blue-600" : "text-amber-700"}`}
+                      title={stockLabel}
+                    >
+                      {stockLabel}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
           </div>
 
           {/* 리밸런싱 주기 선택 (세련된 커스텀 드롭다운) */}

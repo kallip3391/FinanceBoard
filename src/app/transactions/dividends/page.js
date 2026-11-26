@@ -30,6 +30,21 @@ const SORT_OPTIONS = [
   { value: "name_asc", label: "종목명 가나다순" },
 ];
 
+// ── 입체 골드바(금괴) SVG 아이콘 ──
+function GoldBarIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.5 8.5L8 6H16L18.5 8.5H5.5Z" fill="#FFFBEB" fillOpacity="0.95" />
+      <path d="M5.5 8.5H18.5L20 15H4L5.5 8.5Z" fill="#FEF08A" />
+      <path d="M4 15H20L18 18.5H6L4 15Z" fill="#D97706" />
+      <path d="M8 6H16L18.5 8.5L20 15L18 18.5H6L4 15L5.5 8.5L8 6Z" stroke="#78350F" strokeWidth="1.2" strokeLinejoin="round" />
+      <line x1="5.5" y1="8.5" x2="18.5" y2="8.5" stroke="#78350F" strokeWidth="1" />
+      <line x1="4" y1="15" x2="20" y2="15" stroke="#78350F" strokeWidth="1" />
+      <text x="12" y="13" textAnchor="middle" fontSize="3.3" fontWeight="900" fill="#78350F" letterSpacing="0.4">999.9</text>
+    </svg>
+  );
+}
+
 // ── 로고 로드 실패 캐시 (실패한 URL은 다시 시도하지 않아 성능 저하 방지) ──
 const failedImageUrls = new Set();
 

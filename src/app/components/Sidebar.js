@@ -54,8 +54,8 @@ export default function Sidebar({ isOpen, onClose }) {
       isOpen: isAnalysisOpen,
       toggle: () => setIsAnalysisOpen(!isAnalysisOpen),
       sublinks: [
-        { name: "변동성 분석", href: "/volatility", icon: <Activity size={14} /> },
-        { name: "백테스트", href: "/backtest", icon: <Layers size={14} /> }
+        { name: "백테스트", href: "/backtest", icon: <Layers size={14} /> },
+        { name: "변동성 분석", href: "/volatility", icon: <Activity size={14} /> }
       ]
     },
   ];

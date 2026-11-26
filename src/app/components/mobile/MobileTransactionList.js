@@ -119,8 +119,6 @@ function MobileTransactionList({
   isFilterActive = false,
   onResetFilter,
   onEdit,
-  currencyFilter = "ALL",
-  onSelectCurrencyFilter = null,
 }) {
   const ITEMS_PER_PAGE = 6;
 

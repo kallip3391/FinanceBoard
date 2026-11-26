@@ -45,7 +45,8 @@ export async function GET(request) {
     if (isDomestic) {
       // 1. 국내 주식 네이버 일봉 차트
       try {
-        const naverUrl = `https://fchart.stock.naver.com/sise.nhn?symbol=${cleanCode}&timeframe=day&count=400&requestType=0`;
+        const naverCount = period === '3y' ? 800 : 400;
+        const naverUrl = `https://fchart.stock.naver.com/sise.nhn?symbol=${cleanCode}&timeframe=day&count=${naverCount}&requestType=0`;
         const res = await fetch(naverUrl, { headers: standardHeaders });
         if (res.ok) {
           const xmlText = await res.text();
@@ -80,8 +81,8 @@ export async function GET(request) {
       } catch (err) {
         console.warn('[API/stock-history] 네이버 국내 차트 실패:', err.message);
       }
-    } else {
-      // 2. 해외 주식/ETF 네이버 해외 차트 API (.O, .K, .N, .P, .A, 원형)
+    } else if (period !== '3y') {
+      // 2. 해외 주식/ETF 네이버 해외 차트 API (.O, .K, .N, .P, .A, 원형) - 3y 장기 데이터는 Yahoo 바로 조회
       const upper = cleanCode.toUpperCase();
       const candidateCodes = [`${upper}.O`, `${upper}.K`, `${upper}.N`, `${upper}.P`, `${upper}.A`, upper];
 
@@ -126,7 +127,9 @@ export async function GET(request) {
     // ══════════════════════════════════════════════
     // B. [2순위] 야후 파이낸스 차트 API (네이버 실패 또는 1년/3년 장기 데이터 보완)
     // ══════════════════════════════════════════════
-    const needsLongerHistory = (period === '1y' || period === '3y') && data && data.history && data.history.length < 150;
+    const needsLongerHistory =
+      ((period === '1y') && data && data.history && data.history.length < 150) ||
+      ((period === '3y') && data && data.history && data.history.length < 550);
 
     if (!data || needsLongerHistory) {
       let yahooSymbol = symbol;
@@ -198,6 +201,23 @@ export async function GET(request) {
 
     if (!data || !data.history || data.history.length === 0) {
       return NextResponse.json({ error: '주가 히스토리 데이터를 불러올 수 없습니다.' }, { status: 404 });
+    }
+
+    // 선택된 기간(1m, 3m, 6m, 1y, 3y)에 맞게 히스토리 필터링
+    const latestDateStr = data.history[data.history.length - 1]?.date;
+    if (latestDateStr) {
+      const cutoff = new Date(latestDateStr);
+      if (period === '1m') cutoff.setMonth(cutoff.getMonth() - 1);
+      else if (period === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
+      else if (period === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
+      else if (period === '3y') cutoff.setFullYear(cutoff.getFullYear() - 3);
+      else cutoff.setFullYear(cutoff.getFullYear() - 1);
+
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+      const filtered = data.history.filter((d) => d.date >= cutoffStr);
+      if (filtered.length >= 5) {
+        data.history = filtered;
+      }
     }
 
     // 최신 실시간 현재가 확인 및 보정 (있을 경우 최신 가격으로 덮어씀)

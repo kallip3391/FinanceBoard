@@ -241,6 +241,7 @@ export function AssetProvider({ children }) {
   }, [user, authLoading]);
 
   const refreshTrendData = useCallback(async (days = 365) => {
+    if (authLoading) return;
     if (!user) {
       setTrendData([]);
       setIsTrendLoading(false);
@@ -296,6 +297,7 @@ export function AssetProvider({ children }) {
   }, [user, authLoading]);
 
   const refreshTransactions = useCallback(async () => {
+    if (authLoading) return;
     if (!user) {
       setDomesticTransactions([]);
       setOverseasTransactions([]);
@@ -352,6 +354,7 @@ export function AssetProvider({ children }) {
   }, [user, authLoading]);
 
   const refreshAccounts = useCallback(async () => {
+    if (authLoading) return;
     if (!user) {
       setAccounts([]);
       setAccountNameById({});
@@ -391,6 +394,7 @@ export function AssetProvider({ children }) {
   }, [user, authLoading]);
 
   const refreshMonthlyDividends = useCallback(async () => {
+    if (authLoading) return;
     if (!user) {
       setMonthlyDividendSummary([]);
       setIsDividendsLoading(false);

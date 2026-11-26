@@ -153,10 +153,10 @@ function AnimatedTradeCounter({
 
     // 아직 데이터 로딩 전이거나 값이 0이면 즉시 0으로 설정
     if (endVal === 0 && startVal === 0) {
-      setDisplayValue(0);
       prevValueRef.current = 0;
       prevIsForeignRef.current = isForeign;
-      return;
+      const frame = requestAnimationFrame(() => setDisplayValue(0));
+      return () => cancelAnimationFrame(frame);
     }
 
     hasAnimatedInitialRef.current = true;
