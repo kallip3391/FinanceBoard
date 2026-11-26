@@ -99,21 +99,29 @@ export async function GET(request) {
       ];
     }
 
-    for (const reutersCode of candidateCodes) {
-      try {
-        const naverForeignUrl = `https://api.stock.naver.com/stock/${reutersCode}/basic`;
-        const res = await fetch(naverForeignUrl, { headers: standardHeaders, next: { revalidate: 60 } });
-        if (res.ok) {
+    try {
+      const naverPrice = await Promise.any(
+        candidateCodes.map(async (reutersCode) => {
+          const naverForeignUrl = `https://api.stock.naver.com/stock/${reutersCode}/basic`;
+          const res = await fetch(naverForeignUrl, { headers: standardHeaders, next: { revalidate: 60 } });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
           const data = await res.json();
           const rawPrice = data?.now || data?.closePrice;
           const price = parseFloat(String(rawPrice || '0').replace(/,/g, ''));
-          if (price > 0) {
-            return makeResponse(price, 'naver-foreign', symbol);
+          if (!(price > 0)) {
+            throw new Error('Invalid price');
           }
-        }
-      } catch (err) {
-        // 다음 접미사 후보 계속 시도
+          return price;
+        })
+      );
+
+      if (naverPrice > 0) {
+        return makeResponse(naverPrice, 'naver-foreign', symbol);
       }
+    } catch {
+      // 모든 접미사 후보 실패 시 다음 순위(MarketStack)로 폴백
     }
 
     // ──────────────────────────────────────────────

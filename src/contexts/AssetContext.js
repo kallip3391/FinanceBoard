@@ -101,8 +101,10 @@ export function AssetProvider({ children }) {
     try {
       setSummary(prev => ({ ...prev, isLoading: true }));
       
-      const viewData = await TransactionManager.getHoldingsFromView();
-      const exchangeRates = await TransactionManager.getLatestExchangeRates();
+      const [viewData, exchangeRates] = await Promise.all([
+        TransactionManager.getHoldingsFromView(),
+        TransactionManager.getLatestExchangeRates()
+      ]);
       
       const uniqueSecurities = Array.from(new Set(viewData.map(v => v.security_id)));
       const securityMapForSymbols = viewData.reduce((acc, curr) => {
