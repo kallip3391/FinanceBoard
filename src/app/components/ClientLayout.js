@@ -106,7 +106,7 @@ export default function ClientLayout({ children }) {
             </main>
 
             {/* 하단 탭 네비게이션 (모바일 전용 - MobileBottomNav 내부에서 md:hidden 처리) */}
-            <MobileBottomNav />
+            <MobileBottomNav onNavigate={closeSidebar} />
           </div>
         </div>
       </AssetProvider>

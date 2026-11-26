@@ -10,7 +10,7 @@ const tabs = [
   { name: "수익결산", href: "/dividends", icon: Sprout },
 ];
 
-export default function MobileBottomNav() {
+export default function MobileBottomNav({ onNavigate }) {
   const pathname = usePathname();
 
   return (
@@ -25,6 +25,7 @@ export default function MobileBottomNav() {
           <Link
             key={tab.name}
             href={tab.href}
+            onClick={() => onNavigate?.()}
             className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
               isActive ? "text-emerald-600" : "text-slate-400"
             }`}
