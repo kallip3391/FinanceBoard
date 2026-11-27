@@ -421,3 +421,27 @@
     font-size: 16px !important;
   }
 }
+
+/* 모바일 배당금 스택 바 차트 최초 진입 애니메이션 */
+@keyframes mChartRiseUp {
+  0% {
+    clip-path: inset(100% 0 0 0);
+    -webkit-clip-path: inset(100% 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    -webkit-clip-path: inset(0 0 0 0);
+  }
+}
+.m-chart-bar-krw {
+  animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+  -webkit-animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+}
+.m-chart-bar-overseas {
+  animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
+  -webkit-animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
+}
+.m-chart-bar-overseas-instant {
+  animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+  -webkit-animation: mChartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
+}

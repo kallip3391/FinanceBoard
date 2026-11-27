@@ -360,40 +360,23 @@ const MobileDividendChart = React.memo(function MobileDividendChart({
   formatCurrency
 }) {
   const [chartReady, setChartReady] = useState(false);
+  const [shouldAnimateBars, setShouldAnimateBars] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setChartReady(true);
     }, 80);
-    return () => clearTimeout(timer);
+    const doneTimer = setTimeout(() => {
+      setShouldAnimateBars(false);
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(doneTimer);
+    };
   }, []);
 
   return (
     <div key={`m-chart-wrap-${selectedYear}`} className="h-[180px] w-full min-w-0 pt-1 touch-pan-y">
-      <style>{`
-        @keyframes chartRiseUp {
-          0% {
-            clip-path: inset(100% 0 0 0);
-            -webkit-clip-path: inset(100% 0 0 0);
-          }
-          100% {
-            clip-path: inset(0 0 0 0);
-            -webkit-clip-path: inset(0 0 0 0);
-          }
-        }
-        .m-chart-bar-krw {
-          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
-          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
-        }
-        .m-chart-bar-overseas {
-          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
-          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.96s both;
-        }
-        .m-chart-bar-overseas-instant {
-          animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
-          -webkit-animation: chartRiseUp 0.85s cubic-bezier(0.25, 1, 0.5, 1) 0.1s both;
-        }
-      `}</style>
       {chartReady ? (
         <ResponsiveContainer width="100%" height={180} minWidth={0}>
           <BarChart
@@ -490,7 +473,7 @@ const MobileDividendChart = React.memo(function MobileDividendChart({
                     {hasKRW && (
                       hasOVERSEAS ? (
                         <rect
-                          className="m-chart-bar-krw"
+                          className={shouldAnimateBars ? "m-chart-bar-krw" : undefined}
                           x={x}
                           y={y + (height - krwH)}
                           width={width}
@@ -499,7 +482,7 @@ const MobileDividendChart = React.memo(function MobileDividendChart({
                         />
                       ) : (
                         <path
-                          className="m-chart-bar-krw"
+                          className={shouldAnimateBars ? "m-chart-bar-krw" : undefined}
                           d={getTopRoundedPath(x, y + (height - krwH), width, krwH, 3)}
                           fill="#3b82f6"
                         />
@@ -507,7 +490,7 @@ const MobileDividendChart = React.memo(function MobileDividendChart({
                     )}
                     {hasOVERSEAS && (
                       <path
-                        className={hasKRW ? "m-chart-bar-overseas" : "m-chart-bar-overseas-instant"}
+                        className={shouldAnimateBars ? (hasKRW ? "m-chart-bar-overseas" : "m-chart-bar-overseas-instant") : undefined}
                         d={getTopRoundedPath(x, y + (height - krwH - overseasH), width, overseasH, 3)}
                         fill="#f59e0b"
                       />
@@ -944,6 +927,7 @@ export default function MobileDividendDashboard({
 
           {/* 12개월 스택 바 차트 */}
           <MobileDividendChart
+            key={selectedYear}
             months={monthly12Data.months}
             selectedYear={selectedYear}
             formatCurrency={formatCurrency}
