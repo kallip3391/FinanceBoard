@@ -17,6 +17,7 @@ import {
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAnimatedModal, useAnimatedDataModal } from "@/hooks/useAnimatedModal";
+import MobileBacktestDashboard from "@/app/components/mobile/MobileBacktestDashboard";
 import BacktestDashboard from "./BacktestDashboard";
 
 export default function BacktestPage() {
@@ -117,11 +118,19 @@ export default function BacktestPage() {
   // 외부 클릭 시 검색 드롭다운 & 리밸런싱 드롭다운 닫기
   useEffect(() => {
     function handleClickOutside(event) {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+      if (
+        searchContainerRef.current &&
+        searchContainerRef.current.offsetParent !== null &&
+        !searchContainerRef.current.contains(event.target)
+      ) {
         setIsSearchOpen(false);
         setSelectedSearchIndex(0);
       }
-      if (rebalancingRef.current && !rebalancingRef.current.contains(event.target)) {
+      if (
+        rebalancingRef.current &&
+        rebalancingRef.current.offsetParent !== null &&
+        !rebalancingRef.current.contains(event.target)
+      ) {
         setIsRebalancingOpen(false);
       }
     }
@@ -477,7 +486,54 @@ export default function BacktestPage() {
   const summary = resultData?.summary;
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
+    <>
+      {/* 모바일 화면 (768px 미만) 전용 포트폴리오 백테스트 */}
+      <div className="mobile-only-block w-full">
+        <MobileBacktestDashboard
+          user={user}
+          portfolio={portfolio}
+          setPortfolio={setPortfolio}
+          totalWeight={totalWeight}
+          initialAmount={initialAmount}
+          setInitialAmount={setInitialAmount}
+          monthlyContribution={monthlyContribution}
+          setMonthlyContribution={setMonthlyContribution}
+          period={period}
+          setPeriod={setPeriod}
+          rebalancing={rebalancing}
+          setRebalancing={setRebalancing}
+          REBALANCING_OPTIONS={REBALANCING_OPTIONS}
+          benchmarks={benchmarks}
+          toggleBenchmark={toggleBenchmark}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          selectedSearchIndex={selectedSearchIndex}
+          setSelectedSearchIndex={setSelectedSearchIndex}
+          isSearching={isSearching}
+          isSearchOpen={isSearchOpen}
+          setIsSearchOpen={setIsSearchOpen}
+          handleSearchInputChange={handleSearchInputChange}
+          handleSearchKeyDown={handleSearchKeyDown}
+          handleSearchPaste={handleSearchPaste}
+          executeSearch={executeSearch}
+          addStock={addStock}
+          updateWeight={updateWeight}
+          removeStock={removeStock}
+          handleEqualWeight={handleEqualWeight}
+          loading={loading}
+          resultData={resultData}
+          setResultData={setResultData}
+          executedConfig={executedConfig}
+          runBacktest={runBacktest}
+          insufficientStocks={insufficientStocks}
+          formatWon={formatWon}
+          isMounted={isMounted}
+          showAlert={showAlert}
+        />
+      </div>
+
+      {/* 데스크톱 화면 (768px 이상) 전용 */}
+      <div className="desktop-only flex-col w-full max-w-[1680px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
       
       {/* ────────────────────────────────────────────────────────── */}
       {/* 1. 최상단 헤더 섹션 (다른 화면들과 동일한 박스 밖 좌측 상단)  */}
@@ -489,7 +545,7 @@ export default function BacktestPage() {
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              포트폴리오 백테스트 & 벤치마크 분석
+              포트폴리오 백테스트
             </h1>
             <p className="text-xs md:text-sm font-medium text-slate-500 mt-0.5">
               맞춤 자산 배분 비중 기반 과거 수익률, MDD 및 시장 지수(S&P 500, QQQ) 상관관계 분석
@@ -997,6 +1053,7 @@ export default function BacktestPage() {
       )}
 
       {/* ── 종목명 호버 커스텀 툴팁 (모던 다크 글래스모피즘 + createPortal로 문서 레이아웃 간섭 0%) ── */}
+      </div>
       {isMounted && isStockTooltipOpen && activeStockTooltip && createPortal(
         <div
           className="fixed z-[9999] pointer-events-none -translate-y-full pb-2 transition-[top,left] duration-150 ease-out"
@@ -1082,6 +1139,6 @@ export default function BacktestPage() {
         document.body
       )}
 
-    </div>
+    </>
   );
 }

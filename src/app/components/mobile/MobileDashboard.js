@@ -15,7 +15,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Tooltip } from "recharts";
 import { useAnimatedModal } from "@/hooks/useAnimatedModal";
 
 const emptySubscribe = () => () => {};
@@ -140,6 +140,33 @@ function PieTooltip({ active, payload, total }) {
   );
 }
 
+/* ───────── 도넛 차트 (불필요한 리렌더링 및 애니메이션 재시작 방지) ───────── */
+const MobileAllocationPieChart = React.memo(function MobileAllocationPieChart({ stockData, total }) {
+  return (
+    <PieChart width={130} height={130}>
+      <Pie
+        data={stockData}
+        cx={65} cy={65}
+        innerRadius={36}
+        outerRadius={60}
+        paddingAngle={2}
+        dataKey="value"
+        stroke="none"
+        startAngle={90}
+        endAngle={-270}
+        isAnimationActive={true}
+        animationDuration={900}
+        animationEasing="ease-out"
+      >
+        {stockData.map((_, i) => (
+          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+        ))}
+      </Pie>
+      <Tooltip content={<PieTooltip total={total} />} />
+    </PieChart>
+  );
+});
+
 /* ───────── 메인 컴포넌트 ───────── */
 export default function MobileDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -218,7 +245,7 @@ export default function MobileDashboard() {
       .sort((a, b) => b.value - a.value);
   }, [holdings]);
 
-  const stockData =
+  const stockData = useMemo(() => (
     stockDataRaw.length > 10
       ? [
           ...stockDataRaw.slice(0, 10),
@@ -227,9 +254,10 @@ export default function MobileDashboard() {
             value: stockDataRaw.slice(10).reduce((s, x) => s + x.value, 0),
           },
         ]
-      : stockDataRaw;
+      : stockDataRaw
+  ), [stockDataRaw]);
 
-  const total = stockData.reduce((s, x) => s + x.value, 0);
+  const total = useMemo(() => stockData.reduce((s, x) => s + x.value, 0), [stockData]);
   const isProfit = (summary?.totalProfit || 0) > 0;
   const isLoss = (summary?.totalProfit || 0) < 0;
 
@@ -307,27 +335,7 @@ export default function MobileDashboard() {
               {/* 좌: 파이 차트 */}
               <div style={{ width: 130, height: 130, flexShrink: 0 }} className="flex items-center justify-center">
                 {isClient && (
-                  <PieChart width={130} height={130}>
-                    <Pie
-                      data={stockData}
-                      cx={65} cy={65}
-                      innerRadius={36}
-                      outerRadius={60}
-                      paddingAngle={2}
-                      dataKey="value"
-                      stroke="none"
-                      startAngle={90}
-                      endAngle={-270}
-                      isAnimationActive={true}
-                      animationDuration={900}
-                      animationEasing="ease-out"
-                    >
-                      {stockData.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<PieTooltip total={total} />} />
-                  </PieChart>
+                  <MobileAllocationPieChart stockData={stockData} total={total} />
                 )}
               </div>
 
