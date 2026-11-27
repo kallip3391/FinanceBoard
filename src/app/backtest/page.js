@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAnimatedModal } from "@/hooks/useAnimatedModal";
+import { useAnimatedModal, useAnimatedDataModal } from "@/hooks/useAnimatedModal";
 import BacktestDashboard from "./BacktestDashboard";
 
 export default function BacktestPage() {
@@ -104,6 +104,7 @@ export default function BacktestPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [hoveredStockTooltip, setHoveredStockTooltip] = useState(null);
+  const { data: activeStockTooltip, isOpen: isStockTooltipOpen, isClosing: isStockTooltipClosing } = useAnimatedDataModal(hoveredStockTooltip, 200);
   const searchContainerRef = useRef(null);
   const dropdownListRef = useRef(null);
 
@@ -996,25 +997,25 @@ export default function BacktestPage() {
       )}
 
       {/* ── 종목명 호버 커스텀 툴팁 (모던 다크 글래스모피즘 + createPortal로 문서 레이아웃 간섭 0%) ── */}
-      {isMounted && hoveredStockTooltip && createPortal(
+      {isMounted && isStockTooltipOpen && activeStockTooltip && createPortal(
         <div
-          className="fixed z-[9999] pointer-events-none -translate-y-full pb-2 transition-all duration-150 animate-in fade-in zoom-in-95"
-          style={{ top: hoveredStockTooltip.top - 6, left: hoveredStockTooltip.left }}
+          className="fixed z-[9999] pointer-events-none -translate-y-full pb-2 transition-[top,left] duration-150 ease-out"
+          style={{ top: activeStockTooltip.top - 6, left: activeStockTooltip.left }}
         >
-          <div className="relative bg-slate-900/95 text-white text-xs px-3 py-1.5 rounded-xl shadow-2xl backdrop-blur-md border border-slate-700/70 flex items-center gap-2 whitespace-nowrap">
+          <div className={`relative bg-slate-900/95 text-white text-xs px-3 py-1.5 rounded-xl shadow-2xl backdrop-blur-md border border-slate-700/70 flex items-center gap-2 whitespace-nowrap ${isStockTooltipClosing ? "animate-tooltip-out" : "animate-tooltip-in"}`}>
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-              hoveredStockTooltip.isDomestic 
+              activeStockTooltip.isDomestic 
                 ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" 
                 : "bg-amber-500/20 text-amber-300 border border-amber-400/30"
             }`}>
-              {hoveredStockTooltip.isDomestic ? "국내" : "해외"}
+              {activeStockTooltip.isDomestic ? "국내" : "해외"}
             </span>
             <span className="font-bold text-white tracking-tight">
-              {hoveredStockTooltip.name}
+              {activeStockTooltip.name}
             </span>
-            {hoveredStockTooltip.code && (
+            {activeStockTooltip.code && (
               <span className="font-mono text-[10px] text-slate-400 border-l border-slate-700/80 pl-2">
-                {hoveredStockTooltip.code.toUpperCase()}
+                {activeStockTooltip.code.toUpperCase()}
               </span>
             )}
             {/* 하단 툴팁 화살표 */}

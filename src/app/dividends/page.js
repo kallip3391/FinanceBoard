@@ -151,15 +151,15 @@ const DividendChartSection = React.memo(function DividendChartSection({
           </span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-100 rounded-xl self-start sm:self-auto">
           {['1년', '3년', '5년', '10년'].map((p) => (
             <button
               key={p}
               onClick={() => onPeriodChange(p)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap text-center ${
                 selectedPeriod === p
-                  ? 'bg-brand text-white shadow-md shadow-brand/20'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-sm'
+                  ? 'bg-emerald-600 text-white font-black shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               {p}

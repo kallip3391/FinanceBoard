@@ -20,6 +20,37 @@ import {
 
 const AssetContext = createContext();
 
+const PRICE_CACHE_STORAGE_KEY = 'fb_last_live_prices_v1';
+
+function readCachedPrices() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(PRICE_CACHE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedPrices(pricesMap) {
+  if (typeof window === 'undefined' || !pricesMap || typeof pricesMap !== 'object') return;
+  try {
+    const prev = readCachedPrices();
+    const next = { ...prev };
+    Object.entries(pricesMap).forEach(([sym, val]) => {
+      const num = Number(val);
+      if (sym && !isNaN(num) && num > 0) {
+        next[sym] = num;
+      }
+    });
+    window.localStorage.setItem(PRICE_CACHE_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage 용량 초과/차단 시 무시
+  }
+}
+
 export function AssetProvider({ children }) {
   const { user, loading: authLoading } = useAuth();
   const [holdings, setHoldings] = useState([]);
@@ -47,12 +78,15 @@ export function AssetProvider({ children }) {
   
   // 상태 참조용 Ref (의존성 무한 루프 방지용)
   const trendDataRef = useRef([]);
+  const calcRequestIdRef = useRef(0);
   useEffect(() => {
     trendDataRef.current = trendData;
   }, [trendData]);
 
   const calculateAssets = useCallback(async () => {
     if (authLoading) return;
+    const reqId = ++calcRequestIdRef.current;
+
     if (!user) {
       setHoldings([]);
       setHoldingsByAccount({});
@@ -105,7 +139,9 @@ export function AssetProvider({ children }) {
         TransactionManager.getHoldingsFromView(),
         TransactionManager.getLatestExchangeRates()
       ]);
-      
+
+      if (reqId !== calcRequestIdRef.current) return;
+
       const uniqueSecurities = Array.from(new Set(viewData.map(v => v.security_id)));
       const securityMapForSymbols = viewData.reduce((acc, curr) => {
         if (!acc[curr.security_id]) {
@@ -125,116 +161,145 @@ export function AssetProvider({ children }) {
         const s = securityMapForSymbols[sid];
         return MarketPriceManager.formatSymbol(s.code, s.exchange_code);
       });
-      
-      const livePrices = await MarketPriceManager.getMultiplePrices(fetchSymbols);
 
-      const processHolding = (h) => {
-        const isGold = (h.security_code === 'GOLD' && h.currency === 'KRW') || 
-                       (h.security_name && h.security_name.includes('금현물')) ||
-                       h.transaction_type === 'other';
-        const lookupSym = MarketPriceManager.formatSymbol(
-          h.security_code, 
-          isGold ? 'OTHER' : (h.sector === '해외' ? 'OVERSEAS' : (h.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS'))
-        );
-        const currentPrice = livePrices[lookupSym] || null;
-        const currentRate = exchangeRates[h.currency.toUpperCase()] || 1;
-        
-        const purchasePrice = Number(h.avg_buy_price) || 0;
-        const effectivePrice = currentPrice !== null ? currentPrice : purchasePrice;
-        
-        const evalAmtKRW = h.total_quantity * effectivePrice * currentRate;
-        const totalCostKRW = h.total_quantity * purchasePrice * currentRate;
-        let profitKRW = evalAmtKRW - totalCostKRW;
-        
-        if (Math.abs(profitKRW) < 0.01) profitKRW = 0;
-
-        const returnRate = purchasePrice > 0 ? ((effectivePrice / purchasePrice) - 1) * 100 : 0;
-        const totalReturnRate = totalCostKRW > 0 ? 
-          ((profitKRW + (Number(h.total_dividend) || 0)) / totalCostKRW) * 100 : 0;
-
-        const rawForeignDiv = Number(h.total_dividend_amount || h.total_dividend_foreign || h.dividend_amount || h.foreign_dividend || h.foreignDividend) 
-          || (h.currency !== 'KRW' && h.total_dividend && currentRate > 0 ? (Number(h.total_dividend) / currentRate) : 0);
-
-        return {
-          ...h,
-          name: h.security_name,
-          code: h.security_code,
-          transaction_type: h.transaction_type || (isGold ? 'other' : (h.currency === 'KRW' ? 'domestic' : 'overseas')),
-          currentPrice,
-          exchangeRate: currentRate,
-          evaluationAmountKRW: evalAmtKRW,
-          profitAmountKRW: profitKRW,
-          totalCostKRW: totalCostKRW,
-          returnRate: returnRate.toFixed(2),
-          totalReturnRate: totalReturnRate.toFixed(2),
-          dividend: Number(h.total_dividend) || 0,
-          foreignDividend: rawForeignDiv,
-          purchasePrice: purchasePrice,
-          totalQuantity: h.total_quantity
-        };
-      };
-
-      const securityMap = {};
-      let totalEval = 0;
-      let totalDiv = 0;
-      let totalProfit = 0;
-
-      const finalHoldingsByAccount = {};
-      viewData.forEach(h => {
-        const sid = h.security_id;
-        const processed = processHolding(h);
-        
-        // 1. 전체 종목별 합산 (holdings)
-        if (!securityMap[sid]) {
-          securityMap[sid] = { ...processed };
-        } else {
-          const prev = securityMap[sid];
-          prev.totalQuantity += processed.totalQuantity;
-          prev.totalCostKRW += processed.totalCostKRW;
-          prev.evaluationAmountKRW += processed.evaluationAmountKRW;
-          prev.profitAmountKRW += processed.profitAmountKRW;
-          prev.dividend += processed.dividend;
-          prev.foreignDividend = (prev.foreignDividend || 0) + (processed.foreignDividend || 0);
+      const buildHoldingsSnapshot = (pricesMap) => {
+        const processHolding = (h) => {
+          const isGold = (h.security_code === 'GOLD' && h.currency === 'KRW') || 
+                         (h.security_name && h.security_name.includes('금현물')) ||
+                         h.transaction_type === 'other';
+          const lookupSym = MarketPriceManager.formatSymbol(
+            h.security_code, 
+            isGold ? 'OTHER' : (h.sector === '해외' ? 'OVERSEAS' : (h.currency === 'KRW' ? 'KOSPI' : 'OVERSEAS'))
+          );
+          const currentPrice = pricesMap[lookupSym] || null;
+          const currentRate = exchangeRates[h.currency.toUpperCase()] || 1;
           
-          const currentRate = exchangeRates[prev.currency.toUpperCase()] || 1;
-          prev.purchasePrice = prev.totalCostKRW / (prev.totalQuantity * currentRate);
-          prev.returnRate = prev.purchasePrice > 0 ? (((prev.currentPrice / prev.purchasePrice) - 1) * 100).toFixed(2) : "0.00";
-          prev.totalReturnRate = prev.totalCostKRW > 0 ? (((prev.profitAmountKRW + prev.dividend) / prev.totalCostKRW) * 100).toFixed(2) : "0.00";
-        }
+          const purchasePrice = Number(h.avg_buy_price) || 0;
+          const effectivePrice = currentPrice !== null ? currentPrice : purchasePrice;
+          
+          const evalAmtKRW = h.total_quantity * effectivePrice * currentRate;
+          const totalCostKRW = h.total_quantity * purchasePrice * currentRate;
+          let profitKRW = evalAmtKRW - totalCostKRW;
+          
+          if (Math.abs(profitKRW) < 0.01) profitKRW = 0;
 
-        // 2. 계좌별 그룹화 (holdingsByAccount)
-        const accName = h.account_name || '알수없음';
-        if (!finalHoldingsByAccount[accName]) finalHoldingsByAccount[accName] = [];
-        finalHoldingsByAccount[accName].push(processed);
-        
-        // 3. 전체 합계 (summary)
-        totalEval += processed.evaluationAmountKRW;
-        totalDiv += processed.dividend;
-        totalProfit += processed.profitAmountKRW;
-      });
+          const returnRate = purchasePrice > 0 ? ((effectivePrice / purchasePrice) - 1) * 100 : 0;
+          const totalReturnRate = totalCostKRW > 0 ? 
+            ((profitKRW + (Number(h.total_dividend) || 0)) / totalCostKRW) * 100 : 0;
 
-      const finalHoldings = Object.values(securityMap).sort((a, b) => {
-        if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
-        return b.evaluationAmountKRW - a.evaluationAmountKRW;
-      });
+          const rawForeignDiv = Number(h.total_dividend_amount || h.total_dividend_foreign || h.dividend_amount || h.foreign_dividend || h.foreignDividend) 
+            || (h.currency !== 'KRW' && h.total_dividend && currentRate > 0 ? (Number(h.total_dividend) / currentRate) : 0);
 
-      Object.keys(finalHoldingsByAccount).forEach(accName => {
-        finalHoldingsByAccount[accName].sort((a, b) => {
+          return {
+            ...h,
+            name: h.security_name,
+            code: h.security_code,
+            transaction_type: h.transaction_type || (isGold ? 'other' : (h.currency === 'KRW' ? 'domestic' : 'overseas')),
+            currentPrice,
+            exchangeRate: currentRate,
+            evaluationAmountKRW: evalAmtKRW,
+            profitAmountKRW: profitKRW,
+            totalCostKRW: totalCostKRW,
+            returnRate: returnRate.toFixed(2),
+            totalReturnRate: totalReturnRate.toFixed(2),
+            dividend: Number(h.total_dividend) || 0,
+            foreignDividend: rawForeignDiv,
+            purchasePrice: purchasePrice,
+            totalQuantity: h.total_quantity
+          };
+        };
+
+        const securityMap = {};
+        let totalEval = 0;
+        let totalDiv = 0;
+        let totalProfit = 0;
+
+        const finalHoldingsByAccount = {};
+        viewData.forEach(h => {
+          const sid = h.security_id;
+          const processed = processHolding(h);
+          
+          // 1. 전체 종목별 합산 (holdings)
+          if (!securityMap[sid]) {
+            securityMap[sid] = { ...processed };
+          } else {
+            const prev = securityMap[sid];
+            prev.totalQuantity += processed.totalQuantity;
+            prev.totalCostKRW += processed.totalCostKRW;
+            prev.evaluationAmountKRW += processed.evaluationAmountKRW;
+            prev.profitAmountKRW += processed.profitAmountKRW;
+            prev.dividend += processed.dividend;
+            prev.foreignDividend = (prev.foreignDividend || 0) + (processed.foreignDividend || 0);
+            
+            const currentRate = exchangeRates[prev.currency.toUpperCase()] || 1;
+            prev.purchasePrice = prev.totalCostKRW / (prev.totalQuantity * currentRate);
+            const effCurPrice = prev.currentPrice !== null ? prev.currentPrice : prev.purchasePrice;
+            prev.returnRate = prev.purchasePrice > 0 ? (((effCurPrice / prev.purchasePrice) - 1) * 100).toFixed(2) : "0.00";
+            prev.totalReturnRate = prev.totalCostKRW > 0 ? (((prev.profitAmountKRW + prev.dividend) / prev.totalCostKRW) * 100).toFixed(2) : "0.00";
+          }
+
+          // 2. 계좌별 그룹화 (holdingsByAccount)
+          const accName = h.account_name || '알수없음';
+          if (!finalHoldingsByAccount[accName]) finalHoldingsByAccount[accName] = [];
+          finalHoldingsByAccount[accName].push(processed);
+          
+          // 3. 전체 합계 (summary)
+          totalEval += processed.evaluationAmountKRW;
+          totalDiv += processed.dividend;
+          totalProfit += processed.profitAmountKRW;
+        });
+
+        const finalHoldings = Object.values(securityMap).sort((a, b) => {
           if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
           return b.evaluationAmountKRW - a.evaluationAmountKRW;
         });
-      });
 
-      setHoldings(finalHoldings);
-      setHoldingsByAccount(finalHoldingsByAccount);
-      setSummary({
-        totalEvaluation: Math.round(totalEval / 10) * 10,
-        totalProfit: Math.round(totalProfit / 10) * 10,
-        totalDividend: Math.round(totalDiv / 10) * 10,
-        avgProfitRate: (totalEval - totalProfit > 0) ? (totalEval / (totalEval - totalProfit) - 1) * 100 : 0,
-        avgTotalReturn: (totalEval - totalProfit > 0) ? ((totalEval + totalDiv) / (totalEval - totalProfit) - 1) * 100 : 0,
-        isLoading: false
-      });
+        Object.keys(finalHoldingsByAccount).forEach(accName => {
+          finalHoldingsByAccount[accName].sort((a, b) => {
+            if (a.currency_order !== b.currency_order) return a.currency_order - b.currency_order;
+            return b.evaluationAmountKRW - a.evaluationAmountKRW;
+          });
+        });
+
+        return {
+          finalHoldings,
+          finalHoldingsByAccount,
+          summaryData: {
+            totalEvaluation: Math.round(totalEval / 10) * 10,
+            totalProfit: Math.round(totalProfit / 10) * 10,
+            totalDividend: Math.round(totalDiv / 10) * 10,
+            avgProfitRate: (totalEval - totalProfit > 0) ? (totalEval / (totalEval - totalProfit) - 1) * 100 : 0,
+            avgTotalReturn: (totalEval - totalProfit > 0) ? ((totalEval + totalDiv) / (totalEval - totalProfit) - 1) * 100 : 0,
+            isLoading: false
+          }
+        };
+      };
+
+      // 1단계: DB 데이터 + 직전 시세 캐시(localStorage)로 즉시 대시보드 화면 표시
+      const cachedPrices = readCachedPrices();
+      const initialSnapshot = buildHoldingsSnapshot(cachedPrices);
+      setHoldings(initialSnapshot.finalHoldings);
+      setHoldingsByAccount(initialSnapshot.finalHoldingsByAccount);
+      setSummary(initialSnapshot.summaryData);
+
+      // 2단계: 백그라운드에서 최신 실시간 시세를 받아와 부드럽게 숫자 갱신
+      if (fetchSymbols.length > 0) {
+        const livePrices = await MarketPriceManager.getMultiplePrices(fetchSymbols);
+        if (reqId !== calcRequestIdRef.current) return;
+
+        const mergedPrices = { ...cachedPrices };
+        Object.entries(livePrices || {}).forEach(([sym, val]) => {
+          if (val !== null && val !== undefined && !isNaN(Number(val)) && Number(val) > 0) {
+            mergedPrices[sym] = Number(val);
+          }
+        });
+        writeCachedPrices(livePrices);
+
+        const liveSnapshot = buildHoldingsSnapshot(mergedPrices);
+        setHoldings(liveSnapshot.finalHoldings);
+        setHoldingsByAccount(liveSnapshot.finalHoldingsByAccount);
+        setSummary(liveSnapshot.summaryData);
+      }
 
     } catch (err) {
       if (user) console.error("실제 자산 데이터 조회 실패:", err);

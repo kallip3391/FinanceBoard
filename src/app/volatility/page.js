@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
 import {
   AreaChart,
   Area,
@@ -703,6 +704,15 @@ export default function VolatilityPage() {
       topDrops
     };
   }, [historyData, currentPrice, previousClose]);
+
+  // 호버 팝업 열림/닫힘 애니메이션 상태
+  const hoveredBarData = useMemo(() => {
+    if (hoveredBarIdx === null || !stats?.histogramBars?.[hoveredBarIdx]) return null;
+    return { idx: hoveredBarIdx, bar: stats.histogramBars[hoveredBarIdx] };
+  }, [hoveredBarIdx, stats]);
+  const { data: activeBarTooltip, isOpen: isBarTooltipOpen, isClosing: isBarTooltipClosing } = useAnimatedDataModal(hoveredBarData, 200);
+  const { data: activeBadgeTooltip, isOpen: isBadgeTooltipOpen, isClosing: isBadgeTooltipClosing } = useAnimatedDataModal(hoveredBadgeTooltip, 200);
+  const { data: activeSigmaTooltip, isOpen: isSigmaTooltipOpen, isClosing: isSigmaTooltipClosing } = useAnimatedDataModal(hoveredSigmaTooltip, 200);
 
   // ══════════════════════════════════════════════════════════
   // 정규분포(Bell Curve) 7개 눈금 데이터 (-3σ ~ +3σ)
@@ -1410,12 +1420,14 @@ export default function VolatilityPage() {
                       tickLine={false}
                     />
                     <Tooltip
+                      animationDuration={180}
+                      wrapperStyle={{ transition: "transform 180ms ease-out, opacity 200ms ease-out, visibility 200ms ease-out" }}
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           const p = payload[0].payload;
                           const distFromMa = p.ma ? ((p.close - p.ma) / (p.upper1 - p.ma || 1)).toFixed(2) : "0";
                           return (
-                            <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
+                            <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1 animate-tooltip-in">
                               <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate}</p>
                               <p className="text-blue-600 font-black text-sm">종가: {formatPrice(p.close)}</p>
                               <p className="text-slate-500 font-medium">20일 평균: {formatPrice(p.ma)}</p>
@@ -1478,24 +1490,27 @@ export default function VolatilityPage() {
               className="relative w-full overflow-hidden mt-1.5 bg-slate-50/70 rounded-xl border border-slate-100 p-1.5"
               onMouseLeave={() => setHoveredBarIdx(null)}
             >
-              {hoveredBarIdx !== null && stats?.histogramBars?.[hoveredBarIdx] && (() => {
-                const bar = stats.histogramBars[hoveredBarIdx];
+              {isBarTooltipOpen && activeBarTooltip && (() => {
+                const { bar } = activeBarTooltip;
                 const leftPct = Math.min(82, Math.max(18, ((bar.x + bar.width / 2) / 600) * 100));
                 const fmtPct = (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
                 return (
                   <div
                     style={{ left: `${leftPct}%` }}
-                    className="absolute top-2 -translate-x-1/2 z-20 pointer-events-none bg-white/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-200 shadow-xl text-xs whitespace-nowrap animate-fade-in"
+                    className="absolute top-2 -translate-x-1/2 z-20 pointer-events-none transition-[left] duration-200 ease-out"
                   >
-                    <p className="font-bold text-slate-700">
-                      일간 변동: <span className="text-slate-900 font-black">{fmtPct(bar.minPct)} ~ {fmtPct(bar.maxPct)}</span>
-                    </p>
+                    <div className={`bg-white/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-200 shadow-xl text-xs whitespace-nowrap ${isBarTooltipClosing ? "animate-tooltip-out" : "animate-tooltip-in"}`}>
+                      <p className="font-bold text-slate-700">
+                        일간 변동: <span className="text-slate-900 font-black">{fmtPct(bar.minPct)} ~ {fmtPct(bar.maxPct)}</span>
+                      </p>
+                    </div>
                   </div>
                 );
               })()}
               <svg 
                 viewBox={`0 0 ${STATIC_BELL_CURVE_SVG.width} ${STATIC_BELL_CURVE_SVG.height}`} 
                 className="w-full max-h-[154px] h-auto"
+                onMouseLeave={() => setHoveredBarIdx(null)}
                 suppressHydrationWarning
               >
                 {/* 1. 배경 면적 채우기 */}
@@ -1535,6 +1550,7 @@ export default function VolatilityPage() {
                   </g>
                 ))}
 
+                <g className="pointer-events-none">
                 {/* 4. 중앙 0 (기준가) 기준선 */}
                 <line x1="300" y1="20" x2="300" y2="169" stroke="#059669" strokeWidth="2" strokeDasharray="3 3" />
 
@@ -1570,6 +1586,7 @@ export default function VolatilityPage() {
                 <text x="375" y="187" textAnchor="middle" fill="#059669" fontSize="11" fontWeight="800">+1σ</text>
                 <text x="450" y="187" textAnchor="middle" fill="#9333ea" fontSize="11" fontWeight="700">+2σ</text>
                 <text x="525" y="187" textAnchor="middle" fill="#64748b" fontSize="11" fontWeight="700">+3σ</text>
+                </g>
               </svg>
             </div>
 
@@ -1816,36 +1833,36 @@ export default function VolatilityPage() {
       )}
 
       {/* 잘린 종목명 뱃지 마우스 오버 툴팁 */}
-      {hoveredBadgeTooltip && (
+      {isBadgeTooltipOpen && activeBadgeTooltip && (
         <div
-          style={{ top: hoveredBadgeTooltip.top, right: hoveredBadgeTooltip.right }}
-          className={`fixed z-[9999] pointer-events-none animate-fade-in ${hoveredBadgeTooltip.showBelow ? "" : "-translate-y-full"}`}
+          style={{ top: activeBadgeTooltip.top, right: activeBadgeTooltip.right }}
+          className={`fixed z-[9999] pointer-events-none transition-[top,right] duration-150 ease-out ${activeBadgeTooltip.showBelow ? "" : "-translate-y-full"}`}
         >
-          <div className="bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap">
-            {hoveredBadgeTooltip.text}
+          <div className={`bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap ${isBadgeTooltipClosing ? "animate-tooltip-out" : "animate-tooltip-in"}`}>
+            {activeBadgeTooltip.text}
           </div>
         </div>
       )}
 
       {/* -3σ ~ +3σ 구간 카드 마우스 오버 툴팁 */}
-      {hoveredSigmaTooltip && (
+      {isSigmaTooltipOpen && activeSigmaTooltip && (
         <div
-          style={{ top: hoveredSigmaTooltip.top, left: hoveredSigmaTooltip.left }}
-          className={`fixed z-[9999] pointer-events-none -translate-x-1/2 animate-fade-in ${hoveredSigmaTooltip.showBelow ? "" : "-translate-y-full"}`}
+          style={{ top: activeSigmaTooltip.top, left: activeSigmaTooltip.left }}
+          className={`fixed z-[9999] pointer-events-none -translate-x-1/2 transition-[top,left] duration-150 ease-out ${activeSigmaTooltip.showBelow ? "" : "-translate-y-full"}`}
         >
-          <div className="bg-slate-900/95 backdrop-blur-md text-white text-xs px-3.5 py-2.5 rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap space-y-1">
+          <div className={`bg-slate-900/95 backdrop-blur-md text-white text-xs px-3.5 py-2.5 rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap space-y-1 ${isSigmaTooltipClosing ? "animate-tooltip-out" : "animate-tooltip-in"}`}>
             <div className="flex items-center justify-between gap-3 border-b border-slate-700/70 pb-1">
-              <span className="font-black text-emerald-400">{hoveredSigmaTooltip.label}</span>
+              <span className="font-black text-emerald-400">{activeSigmaTooltip.label}</span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                {hoveredSigmaTooltip.zoneLabel}
+                {activeSigmaTooltip.zoneLabel}
               </span>
             </div>
-            <p className="text-[11px] text-slate-200 font-medium">{hoveredSigmaTooltip.desc}</p>
-            {hoveredSigmaTooltip.subDesc && (
-              <p className="text-[11px] text-slate-300 font-medium">{hoveredSigmaTooltip.subDesc}</p>
+            <p className="text-[11px] text-slate-200 font-medium">{activeSigmaTooltip.desc}</p>
+            {activeSigmaTooltip.subDesc && (
+              <p className="text-[11px] text-slate-300 font-medium">{activeSigmaTooltip.subDesc}</p>
             )}
             <p className="text-[11px] text-slate-300 font-bold">
-              예상가: <span className="text-white">{hoveredSigmaTooltip.priceText}</span> ({hoveredSigmaTooltip.pctText})
+              예상가: <span className="text-white">{activeSigmaTooltip.priceText}</span> ({activeSigmaTooltip.pctText})
             </p>
           </div>
         </div>

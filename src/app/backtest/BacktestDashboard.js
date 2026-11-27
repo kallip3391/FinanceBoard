@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useMemo } from "react";
+import { memo, useState, useEffect, useRef, useMemo } from "react";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -20,6 +20,31 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
+
+// Recharts 차트 툴팁 등장/퇴장 부드러운 전환 래퍼
+function SmoothRechartsTooltip({ active, payload, render }) {
+  const [cachedPayload, setCachedPayload] = useState(null);
+  const hasActive = Boolean(active && payload && payload.length > 0);
+
+  if (hasActive && payload !== cachedPayload) {
+    setCachedPayload(payload);
+  }
+
+  const displayPayload = hasActive ? payload : cachedPayload;
+  if (!displayPayload || displayPayload.length === 0) return null;
+
+  return (
+    <div
+      className={`transition-all duration-200 ease-out ${
+        hasActive
+          ? "opacity-100 translate-y-0 scale-100 animate-tooltip-in"
+          : "opacity-0 translate-y-1.5 scale-95"
+      }`}
+    >
+      {render(displayPayload)}
+    </div>
+  );
+}
 
 // 통화 기호(₩) 없이 단위를 붙여주는 헬퍼 (KPI 카드 내부 간결한 표기용)
 const formatCleanWon = (val) => {
@@ -248,7 +273,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       />
                     </div>
                     {/* 마우스 호버 시 나타나는 환차익 다크 글래스모피즘 툴팁 */}
-                    <div className="absolute right-0 bottom-full mb-2 hidden group-hover:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap transition-all">
+                    <div className="absolute right-0 bottom-full mb-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap opacity-0 invisible translate-y-1.5 scale-95 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:scale-100 transition-all duration-200 ease-out">
                       <span className="text-indigo-400">환차익 :</span>
                       <span className="text-white font-black">
                         ${summary?.fxProfitUsd !== undefined ? Math.abs(summary.fxProfitUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
@@ -308,7 +333,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       />
                     </span>
                     {/* 마우스 호버 시 나타나는 환차익 다크 글래스모피즘 툴팁 */}
-                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap transition-all">
+                    <div className="absolute left-0 bottom-full mb-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap opacity-0 invisible translate-y-1.5 scale-95 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:scale-100 transition-all duration-200 ease-out">
                       <span className="text-indigo-400">환차익 :</span>
                       <span className="text-white font-black">
                         ${summary?.fxProfitUsd !== undefined ? Math.abs(summary.fxProfitUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
@@ -405,7 +430,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       />
                     </div>
                     {/* 마우스 호버 시 나타나는 샤프 지수 다크 글래스모피즘 툴팁 */}
-                    <div className="absolute right-0 bottom-full mb-2 hidden group-hover:flex flex-col gap-1.5 p-3 rounded-xl bg-slate-900/95 text-white text-[11px] shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap transition-all text-left">
+                    <div className="absolute right-0 bottom-full mb-2 flex flex-col gap-1.5 p-3 rounded-xl bg-slate-900/95 text-white text-[11px] shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap opacity-0 invisible translate-y-1.5 scale-95 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:scale-100 transition-all duration-200 ease-out text-left">
                       <div className="flex items-center gap-1.5 font-bold text-emerald-400">
                         <span>💡 샤프 지수 (Sharpe Ratio)</span>
                       </div>
@@ -491,7 +516,7 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       </div>
                     </div>
                     {/* 마우스 호버 시 나타나는 벤치마크 상관계수 다크 글래스모피즘 툴팁 */}
-                    <div className="absolute right-0 bottom-full mb-2 hidden group-hover:flex flex-col gap-1.5 p-3 rounded-xl bg-slate-900/95 text-white text-[11px] shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap transition-all text-left">
+                    <div className="absolute right-0 bottom-full mb-2 flex flex-col gap-1.5 p-3 rounded-xl bg-slate-900/95 text-white text-[11px] shadow-2xl backdrop-blur-md border border-slate-700/80 pointer-events-none z-50 whitespace-nowrap opacity-0 invisible translate-y-1.5 scale-95 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:scale-100 transition-all duration-200 ease-out text-left">
                       <div className="flex items-center gap-1.5 font-bold text-purple-300">
                         <span>💡 벤치마크 상관계수 (Correlation, r)</span>
                       </div>
@@ -597,33 +622,38 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       tickFormatter={(v) => formatWon(v).replace("₩", "")}
                     />
                     <Tooltip
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const p = payload[0].payload;
-                          return (
-                            <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
-                              <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate} (환율 {Number(p.fxRate).toFixed(1)}원)</p>
-                              <p className="text-emerald-600 font-black text-sm">내 포트폴리오: {Math.round(p.portfolio).toLocaleString()}원</p>
-                              {benchmarks.includes("SPY") && (
-                                <div className="flex text-red-600 font-bold">
-                                  <span className="w-[62px] shrink-0">S&P 500</span>
-                                  <span>: {Math.round(p.spy).toLocaleString()}원</span>
-                                </div>
-                              )}
-                              {benchmarks.includes("QQQ") && (
-                                <div className="flex text-yellow-600 font-bold">
-                                  <span className="w-[62px] shrink-0">나스닥 100</span>
-                                  <span>: {Math.round(p.qqq).toLocaleString()}원</span>
-                                </div>
-                              )}
-                              <p className="text-slate-400 font-semibold border-t border-slate-100 pt-1">
-                                총 투입원금: {Math.round(p.invested).toLocaleString()}원 (낙폭: {p.drawdown}%)
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
+                      animationDuration={180}
+                      wrapperStyle={{ transition: "transform 180ms ease-out, opacity 200ms ease-out, visibility 200ms ease-out" }}
+                      content={({ active, payload }) => (
+                        <SmoothRechartsTooltip
+                          active={active}
+                          payload={payload}
+                          render={(pl) => {
+                            const p = pl[0].payload;
+                            return (
+                              <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
+                                <p className="font-bold text-slate-700 border-b border-slate-100 pb-1">{p.fullDate} (환율 {Number(p.fxRate).toFixed(1)}원)</p>
+                                <p className="text-emerald-600 font-black text-sm">내 포트폴리오: {Math.round(p.portfolio).toLocaleString()}원</p>
+                                {benchmarks.includes("SPY") && (
+                                  <div className="flex text-red-600 font-bold">
+                                    <span className="w-[62px] shrink-0">S&P 500</span>
+                                    <span>: {Math.round(p.spy).toLocaleString()}원</span>
+                                  </div>
+                                )}
+                                {benchmarks.includes("QQQ") && (
+                                  <div className="flex text-yellow-600 font-bold">
+                                    <span className="w-[62px] shrink-0">나스닥 100</span>
+                                    <span>: {Math.round(p.qqq).toLocaleString()}원</span>
+                                  </div>
+                                )}
+                                <p className="text-slate-400 font-semibold border-t border-slate-100 pt-1">
+                                  총 투입원금: {Math.round(p.invested).toLocaleString()}원 (낙폭: {p.drawdown}%)
+                                </p>
+                              </div>
+                            );
+                          }}
+                        />
+                      )}
                     />
                     {/* 총 투입원금 선 */}
                     <Line key={`inv-${executedConfig?.executedAt || 'init'}`} type="stepAfter" dataKey="invested" stroke="#cbd5e1" strokeWidth={1.5} dot={false} animationDuration={900} animationEasing="ease-out" />
@@ -686,6 +716,8 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       <XAxis dataKey="date" hide />
                       <YAxis domain={["dataMin", 0]} tick={{ fontSize: 9, fill: "#94a3b8" }} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
                       <Tooltip
+                        animationDuration={180}
+                        wrapperStyle={{ transition: "transform 180ms ease-out, opacity 200ms ease-out, visibility 200ms ease-out" }}
                         formatter={(val) => [`${val}%`, "낙폭"]}
                         labelFormatter={(lbl) => `일자: ${lbl}`}
                         contentStyle={{ fontSize: 11, borderRadius: 8 }}
@@ -738,24 +770,29 @@ const BacktestDashboard = memo(function BacktestDashboard({
                       <XAxis dataKey="year" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={(v) => `${v}%`} />
                       <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const d = payload[0].payload;
-                            return (
-                              <div className="bg-white/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
-                                <p className="font-bold text-slate-700">{d.year}년 연간 수익률</p>
-                                <p className="text-emerald-600 font-bold">내 포트폴리오: {d.portfolio > 0 ? `+${d.portfolio}%` : `${d.portfolio}%`}</p>
-                                {benchmarks.includes("SPY") && (
-                                  <p className="text-red-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
-                                )}
-                                {benchmarks.includes("QQQ") && (
-                                  <p className="text-yellow-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
-                                )}
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
+                        animationDuration={180}
+                        wrapperStyle={{ transition: "transform 180ms ease-out, opacity 200ms ease-out, visibility 200ms ease-out" }}
+                        content={({ active, payload }) => (
+                          <SmoothRechartsTooltip
+                            active={active}
+                            payload={payload}
+                            render={(pl) => {
+                              const d = pl[0].payload;
+                              return (
+                                <div className="bg-white/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 shadow-xl text-xs space-y-1">
+                                  <p className="font-bold text-slate-700">{d.year}년 연간 수익률</p>
+                                  <p className="text-emerald-600 font-bold">내 포트폴리오: {d.portfolio > 0 ? `+${d.portfolio}%` : `${d.portfolio}%`}</p>
+                                  {benchmarks.includes("SPY") && (
+                                    <p className="text-red-600 font-medium">S&P 500: {d.spy > 0 ? `+${d.spy}%` : `${d.spy}%`}</p>
+                                  )}
+                                  {benchmarks.includes("QQQ") && (
+                                    <p className="text-yellow-600 font-medium">나스닥 100: {d.qqq > 0 ? `+${d.qqq}%` : `${d.qqq}%`}</p>
+                                  )}
+                                </div>
+                              );
+                            }}
+                          />
+                        )}
                         cursor={{ fill: "#f1f5f9", radius: 4 }}
                       />
                       <Bar dataKey="portfolio" fill="#10b981" radius={[4, 4, 0, 0]} animationBegin={0} animationDuration={600} animationEasing="ease-out" />

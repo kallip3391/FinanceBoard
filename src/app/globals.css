@@ -187,6 +187,36 @@
       opacity: 1;
     }
   }
+
+  .animate-tooltip-in {
+    animation: tooltipPopIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-tooltip-out {
+    animation: tooltipPopOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
+  @keyframes tooltipPopIn {
+    0% {
+      opacity: 0;
+      transform: translateY(6px) scale(0.94);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes tooltipPopOut {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(5px) scale(0.94);
+    }
+  }
   
   .stagger-1 { animation-delay: 0.05s; }
   .stagger-2 { animation-delay: 0.1s; }
