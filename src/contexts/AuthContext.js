@@ -111,6 +111,16 @@ export function AuthProvider({ children }) {
       return;
     }
 
+    // 동일 사용자면 기존 user 객체 참조를 유지해 불필요한 자산 재조회 방지
+    const setUserIfChanged = (nextUser) => {
+      setUser((prev) => {
+        if (prev && nextUser && prev.id === nextUser.id && prev.email === nextUser.email) {
+          return prev;
+        }
+        return nextUser;
+      });
+    };
+
     // 인증 세션 처리 로직 통합
     const handleSession = async (session, eventType) => {
       if (!mounted) return;
@@ -133,13 +143,13 @@ export function AuthProvider({ children }) {
         }
 
         console.log(`[Auth] 세션 처리 (${eventType}):`, session.user.email);
-        setUser(session.user);
+        setUserIfChanged(session.user);
         
         const isAllowed = await checkProfile(session.user.id, session.user);
         
         if (mounted) {
           if (isAllowed === true) {
-            setUser(session.user);
+            setUserIfChanged(session.user);
             setProfileError(null);
             if (typeof window !== 'undefined') sessionStorage.removeItem('auth_profile_error');
           } else if (isAllowed === false) {

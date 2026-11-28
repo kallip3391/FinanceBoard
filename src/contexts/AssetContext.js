@@ -67,12 +67,11 @@ export function AssetProvider({ children }) {
       return;
     }
 
-    // 게스트 계정인 경우 임시 데이터 즉시 반환
+    // 게스트 계정인 경우 금현물 시세 조회 후 한 번에 데이터 반영 (중간 차트 재렌더링 방지)
     if (user.email === 'guest@example.com' || user.id === '00000000-0000-0000-0000-000000000000') {
-      // 금현물 시세를 비동기로 조회하여 업데이트 시도
-      MarketPriceManager.getPrice('KRX_GOLD').then(liveGoldPrice => {
-        if (liveGoldPrice) {
-          setHoldings(prev => prev.map(item => {
+      const liveGoldPrice = await MarketPriceManager.getPrice('KRX_GOLD').catch(() => null);
+      const finalGuestHoldings = liveGoldPrice
+        ? GUEST_HOLDINGS.map(item => {
             if ((item.code === 'GOLD' && item.currency === 'KRW') || (item.name && item.name.includes('금현물'))) {
               const cur = liveGoldPrice;
               const evalAmt = item.totalQuantity * cur;
@@ -88,11 +87,10 @@ export function AssetProvider({ children }) {
               };
             }
             return item;
-          }));
-        }
-      }).catch(() => {});
+          })
+        : GUEST_HOLDINGS;
 
-      setHoldings(GUEST_HOLDINGS);
+      setHoldings(finalGuestHoldings);
       setHoldingsByAccount(GUEST_HOLDINGS_BY_ACCOUNT);
       setSummary(GUEST_SUMMARY);
       return;
