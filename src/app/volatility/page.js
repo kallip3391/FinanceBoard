@@ -16,6 +16,7 @@ import {
 import { useAssets } from "@/contexts/AssetContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAnimatedDataModal } from "@/hooks/useAnimatedModal";
+import MobileVolatilityDashboard from "@/app/components/mobile/MobileVolatilityDashboard";
 import {
   AreaChart,
   Area,
@@ -251,7 +252,11 @@ export default function VolatilityPage() {
   // 외부 클릭 시 검색창 닫기
   useEffect(() => {
     function handleClickOutside(event) {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+      if (
+        searchContainerRef.current &&
+        searchContainerRef.current.offsetParent !== null &&
+        !searchContainerRef.current.contains(event.target)
+      ) {
         setIsSearchOpen(false);
       }
     }
@@ -817,7 +822,43 @@ export default function VolatilityPage() {
   }, [holdings]);
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
+    <>
+      <div className="mobile-only-block w-full">
+        <MobileVolatilityDashboard
+          user={user}
+          selectedStock={selectedStock}
+          setSelectedStock={setSelectedStock}
+          setRawHistoryData={setRawHistoryData}
+          setErrorMsg={setErrorMsg}
+          period={period}
+          setPeriod={setPeriod}
+          periodOptions={PERIOD_OPTIONS}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          isSearching={isSearching}
+          isSearchOpen={isSearchOpen}
+          setIsSearchOpen={setIsSearchOpen}
+          selectedSearchIndex={selectedSearchIndex}
+          setSelectedSearchIndex={setSelectedSearchIndex}
+          handleSearchInputChange={handleSearchInputChange}
+          handleSearchKeyDown={handleSearchKeyDown}
+          handleSearchPaste={handleSearchPaste}
+          executeSearch={executeSearch}
+          selectStockFromSearch={selectStockFromSearch}
+          comparisonList={comparisonList}
+          isLoading={isLoading}
+          errorMsg={errorMsg}
+          stats={stats}
+          bellCurveTicks={bellCurveTicks}
+          xTicks={xTicks}
+          currency={currency}
+          formatPrice={formatPrice}
+          staticBellCurveSvg={STATIC_BELL_CURVE_SVG}
+          isMounted={isMounted}
+        />
+      </div>
+
+      <div className="desktop-only flex-col w-full max-w-[1600px] mx-auto px-4 py-4 md:p-0 space-y-6 animate-fade-in text-slate-800">
       
       {/* ────────────────────────────────────────────────────────── */}
       {/* 1. 최상단 헤더 섹션 (다른 화면들과 동일하게 박스 밖 좌측 상단)  */}
@@ -919,7 +960,7 @@ export default function VolatilityPage() {
               <div className="relative flex items-center">
                 <input
                   type="text"
-                  placeholder="+ 종목명 / 티커 / 종목코드 입력 후 Enter..."
+                  aria-label="종목명, 티커 또는 종목코드 검색"
                   value={searchQuery}
                   onChange={handleSearchInputChange}
                   onKeyDown={handleSearchKeyDown}
@@ -927,8 +968,13 @@ export default function VolatilityPage() {
                   autoCapitalize="characters"
                   autoCorrect="off"
                   spellCheck="false"
-                  className="w-full pl-3.5 pr-8 py-1.5 text-xs md:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-semibold transition-all uppercase placeholder:normal-case placeholder:font-normal placeholder:text-xs placeholder:text-slate-400"
+                  className="w-full h-[36px] pl-3.5 pr-8 py-0 text-xs md:text-sm leading-normal bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-semibold transition-all uppercase"
                 />
+                {!searchQuery && (
+                  <span className="pointer-events-none absolute left-3.5 right-8 top-1/2 -translate-y-1/2 text-xs font-normal text-slate-400 truncate select-none">
+                    + 종목명 / 티커 / 종목코드 입력 후 Enter...
+                  </span>
+                )}
                 {isSearching ? (
                   <RefreshCw size={14} className="absolute right-2.5 text-slate-400 animate-spin" />
                 ) : (
@@ -1868,6 +1914,7 @@ export default function VolatilityPage() {
         </div>
       )}
 
-    </div>
+      </div>
+    </>
   );
 }

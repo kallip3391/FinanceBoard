@@ -413,6 +413,12 @@
   }
 }
 
+/* 데스크톱 text-sm(14px) 입력창 내부에서 placeholder:text-xs(12px) 사용 시 베이스라인 보정 */
+input[class*="text-sm"][class*="placeholder:text-xs"]::placeholder {
+  position: relative;
+  top: -1px;
+}
+
 /* 모바일 브라우저 인풋 포커스 시 자동 화면 확대(Zoom-in) 방지 (16px 기준) */
 @media screen and (max-width: 768px) {
   input,
@@ -420,6 +426,36 @@
   textarea {
     font-size: 16px !important;
   }
+
+  /* 모바일 16px 입력창 내부에서 placeholder:text-xs(12px) 사용 시 베이스라인 하단 치우침 보정 */
+  input[class*="placeholder:text-xs"]::placeholder {
+    position: relative;
+    top: -1.5px;
+  }
+
+  /* 모바일 백테스트 검색창·비중 입력창 컴팩트 폰트 크기 */
+  input.mobile-compact-input {
+    font-size: 13px !important;
+  }
+}
+
+/* 모바일 스크롤 영역 우측 상시 노출 얇은 스크롤바 */
+.mobile-visible-scrollbar {
+  overflow-y: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+.mobile-visible-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  display: block;
+}
+.mobile-visible-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+.mobile-visible-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
 }
 
 /* 모바일 배당금 스택 바 차트 최초 진입 애니메이션 */

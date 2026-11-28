@@ -65,6 +65,107 @@ const formatExactWon = (val) => {
   return `${Math.round(val).toLocaleString()}원`;
 };
 
+const formatRollingValue = (val, decimals, showSign, suffix, formatFn, emptyText) => {
+  if (val == null || isNaN(val)) return emptyText;
+  if (formatFn) return formatFn(val);
+  const formattedNum =
+    decimals > 0
+      ? Number(val).toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })
+      : Math.round(val).toLocaleString();
+  const sign = showSign && val > 0 ? "+" : "";
+  return `${sign}${formattedNum}${suffix}`;
+};
+
+// ── 모바일 KPI 카드 숫자 롤링 카운터 (직접 DOM 렌더링 + easeOutQuart) ──
+function MobileRollingNumber({
+  value,
+  duration = 650,
+  decimals = 0,
+  showSign = false,
+  suffix = "",
+  formatFn,
+  emptyText = "-"
+}) {
+  const spanRef = useRef(null);
+  const prevValueRef = useRef(0);
+
+  useEffect(() => {
+    if (value == null || isNaN(value)) {
+      if (spanRef.current) spanRef.current.textContent = emptyText;
+      prevValueRef.current = 0;
+      return;
+    }
+
+    const endVal = Number(value);
+    const startVal = Number(prevValueRef.current) || 0;
+    if (startVal === endVal) {
+      if (spanRef.current) {
+        spanRef.current.textContent = formatRollingValue(
+          endVal,
+          decimals,
+          showSign,
+          suffix,
+          formatFn,
+          emptyText
+        );
+      }
+      return;
+    }
+
+    let startTime = null;
+    let animationFrame;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const current = startVal + (endVal - startVal) * easeProgress;
+
+      if (spanRef.current) {
+        spanRef.current.textContent = formatRollingValue(
+          current,
+          decimals,
+          showSign,
+          suffix,
+          formatFn,
+          emptyText
+        );
+      }
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      } else {
+        if (spanRef.current) {
+          spanRef.current.textContent = formatRollingValue(
+            endVal,
+            decimals,
+            showSign,
+            suffix,
+            formatFn,
+            emptyText
+          );
+        }
+        prevValueRef.current = endVal;
+      }
+    };
+
+    animationFrame = requestAnimationFrame(step);
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [value, duration, decimals, showSign, suffix, formatFn, emptyText]);
+
+  const initialText =
+    value != null && !isNaN(value)
+      ? formatRollingValue(0, decimals, showSign, suffix, formatFn, emptyText)
+      : emptyText;
+
+  return <span ref={spanRef}>{initialText}</span>;
+}
+
 const MobileYearOnlyTick = ({ x, y, payload, yearTickSet }) => {
   const label = yearTickSet[payload.value];
   if (!label) return null;
@@ -122,9 +223,8 @@ export default function MobileBacktestDashboard({
 
   const mobileSearchRef = useRef(null);
   const searchInputRef = useRef(null);
+  const portfolioListRef = useRef(null);
   const mobileRebalRef = useRef(null);
-  const touchStartXRef = useRef(null);
-  const touchStartYRef = useRef(null);
 
   const currentRebalancingOption =
     REBALANCING_OPTIONS.find((o) => o.id === rebalancing) || REBALANCING_OPTIONS[0];
@@ -151,10 +251,31 @@ export default function MobileBacktestDashboard({
     }
   };
 
-  // 드롭다운 항목 선택 시 종목 추가 후 가상 키보드 닫기
+  // 드롭다운 항목 선택 시 최상단에 종목 추가 후 가상 키보드 닫기 및 스크롤 최상단 이동
   const handleSelectSearchItem = (item) => {
-    addStock(item);
+    addStock(item, true);
     searchInputRef.current?.blur?.();
+    requestAnimationFrame(() => {
+      if (portfolioListRef.current) {
+        portfolioListRef.current.scrollTop = 0;
+      }
+    });
+  };
+
+  // 모바일 검색창 엔터 키 입력 시 드롭다운이 열려 있으면 최상단 추가(prepend)
+  const handleMobileSearchKeyDown = (e) => {
+    if (
+      e.key === "Enter" &&
+      !e.nativeEvent?.isComposing &&
+      isSearchOpen &&
+      searchResults.length > 0
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSelectSearchItem(searchResults[selectedSearchIndex] || searchResults[0]);
+      return;
+    }
+    handleSearchKeyDown(e);
   };
 
   // 백테스트 실행 시 3번 화면(슬라이드 0)으로 초기화 후 실행
@@ -190,37 +311,17 @@ export default function MobileBacktestDashboard({
     };
   }, [setIsSearchOpen, setSelectedSearchIndex]);
 
+  // 기존 종목 유지한 채 종목 입력·수정 화면으로 복귀
+  const handleEditPortfolio = () => {
+    setResultData(null);
+    setResultSlide(0);
+  };
+
   // 결과 조회 취소 -> 1번 초기 화면으로 복귀
   const handleCancelResult = () => {
     setResultData(null);
     setPortfolio([]);
     setResultSlide(0);
-  };
-
-  // 결과 영역 좌우 스와이프 핸들러 (3 <-> 4 <-> 5번 화면 전환)
-  const handleResultTouchStart = (e) => {
-    if (!e.touches || e.touches.length !== 1) return;
-    touchStartXRef.current = e.touches[0].clientX;
-    touchStartYRef.current = e.touches[0].clientY;
-  };
-
-  const handleResultTouchEnd = (e) => {
-    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
-    if (!e.changedTouches || e.changedTouches.length === 0) return;
-
-    const diffX = e.changedTouches[0].clientX - touchStartXRef.current;
-    const diffY = e.changedTouches[0].clientY - touchStartYRef.current;
-
-    if (Math.abs(diffX) > Math.abs(diffY) * 1.2 && Math.abs(diffX) > 45) {
-      if (diffX < 0) {
-        setResultSlide((prev) => Math.min(2, prev + 1));
-      } else {
-        setResultSlide((prev) => Math.max(0, prev - 1));
-      }
-    }
-
-    touchStartXRef.current = null;
-    touchStartYRef.current = null;
   };
 
   const summary = resultData?.summary;
@@ -257,16 +358,16 @@ export default function MobileBacktestDashboard({
         {user && (
           <>
             {/* ── 상단 헤더 & 백테스트/변동성 이동 바 ── */}
-            <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm animate-fade-in">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-sm opacity-0 animate-feed-lift stagger-1">
+              <div className="flex items-center gap-2 min-w-0">
                 <div className="w-9 h-9 flex items-center justify-center rounded-xl text-white shadow-xs shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600">
                   <Layers size={18} strokeWidth={2.5} />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-[15.5px] font-extrabold text-slate-800 tracking-tight leading-tight truncate">
+                  <h1 className="text-base font-extrabold text-slate-800 tracking-tight leading-tight truncate">
                     포트폴리오 백테스트
                   </h1>
-                  <span className="text-[11px] font-semibold text-slate-400 block truncate">
+                  <span className="text-[11px] font-semibold text-slate-400 leading-[24px] block truncate">
                     맞춤 자산 배분 비중 기반 과거 수익률
                   </span>
                 </div>
@@ -299,7 +400,7 @@ export default function MobileBacktestDashboard({
             {/* [1번 · 2번 화면] 포트폴리오 구성 및 실행 설정 화면        */}
             {/* ════════════════════════════════════════════════════════ */}
             {!resultData && (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 space-y-3 animate-fade-in">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 space-y-3 opacity-0 animate-feed-lift stagger-2">
                 {/* 카드 헤더 */}
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <h2 className="text-[14.5px] font-black text-slate-900 tracking-tight flex items-center gap-1.5">
@@ -307,7 +408,7 @@ export default function MobileBacktestDashboard({
                     포트폴리오 구성
                   </h2>
                   <div className="flex items-center gap-1.5">
-                    {portfolio.length > 1 && totalWeight !== 100 && (
+                    {portfolio.length >= 1 && (
                       <button
                         type="button"
                         onClick={handleEqualWeight}
@@ -335,16 +436,21 @@ export default function MobileBacktestDashboard({
                       ref={searchInputRef}
                       type="text"
                       enterKeyHint="search"
-                      placeholder="+ 종목명 / 티커 / 종목코드 입력 후 Enter..."
+                      aria-label="종목명, 티커 또는 종목코드 검색"
                       value={searchQuery}
                       onChange={handleSearchInputChange}
-                      onKeyDown={handleSearchKeyDown}
+                      onKeyDown={handleMobileSearchKeyDown}
                       onPaste={handleSearchPaste}
                       autoCapitalize="characters"
                       autoCorrect="off"
                       spellCheck="false"
-                      className="w-full pl-3.5 pr-9 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold transition-all uppercase placeholder:normal-case placeholder:font-normal placeholder:text-xs"
+                      className="mobile-compact-input w-full h-[36px] pl-3.5 pr-9 py-0 text-[13px] leading-normal bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold transition-all uppercase"
                     />
+                    {!searchQuery && (
+                      <span className="pointer-events-none absolute left-3.5 right-9 top-1/2 -translate-y-1/2 text-xs font-normal text-slate-400 truncate select-none">
+                        + 종목명 / 티커 / 종목코드 입력 후 Enter...
+                      </span>
+                    )}
                     {isSearching ? (
                       <RefreshCw size={16} className="absolute right-3 text-slate-400 animate-spin" />
                     ) : (
@@ -359,9 +465,9 @@ export default function MobileBacktestDashboard({
                     )}
                   </form>
 
-                  {/* 검색 드롭다운 (웹과 동일한 2줄 구조 + 선택됨/추가 배지) */}
+                  {/* 검색 드롭다운 (웹과 동일한 2줄 구조 + 위에서 아래로 순차 등장) */}
                   {isSearchOpen && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-[216px] overflow-y-auto text-xs">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-[216px] overflow-y-auto text-xs animate-fade-in">
                       {searchResults.map((item, idx) => {
                         const isSelected = selectedSearchIndex === idx;
                         const isDom =
@@ -375,7 +481,8 @@ export default function MobileBacktestDashboard({
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => handleSelectSearchItem(item)}
-                            className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between transition-colors cursor-pointer ${
+                            style={{ animationDelay: `${idx * 40}ms` }}
+                            className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between transition-colors cursor-pointer opacity-0 animate-feed-lift ${
                               isSelected
                                 ? "bg-indigo-50/90 text-indigo-950 font-bold border-l-3 border-indigo-600 pl-3"
                                 : "hover:bg-slate-50 active:bg-indigo-50/60 text-slate-800"
@@ -437,14 +544,19 @@ export default function MobileBacktestDashboard({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="space-y-2 h-[82px] overflow-y-auto pr-1">
+                    <div
+                      ref={portfolioListRef}
+                      className={`space-y-2 h-[82px] ${
+                        portfolio.length >= 2 ? "mobile-visible-scrollbar pr-1.5" : "overflow-y-hidden"
+                      }`}
+                    >
                       {portfolio.map((item, idx) => {
                         const isDom = item.currency === "KRW";
                         const isInsufficient = insufficientStocks.includes(item.symbol) || insufficientStocks.includes(item.code);
                         return (
                           <div
-                            key={`${item.symbol}-${idx}`}
-                            className={`min-h-[80px] flex flex-col justify-center rounded-xl border p-3 transition-colors ${
+                            key={item.symbol || item.code || idx}
+                            className={`min-h-[80px] flex flex-col justify-center rounded-xl border p-3 transition-colors animate-card-entrance ${
                               isInsufficient
                                 ? "border-rose-300 bg-rose-50/40"
                                 : "border-slate-200/80 bg-white shadow-2xs"
@@ -467,7 +579,11 @@ export default function MobileBacktestDashboard({
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="text-[11px] font-extrabold text-amber-500 font-mono">
+                                <span
+                                  className={`text-[11px] font-extrabold font-mono ${
+                                    isDom ? "text-blue-600" : "text-amber-500"
+                                  }`}
+                                >
                                   {item.code}
                                 </span>
                                 <input
@@ -477,7 +593,7 @@ export default function MobileBacktestDashboard({
                                   value={item.weight}
                                   onFocus={(e) => e.target.select?.()}
                                   onChange={(e) => updateWeight(idx, e.target.value)}
-                                  className={`w-12 py-0.5 px-1.5 text-right text-xs font-black rounded-lg border-2 focus:outline-hidden ${
+                                  className={`mobile-compact-input w-[38px] py-0.5 px-1 text-center text-[13px] font-black rounded-lg border-2 tabular-nums focus:outline-hidden [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                                     isDom
                                       ? "border-blue-400 text-slate-900 focus:border-blue-600"
                                       : "border-amber-400 text-slate-900 focus:border-amber-500"
@@ -495,16 +611,19 @@ export default function MobileBacktestDashboard({
                               </div>
                             </div>
 
-                            <input
-                              type="range"
-                              min={0}
-                              max={100}
-                              value={Number(item.weight) || 0}
-                              onChange={(e) => updateWeight(idx, e.target.value)}
-                              className={`w-full h-1.5 rounded-lg cursor-pointer ${
-                                isDom ? "accent-blue-500" : "accent-amber-500"
-                              }`}
-                            />
+                            <div className="py-1.5 -my-1.5 flex items-center touch-none">
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                value={Number(item.weight) || 0}
+                                onTouchMove={(e) => e.stopPropagation()}
+                                onChange={(e) => updateWeight(idx, e.target.value)}
+                                className={`w-full h-2 rounded-lg cursor-pointer touch-none ${
+                                  isDom ? "accent-blue-500" : "accent-amber-500"
+                                }`}
+                              />
+                            </div>
                           </div>
                         );
                       })}
@@ -523,7 +642,7 @@ export default function MobileBacktestDashboard({
                 )}
 
                 {/* 초기 투자금액 / 월 적립금액 */}
-                <div className="grid grid-cols-2 gap-2.5 pt-2.5 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-500 mb-1">
                       초기 투자금액
@@ -582,7 +701,7 @@ export default function MobileBacktestDashboard({
                 </div>
 
                 {/* 분석 기간 */}
-                <div>
+                <div className="!mt-2.5">
                   <span className="block text-[11px] font-bold text-slate-500 mb-1.5">
                     분석 기간
                   </span>
@@ -605,7 +724,7 @@ export default function MobileBacktestDashboard({
                 </div>
 
                 {/* 리밸런싱 주기 */}
-                <div className="relative" ref={mobileRebalRef}>
+                <div className="relative !mt-2.5" ref={mobileRebalRef}>
                   <span className="block text-[11px] font-bold text-slate-500 mb-1.5">
                     리밸런싱 주기
                   </span>
@@ -631,7 +750,7 @@ export default function MobileBacktestDashboard({
                   </button>
 
                   {isRebalOpen && (
-                    <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-40 overflow-hidden divide-y divide-slate-50">
+                    <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-40 overflow-hidden divide-y divide-slate-50 animate-tooltip-in">
                       {REBALANCING_OPTIONS.map((opt) => (
                         <button
                           key={opt.id}
@@ -658,7 +777,7 @@ export default function MobileBacktestDashboard({
                 </div>
 
                 {/* 벤치마크 비교 선택 */}
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between pt-0.5">
                   <span className="text-xs font-bold text-slate-500">벤치마크</span>
                   <div className="flex items-center gap-3.5">
                     {[
@@ -712,7 +831,7 @@ export default function MobileBacktestDashboard({
             {/* [3 · 4 · 5번 화면] 백테스트 결과 슬라이드 카드            */}
             {/* ════════════════════════════════════════════════════════ */}
             {resultData && (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 space-y-3 animate-fade-in">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 space-y-3 opacity-0 animate-feed-lift stagger-1">
                 {/* ── 추천 상단 조회 종목 요약 바 + 취소(1번 복귀) 버튼 ── */}
                 <div className="pb-2.5 border-b border-slate-100 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -724,48 +843,68 @@ export default function MobileBacktestDashboard({
                         {executedPeriodLabel}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleCancelResult}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[11px] font-bold border border-slate-200/80 active:scale-95 transition-all cursor-pointer"
-                    >
-                      <X size={12} strokeWidth={2.5} />
-                      <span>취소</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleEditPortfolio}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[11px] font-bold border border-indigo-200 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Sliders size={11} strokeWidth={2.5} />
+                        <span>수정</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelResult}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-[11px] font-bold border border-rose-200 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      >
+                        <X size={12} strokeWidth={2.5} />
+                        <span>취소</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* 조회된 종목 1줄씩 세로 목록 (최대 3줄 노출, 3개 초과 시 스크롤) */}
-                  <div className="max-h-[92px] overflow-y-auto pr-1 space-y-1">
-                    {portfolio.map((item, idx) => {
-                      const isDom = item.currency === "KRW";
-                      return (
-                        <div
-                          key={`chip-${item.symbol}-${idx}`}
-                          className="h-[28px] px-2.5 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2"
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <span
-                              className={`w-2 h-2 rounded-full shrink-0 ${
-                                isDom ? "bg-blue-500" : "bg-amber-500"
-                              }`}
-                            />
-                            <span className="text-[11px] font-bold text-slate-800 truncate">
-                              {item.name || item.code}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {item.code && (
-                              <span className="font-mono text-[10px] text-slate-400">
-                                {item.code}
+                  {/* 조회된 종목 1줄씩 세로 목록 (3칸 고정 실선 박스, 위에서부터 순서대로, 3개 초과 시 우측 스크롤) */}
+                  <div className="border border-slate-200/90 rounded-xl p-1.5 bg-slate-50/30">
+                    <div
+                      className={`h-[92px] space-y-1 ${
+                        portfolio.length > 3 ? "mobile-visible-scrollbar pr-1.5" : "overflow-y-hidden"
+                      }`}
+                    >
+                      {portfolio.map((item, idx) => {
+                        const isDom = item.currency === "KRW";
+                        return (
+                          <div
+                            key={`chip-${item.symbol}-${idx}`}
+                            className={`h-[28px] px-2.5 rounded-lg bg-white border border-slate-200/80 flex items-center justify-between gap-2 shadow-2xs opacity-0 animate-feed-lift stagger-${Math.min(idx + 1, 6)}`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <span
+                                className={`w-2 h-2 rounded-full shrink-0 ${
+                                  isDom ? "bg-blue-500" : "bg-amber-500"
+                                }`}
+                              />
+                              <span className="text-[11px] font-bold text-slate-800 truncate">
+                                {item.name || item.code}
                               </span>
-                            )}
-                            <span className="text-[11px] font-black text-indigo-600 tabular-nums w-8 text-right">
-                              {item.weight}%
-                            </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {item.code && (
+                                <span
+                                  className={`font-mono text-[10.5px] font-extrabold ${
+                                    isDom ? "text-blue-600" : "text-amber-500"
+                                  }`}
+                                >
+                                  {item.code}
+                                </span>
+                              )}
+                              <span className="text-[11px] font-black text-indigo-600 tabular-nums w-8 text-right">
+                                {item.weight}%
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* 3 / 4 / 5 화면 탭 인디케이터 */}
@@ -781,8 +920,8 @@ export default function MobileBacktestDashboard({
                         onClick={() => setResultSlide(tab.idx)}
                         className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                           resultSlide === tab.idx
-                            ? "bg-white text-indigo-600 font-black shadow-xs"
-                            : "text-slate-500"
+                            ? "bg-indigo-600 text-white font-black shadow-xs"
+                            : "text-slate-500 hover:text-slate-800"
                         }`}
                       >
                         {tab.label}
@@ -791,31 +930,37 @@ export default function MobileBacktestDashboard({
                   </div>
                 </div>
 
-                {/* ── 좌우 스와이프 본문 (3번 ↔ 4번 ↔ 5번 화면) ── */}
-                <div
-                  onTouchStart={handleResultTouchStart}
-                  onTouchEnd={handleResultTouchEnd}
-                  className="touch-pan-y min-h-[345px]"
-                >
+                {/* ── 탭별 결과 본문 (3번 / 4번 / 5번 화면) ── */}
+                <div className="min-h-[345px]">
                   {/* [3번 화면] 2×2 핵심 성과 지표 KPI 카드 */}
                   {resultSlide === 0 && (
-                    <div className="grid grid-cols-2 gap-2.5 animate-fade-in">
+                    <div className="grid grid-cols-2 gap-2.5">
                       {/* ① 최종 자산 (누적수익률) */}
-                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[175px]">
+                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[175px] opacity-0 animate-feed-lift stagger-1">
                         <div>
                           <span className="text-[11px] font-bold text-slate-600 tracking-tight block mb-2">
                             ① 최종 자산 (누적수익률)
                           </span>
                           <div className="text-right">
                             <div className="text-[17px] font-black text-slate-900 tracking-tight leading-tight tabular-nums">
-                              {formatExactWon(summary?.finalValue ?? summary?.finalBalance)}
+                              <MobileRollingNumber
+                                value={summary?.finalValue ?? summary?.finalBalance}
+                                formatFn={formatExactWon}
+                              />
                             </div>
                             <div
                               className={`text-xs font-extrabold tracking-tight tabular-nums mt-0.5 ${
                                 totalReturnVal >= 0 ? "text-rose-500" : "text-blue-500"
                               }`}
                             >
-                              ({totalReturnVal >= 0 ? `+${Number(totalReturnVal).toFixed(1)}%` : `${Number(totalReturnVal).toFixed(1)}%`})
+                              (
+                              <MobileRollingNumber
+                                value={totalReturnVal}
+                                decimals={1}
+                                showSign={true}
+                                suffix="%"
+                              />
+                              )
                             </div>
                           </div>
                         </div>
@@ -824,35 +969,54 @@ export default function MobileBacktestDashboard({
                           <div className="truncate">
                             원금 :{" "}
                             <strong className="text-slate-600 font-bold">
-                              {formatCleanWon(summary?.investedCapital)}원
+                              <MobileRollingNumber
+                                value={summary?.investedCapital}
+                                formatFn={(v) => `${formatCleanWon(v)}원`}
+                              />
                             </strong>
                           </div>
                           <div className="truncate">
                             국내:{" "}
                             <strong className="text-slate-800 font-bold">
-                              {formatExactWon(summary?.domesticWon ?? 0)}
+                              <MobileRollingNumber
+                                value={summary?.domesticWon ?? 0}
+                                formatFn={formatExactWon}
+                              />
                             </strong>
                           </div>
                           <div className="truncate">
                             해외:{" "}
                             <strong className="text-slate-800 font-bold">
-                              {formatExactWon(summary?.foreignWon ?? 0)}
+                              <MobileRollingNumber
+                                value={summary?.foreignWon ?? 0}
+                                formatFn={formatExactWon}
+                              />
                             </strong>{" "}
                             <span className="text-slate-400">
-                              (${Math.round(summary?.foreignUsd ?? 0).toLocaleString()})
+                              (
+                              <MobileRollingNumber
+                                value={summary?.foreignUsd ?? 0}
+                                formatFn={(v) => `$${Math.round(v).toLocaleString()}`}
+                              />
+                              )
                             </span>
                           </div>
                         </div>
                       </div>
 
                       {/* ② 최대 낙폭 (MDD) */}
-                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[175px]">
+                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[175px] opacity-0 animate-feed-lift stagger-2">
                         <div>
                           <span className="text-[11px] font-bold text-slate-600 tracking-tight block mb-3">
                             ② 최대 낙폭 (MDD)
                           </span>
                           <div className="text-right text-xl font-black text-blue-600 tracking-tight tabular-nums">
-                            {summary?.maxDrawdown != null ? `${Number(summary.maxDrawdown).toFixed(1)}%` : "-"}
+                            <MobileRollingNumber
+                              value={summary?.maxDrawdown}
+                              decimals={1}
+                              suffix="%"
+                              emptyText="-"
+                            />
                           </div>
                         </div>
 
@@ -862,9 +1026,15 @@ export default function MobileBacktestDashboard({
                               S&amp;P500
                             </span>
                             <span className={benchmarks.includes("SPY") && summary?.spyDrawdown != null ? "font-extrabold text-blue-600" : "text-slate-300"}>
-                              {benchmarks.includes("SPY") && summary?.spyDrawdown != null
-                                ? `${Number(summary.spyDrawdown).toFixed(1)}%`
-                                : "-"}
+                              {benchmarks.includes("SPY") && summary?.spyDrawdown != null ? (
+                                <MobileRollingNumber
+                                  value={summary.spyDrawdown}
+                                  decimals={1}
+                                  suffix="%"
+                                />
+                              ) : (
+                                "-"
+                              )}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
@@ -872,22 +1042,32 @@ export default function MobileBacktestDashboard({
                               나스닥 100
                             </span>
                             <span className={benchmarks.includes("QQQ") && summary?.qqqDrawdown != null ? "font-extrabold text-blue-600" : "text-slate-300"}>
-                              {benchmarks.includes("QQQ") && summary?.qqqDrawdown != null
-                                ? `${Number(summary.qqqDrawdown).toFixed(1)}%`
-                                : "-"}
+                              {benchmarks.includes("QQQ") && summary?.qqqDrawdown != null ? (
+                                <MobileRollingNumber
+                                  value={summary.qqqDrawdown}
+                                  decimals={1}
+                                  suffix="%"
+                                />
+                              ) : (
+                                "-"
+                              )}
                             </span>
                           </div>
                         </div>
                       </div>
 
                       {/* ③ 샤프 지수 (Sharpe) */}
-                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[156px]">
+                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[156px] opacity-0 animate-feed-lift stagger-3">
                         <div>
                           <span className="text-[11px] font-bold text-slate-600 tracking-tight block mb-3">
                             ③ 샤프 지수 (Sharpe)
                           </span>
                           <div className="text-right text-xl font-black text-slate-900 tracking-tight tabular-nums">
-                            {summary?.sharpeRatio != null ? Number(summary.sharpeRatio).toFixed(2) : "-"}
+                            <MobileRollingNumber
+                              value={summary?.sharpeRatio}
+                              decimals={2}
+                              emptyText="-"
+                            />
                           </div>
                         </div>
 
@@ -903,7 +1083,7 @@ export default function MobileBacktestDashboard({
                       </div>
 
                       {/* ④ 벤치마크 상관계수 (r) */}
-                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[156px]">
+                      <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex flex-col justify-between min-h-[156px] opacity-0 animate-feed-lift stagger-4">
                         <div>
                           <span className="text-[11px] font-bold text-slate-600 tracking-tight block mb-2.5">
                             ④ 벤치마크 상관계수 (r)
@@ -914,9 +1094,14 @@ export default function MobileBacktestDashboard({
                                 S&amp;P500
                               </span>
                               <span className={`text-sm font-black ${benchmarks.includes("SPY") && summary?.rSpy != null ? "text-purple-700" : "text-slate-300"}`}>
-                                {benchmarks.includes("SPY") && summary?.rSpy != null
-                                  ? Number(summary.rSpy).toFixed(2)
-                                  : "-"}
+                                {benchmarks.includes("SPY") && summary?.rSpy != null ? (
+                                  <MobileRollingNumber
+                                    value={summary.rSpy}
+                                    decimals={2}
+                                  />
+                                ) : (
+                                  "-"
+                                )}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
@@ -924,9 +1109,14 @@ export default function MobileBacktestDashboard({
                                 나스닥 100
                               </span>
                               <span className={`text-sm font-black ${benchmarks.includes("QQQ") && summary?.rQqq != null ? "text-purple-700" : "text-slate-300"}`}>
-                                {benchmarks.includes("QQQ") && summary?.rQqq != null
-                                  ? Number(summary.rQqq).toFixed(2)
-                                  : "-"}
+                                {benchmarks.includes("QQQ") && summary?.rQqq != null ? (
+                                  <MobileRollingNumber
+                                    value={summary.rQqq}
+                                    decimals={2}
+                                  />
+                                ) : (
+                                  "-"
+                                )}
                               </span>
                             </div>
                           </div>
@@ -949,7 +1139,7 @@ export default function MobileBacktestDashboard({
 
                   {/* [4번 화면] 자산 성장 추이 & 낙폭(MDD) 차트 */}
                   {resultSlide === 1 && (
-                    <div className="space-y-2 animate-fade-in">
+                    <div className="space-y-2 animate-page-slide">
                       <div>
                         <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
                           <TrendingUp size={16} className="text-emerald-600" />
@@ -1033,14 +1223,14 @@ export default function MobileBacktestDashboard({
                                   );
                                 }}
                               />
-                              <Line type="stepAfter" dataKey="invested" stroke="#cbd5e1" strokeWidth={1.5} dot={false} />
+                              <Line type="stepAfter" dataKey="invested" stroke="#cbd5e1" strokeWidth={1.5} dot={false} animationDuration={850} animationEasing="ease-out" />
                               {benchmarks.includes("SPY") && (
-                                <Line type="monotone" dataKey="spy" stroke="#ef4444" strokeWidth={1.8} dot={false} />
+                                <Line type="monotone" dataKey="spy" stroke="#ef4444" strokeWidth={1.8} dot={false} animationDuration={850} animationEasing="ease-out" />
                               )}
                               {benchmarks.includes("QQQ") && (
-                                <Line type="monotone" dataKey="qqq" stroke="#eab308" strokeWidth={1.8} dot={false} />
+                                <Line type="monotone" dataKey="qqq" stroke="#eab308" strokeWidth={1.8} dot={false} animationDuration={850} animationEasing="ease-out" />
                               )}
-                              <Area type="monotone" dataKey="portfolio" stroke="#10b981" strokeWidth={2.2} fillOpacity={1} fill="url(#mColorPort)" />
+                              <Area type="monotone" dataKey="portfolio" stroke="#10b981" strokeWidth={2.2} fillOpacity={1} fill="url(#mColorPort)" animationDuration={850} animationEasing="ease-out" />
                             </AreaChart>
                           </ResponsiveContainer>
                         ) : (
@@ -1079,7 +1269,7 @@ export default function MobileBacktestDashboard({
                                   labelFormatter={(lbl) => `일자: ${lbl}`}
                                   contentStyle={{ fontSize: 11, borderRadius: 8 }}
                                 />
-                                <Area type="monotone" dataKey="drawdown" stroke="#f43f5e" strokeWidth={1.2} fill="#ffe4e6" fillOpacity={0.65} dot={false} />
+                                <Area type="monotone" dataKey="drawdown" stroke="#f43f5e" strokeWidth={1.2} fill="#ffe4e6" fillOpacity={0.65} dot={false} animationDuration={750} animationEasing="ease-out" />
                               </AreaChart>
                             </ResponsiveContainer>
                           )}
@@ -1090,7 +1280,7 @@ export default function MobileBacktestDashboard({
 
                   {/* [5번 화면] 연도별 수익률 비교 (Annual Returns) */}
                   {resultSlide === 2 && (
-                    <div className="space-y-3 animate-fade-in">
+                    <div className="space-y-3 animate-page-slide">
                       <div>
                         <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
                           <BarChart2 size={16} className="text-indigo-600" />
@@ -1150,12 +1340,12 @@ export default function MobileBacktestDashboard({
                                   );
                                 }}
                               />
-                              <Bar dataKey="portfolio" fill="#10b981" radius={[3, 3, 0, 0]} animationDuration={600} />
+                              <Bar dataKey="portfolio" fill="#10b981" radius={[3, 3, 0, 0]} animationBegin={0} animationDuration={600} animationEasing="ease-out" />
                               {benchmarks.includes("SPY") && (
-                                <Bar dataKey="spy" fill="#ef4444" radius={[3, 3, 0, 0]} animationDuration={600} />
+                                <Bar dataKey="spy" fill="#ef4444" radius={[3, 3, 0, 0]} animationBegin={90} animationDuration={600} animationEasing="ease-out" />
                               )}
                               {benchmarks.includes("QQQ") && (
-                                <Bar dataKey="qqq" fill="#eab308" radius={[3, 3, 0, 0]} animationDuration={600} />
+                                <Bar dataKey="qqq" fill="#eab308" radius={[3, 3, 0, 0]} animationBegin={180} animationDuration={600} animationEasing="ease-out" />
                               )}
                             </BarChart>
                           </ResponsiveContainer>

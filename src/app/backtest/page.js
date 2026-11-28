@@ -299,8 +299,8 @@ export default function BacktestPage() {
     setErrorMsg("");
   };
 
-  // 종목 추가
-  const addStock = (stock) => {
+  // 종목 추가 (prepend가 true면 최상단에 추가)
+  const addStock = (stock, prepend = false) => {
     setErrorMsg("");
     if (portfolio.some(p => p.symbol === stock.code || p.symbol === stock.symbol || p.code === stock.code)) {
       setIsSearchOpen(false);
@@ -317,41 +317,38 @@ export default function BacktestPage() {
     const sym = isDomestic && !stock.code.includes(".") ? `${stock.code}.KS` : (stock.symbol || stock.code);
     const themeColor = isDomestic ? "#3b82f6" : "#f59e0b"; // 국내: 파란색, 해외: 노란색(호박색)
 
-    // 첫 번째 종목이면 100%, 기존 종목이 있고 비중 여유가 있으면 남은 비중 할당
-    let initialWeight = 0;
-    if (portfolio.length === 0) {
-      initialWeight = 100;
-    } else if (totalWeight < 100) {
-      initialWeight = Math.max(0, 100 - totalWeight);
-    }
-
     const newStock = {
       symbol: sym,
       code: stock.code,
       name: stock.name,
       market: stock.market || (isDomestic ? "KOSPI" : "US"),
       currency: isDomestic ? "KRW" : "USD",
-      weight: initialWeight,
+      weight: 0,
       color: themeColor
     };
 
-    setPortfolio(prev => [...prev, newStock]);
+    setPortfolio(prev => applyEqualWeights(prepend ? [newStock, ...prev] : [...prev, newStock]));
     setSearchQuery("");
     setSearchResults([]);
     setSelectedSearchIndex(0);
     setIsSearchOpen(false);
   };
 
+  // 포트폴리오 비중 균등 배분 헬퍼 (합계 100% 유지)
+  const applyEqualWeights = (list) => {
+    if (list.length === 0) return list;
+    const equalVal = Math.floor(100 / list.length);
+    const remainder = 100 - (equalVal * list.length);
+    return list.map((item, idx) => ({
+      ...item,
+      weight: idx === 0 ? equalVal + remainder : equalVal
+    }));
+  };
+
   // 균등 배분 버튼
   const handleEqualWeight = () => {
     if (portfolio.length === 0) return;
-    const equalVal = Math.floor(100 / portfolio.length);
-    const remainder = 100 - (equalVal * portfolio.length);
-
-    setPortfolio(prev => prev.map((item, idx) => ({
-      ...item,
-      weight: idx === 0 ? equalVal + remainder : equalVal
-    })));
+    setPortfolio(prev => applyEqualWeights(prev));
   };
 
   // 내 보유 자산 불러오기
@@ -593,7 +590,7 @@ export default function BacktestPage() {
             <div className="relative flex items-center">
               <input
                 type="text"
-                placeholder="+ 종목명 / 티커 / 종목코드 입력 후 Enter..."
+                aria-label="종목명, 티커 또는 종목코드 검색"
                 value={searchQuery}
                 onChange={handleSearchInputChange}
                 onKeyDown={handleSearchKeyDown}
@@ -601,8 +598,13 @@ export default function BacktestPage() {
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck="false"
-                className="w-full pl-3.5 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold transition-all uppercase placeholder:normal-case placeholder:font-normal"
+                className="w-full h-[34px] pl-3.5 pr-8 py-0 text-xs leading-normal bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold transition-all uppercase"
               />
+              {!searchQuery && (
+                <span className="pointer-events-none absolute left-3.5 right-8 top-1/2 -translate-y-1/2 text-xs font-normal text-slate-400 truncate select-none">
+                  + 종목명 / 티커 / 종목코드 입력 후 Enter...
+                </span>
+              )}
               {isSearching ? (
                 <RefreshCw size={14} className="absolute right-2.5 text-slate-400 animate-spin" />
               ) : (
@@ -631,11 +633,11 @@ export default function BacktestPage() {
               )}
             </div>
 
-            {/* 검색 드롭다운 (최대 4개 노출, 5개 이상 시 스크롤 발생) */}
+            {/* 검색 드롭다운 (최대 4개 노출, 5개 이상 시 스크롤 발생 + 위에서 아래로 순차 등장) */}
             {isSearchOpen && searchResults.length > 0 && (
               <div
                 ref={dropdownListRef}
-                className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-[192px] overflow-y-auto text-xs"
+                className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-[192px] overflow-y-auto text-xs animate-fade-in"
               >
                 {searchResults.map((item, idx) => {
                   const isSelected = selectedSearchIndex === idx;
@@ -645,7 +647,8 @@ export default function BacktestPage() {
                       key={`${item.code}-${idx}`}
                       onClick={() => addStock(item)}
                       onMouseEnter={() => setSelectedSearchIndex(idx)}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between transition-colors cursor-pointer ${
+                      style={{ animationDelay: `${idx * 40}ms` }}
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between transition-colors cursor-pointer opacity-0 animate-feed-lift ${
                         isSelected
                           ? "bg-indigo-50/90 text-indigo-950 font-bold border-l-3 border-indigo-600 pl-2.5"
                           : "hover:bg-slate-50 text-slate-800"
@@ -794,7 +797,7 @@ export default function BacktestPage() {
                         background: `linear-gradient(to right, ${themeColor} 0%, ${themeColor} ${weightVal}%, #e2e8f0 ${weightVal}%, #e2e8f0 100%)`,
                         accentColor: themeColor
                       }}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer transition-all"
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer touch-none"
                     />
                   </div>
                 );
